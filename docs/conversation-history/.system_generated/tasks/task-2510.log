@@ -1,0 +1,22 @@
+Starting Metro Bundler
+Web Bundled 21698ms index.ts (2116 modules)
+
+› Assets (11):
+node_modules\@react-navigation\elements\lib\module\assets\back-icon-mask.0a328cd9c1afd0afe8e3b1ec5165b1b4.png (653 B)
+node_modules\@react-navigation\elements\lib\module\assets\back-icon.35ba0eaec5a4f5ed12ca16fabeae451d.png (207 B)
+node_modules\@react-navigation\elements\lib\module\assets\clear-icon.c94f6478e7ae0cdd9f15de1fcb9e5e55.png (4 variations | 425 B)
+node_modules\@react-navigation\elements\lib\module\assets\close-icon.808e1b1b9b53114ec2838071a7e6daa7.png (4 variations | 235 B)
+node_modules\@react-navigation\elements\lib\module\assets\search-icon.286d67d3f74808a60a78d3ebf1a5fb57.png (928 B)
+
+› web bundles (5):
+_expo/static/js/web/database-d41d8cd98f00b204e9800998ecf8427e.js (0 B)
+_expo/static/js/web/dexieDb-d41d8cd98f00b204e9800998ecf8427e.js (0 B)
+_expo/static/js/web/index-2c7fc0f9ca3409c9cfc5a4418818cdde.js (2.77 MB)
+_expo/static/js/web/index-85fca42b14f815950d35b456a37bc9ec.js (11.9 kB)
+_expo/static/js/web/index-c16519d4f63d4edeaf1f83b36a1f4eac.js (24.9 kB)
+
+› Files (2):
+index.html (1.18 kB)
+metadata.json (49 B)
+
+Exported: dist

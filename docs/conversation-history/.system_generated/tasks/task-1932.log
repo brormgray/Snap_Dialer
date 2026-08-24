@@ -1,0 +1,17 @@
+Starting Metro Bundler
+Static rendering is enabled. Learn more: https://docs.expo.dev/router/reference/static-rendering/
+Favicon source file in Expo config (web.favicon) does not exist: ./assets/favicon.png
+Error: Unable to resolve module expo-router/node/render.js from C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer/.: expo-router/node/render.js could not be found within the project or in these directories:
+  node_modules
+Error: Unable to resolve module expo-router/node/render.js from C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer/.: expo-router/node/render.js could not be found within the project or in these directories:
+  node_modules
+    at ModuleResolver.resolveDependency (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\metro\src\node-haste\DependencyGraph\ModuleResolution.js:150:15)
+    at DependencyGraph.resolveDependency (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\metro\src\node-haste\DependencyGraph.js:248:43)
+    at C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\metro\src\lib\transformHelpers.js:165:21
+    at Server._resolveRelativePath (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\metro\src\Server.js:1104:12)
+    at MetroBundlerDevServer.resolveRelativePathAsync (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@expo\cli\src\start\server\metro\MetroBundlerDevServer.ts:1756:12)
+    at MetroBundlerDevServer.metroLoadModuleContents (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@expo\cli\src\start\server\metro\MetroBundlerDevServer.ts:516:35)
+    at MetroBundlerDevServer.ssrLoadModuleContents (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@expo\cli\src\start\server\metro\MetroBundlerDevServer.ts:590:48)
+    at MetroBundlerDevServer.ssrLoadModule (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@expo\cli\src\start\server\metro\MetroBundlerDevServer.ts:418:17)
+    at MetroBundlerDevServer.getStaticRenderFunctionAsync (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@expo\cli\src\start\server\metro\MetroBundlerDevServer.ts:278:7)
+    at async Promise.all (index 1)

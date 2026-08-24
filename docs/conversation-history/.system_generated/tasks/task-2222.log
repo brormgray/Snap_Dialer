@@ -1,0 +1,6 @@
+Successfully scheduled one-shot timer.
+Expected to fire at: 2026-08-23T17:32:20-04:00
+Prompt: Check direct CLI export status
+Early Termination: 9c9b5ef4-82a1-483f-9e9e-cb421c9396b3/task-2220
+
+[2026-08-23T17:32:20-04:00] Timer fired.

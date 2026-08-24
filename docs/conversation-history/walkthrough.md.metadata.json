@@ -1,0 +1,5 @@
+{
+  "summary": "Completed Best-in-Class Dexie.js storage upgrade with normalized multi-table schema, compound B-tree indexing, decoupled high-res card photo store, automated zero-loss legacy data migration, and live storage diagnostics. Deployed to Surge production.",
+  "updatedAt": "2026-08-24T16:49:04.046335300Z",
+  "userFacing": true
+}

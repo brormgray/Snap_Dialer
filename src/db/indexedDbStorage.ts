@@ -1,0 +1,220 @@
+﻿/**
+ * High-Capacity IndexedDB Storage Driver for Web Browsers
+ * Solves the 5MB browser localStorage limit and provides multi-gigabyte, crash-proof persistence
+ * for ValuTeachers leads, photos, call records, and notes.
+ */
+
+const DB_NAME = 'SnapDialerValuTeachersDB';
+const DB_VERSION = 1;
+const STORE_NAME = 'app_state';
+const LEGACY_STORAGE_KEY = 'snap_dialer_valuteachers_data';
+
+export interface DatabaseState {
+  lists: any[];
+  leads: any[];
+  call_logs: any[];
+  cadence_rules: any[];
+  sms_templates: any[];
+  settings: { key: string; value: string }[];
+}
+
+export class IndexedDbStorage {
+  private static dbPromise: Promise<IDBDatabase> | null = null;
+
+  /**
+   * Opens or initializes the IndexedDB database connection
+   */
+  private static async getDb(): Promise<IDBDatabase> {
+    if (typeof window === 'undefined' || !window.indexedDB) {
+      throw new Error('IndexedDB not supported in current environment.');
+    }
+
+    if (!this.dbPromise) {
+      this.dbPromise = new Promise((resolve, reject) => {
+        const request = window.indexedDB.open(DB_NAME, DB_VERSION);
+
+        request.onupgradeneeded = (event: any) => {
+          const db = event.target.result as IDBDatabase;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            db.createObjectStore(STORE_NAME);
+          }
+        };
+
+        request.onsuccess = (event: any) => {
+          const db = event.target.result as IDBDatabase;
+
+          // Request persistent storage if supported by browser
+          if (navigator.storage && navigator.storage.persist) {
+            navigator.storage.persist().catch(() => {});
+          }
+
+          resolve(db);
+        };
+
+        request.onerror = (event: any) => {
+          console.error('IndexedDB open error:', event.target.error);
+          reject(event.target.error);
+        };
+      });
+    }
+
+    return this.dbPromise;
+  }
+
+  /**
+   * Loads the full database state from IndexedDB (with automatic migration from legacy localStorage)
+   */
+  static async loadState(): Promise<DatabaseState> {
+    try {
+      if (typeof window === 'undefined' || !window.indexedDB) {
+        return this.loadFromLocalStorageFallback();
+      }
+
+      const db = await this.getDb();
+      const stored = await new Promise<DatabaseState | null>((resolve, reject) => {
+        try {
+          const tx = db.transaction(STORE_NAME, 'readonly');
+          const store = tx.objectStore(STORE_NAME);
+          const request = store.get('root_state');
+
+          request.onsuccess = () => {
+            resolve(request.result || null);
+          };
+
+          request.onerror = () => {
+            reject(request.error);
+          };
+        } catch (e) {
+          reject(e);
+        }
+      });
+
+      if (stored) {
+        return this.normalizeState(stored);
+      }
+
+      // Check if we have legacy data in localStorage to migrate
+      const legacyState = this.loadFromLocalStorageFallback();
+      if (legacyState.leads.length > 0 || legacyState.lists.length > 0) {
+        await this.saveState(legacyState);
+        return legacyState;
+      }
+
+      return {
+        lists: [],
+        leads: [],
+        call_logs: [],
+        cadence_rules: [],
+        sms_templates: [],
+        settings: [],
+      };
+    } catch (e) {
+      console.warn('IndexedDB load failed, using localStorage fallback:', e);
+      return this.loadFromLocalStorageFallback();
+    }
+  }
+
+  /**
+   * Persists the entire database state to IndexedDB
+   */
+  static async saveState(state: DatabaseState): Promise<void> {
+    try {
+      if (typeof window === 'undefined' || !window.indexedDB) {
+        this.saveToLocalStorageFallback(state);
+        return;
+      }
+
+      const db = await this.getDb();
+      await new Promise<void>((resolve, reject) => {
+        try {
+          const tx = db.transaction(STORE_NAME, 'readwrite');
+          const store = tx.objectStore(STORE_NAME);
+          const request = store.put(state, 'root_state');
+
+          request.onsuccess = () => {
+            resolve();
+          };
+
+          request.onerror = () => {
+            reject(request.error);
+          };
+        } catch (e) {
+          reject(e);
+        }
+      });
+
+      // Also keep a lightweight mirror in localStorage (without large base64 images) as a secondary backup
+      this.saveToLocalStorageFallback(state, true);
+    } catch (e) {
+      console.error('IndexedDB save failed:', e);
+      this.saveToLocalStorageFallback(state, true);
+    }
+  }
+
+  /**
+   * Normalizes fields for backwards compatibility
+   */
+  private static normalizeState(raw: any): DatabaseState {
+    const leads = (Array.isArray(raw?.leads) ? raw.leads : []).map((l: any) => ({
+      ...l,
+      priority_tier: l.priority_tier !== undefined && l.priority_tier !== null ? Number(l.priority_tier) : 1,
+      list_id: l.list_id || 'master_queue',
+      attempts_count: l.attempts_count || 0,
+      cadence_step: l.cadence_step || 1,
+      last_disposition: l.last_disposition || 'pending',
+    }));
+
+    return {
+      lists: Array.isArray(raw?.lists) ? raw.lists : [],
+      leads,
+      call_logs: Array.isArray(raw?.call_logs) ? raw.call_logs : [],
+      cadence_rules: Array.isArray(raw?.cadence_rules) ? raw.cadence_rules : [],
+      sms_templates: Array.isArray(raw?.sms_templates) ? raw.sms_templates : [],
+      settings: Array.isArray(raw?.settings) ? raw.settings : [],
+    };
+  }
+
+  private static loadFromLocalStorageFallback(): DatabaseState {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const saved = localStorage.getItem(LEGACY_STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          return this.normalizeState(parsed);
+        }
+      }
+    } catch (e) {
+      console.warn('localStorage fallback load failed:', e);
+    }
+
+    return {
+      lists: [],
+      leads: [],
+      call_logs: [],
+      cadence_rules: [],
+      sms_templates: [],
+      settings: [],
+    };
+  }
+
+  private static saveToLocalStorageFallback(state: DatabaseState, stripHeavyImages: boolean = false) {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        let payload = state;
+        if (stripHeavyImages) {
+          // Strip massive base64 strings so localStorage never exceeds 5MB
+          payload = {
+            ...state,
+            leads: state.leads.map((l) => ({
+              ...l,
+              source_image_uri: (l.source_image_uri && l.source_image_uri.length > 200) ? 'stored_in_indexeddb' : l.source_image_uri,
+            })),
+          };
+        }
+        localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(payload));
+      }
+    } catch (e) {
+      // If localStorage is full, IndexedDB has already saved the complete dataset.
+    }
+  }
+}

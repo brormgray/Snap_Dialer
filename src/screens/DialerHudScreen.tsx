@@ -1,0 +1,1987 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  SafeAreaView,
+  StatusBar,
+  Modal,
+  TextInput,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  PanResponder,
+  ScrollView,
+  Image,
+} from 'react-native';
+import {
+  PhoneCall,
+  PhoneOff,
+  MessageSquare,
+  CheckCircle2,
+  XCircle,
+  Pause,
+  Play,
+  SkipForward,
+  ArrowLeft,
+  User,
+  GraduationCap,
+  FileText,
+  Flame,
+  ShieldAlert,
+  Clock,
+  Globe,
+  AlertTriangle,
+  Calendar,
+  Sparkles,
+  HelpCircle,
+  School,
+  Check,
+  Eye,
+  FileCheck,
+  X,
+  Wand2,
+  RefreshCw,
+  Archive,
+  ShieldCheck,
+  BookOpen,
+} from 'lucide-react-native';
+import { LeadsRepository } from '../db/leadsRepository';
+import { CallLogsRepository } from '../db/callLogsRepository';
+import { SettingsRepository } from '../db/settingsRepository';
+import { CadenceRepository } from '../db/cadenceRepository';
+import { TelephonyService } from '../services/telephonyService';
+import { CadenceEngine } from '../services/cadenceEngine';
+import { HapticsService } from '../services/hapticsService';
+import { TimeZoneService, ProspectTimeInfo } from '../services/timeZoneService';
+import { AiSmsService } from '../services/aiSmsService';
+import { CalendarService } from '../services/calendarService';
+import { FRS_OBJECTIONS, ObjectionCard } from '../data/objections';
+import { Lead, CallDisposition, SMSTemplate, AppSettings } from '../types';
+import { Colors } from '../theme/colors';
+import ZoomableImageModal from '../components/ZoomableImageModal';
+
+export default function DialerHudScreen({ route, navigation }: any) {
+  const listId = route.params?.listId || 'master_queue';
+  const listTitle = route.params?.listTitle || 'ValuTeachers Calling Queue';
+  const schoolName = route.params?.schoolName;
+
+  const [queue, setQueue] = useState<Lead[]>([]);
+  const [currentIndex, setCurrentIndex] = useState<number>(0);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState<number | null>(null);
+  const [isAutoPaused, setIsAutoPaused] = useState<boolean>(false);
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+
+  // Call duration counter
+  const [isOnCall, setIsOnCall] = useState<boolean>(false);
+  const [callDuration, setCallDuration] = useState<number>(0);
+  const callTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Quick Notes modal for Connected calls / Appointments
+  const [noteModalVisible, setNoteModalVisible] = useState<boolean>(false);
+  const [isSettingAppt, setIsSettingAppt] = useState<boolean>(false);
+  const [callNote, setCallNote] = useState<string>('');
+
+  // Live Objection Battlecards Modal
+  const [objectionsModalVisible, setObjectionsModalVisible] = useState<boolean>(false);
+  const [selectedObjection, setSelectedObjection] = useState<ObjectionCard | null>(null);
+
+  // Follow-up Scheduling Modal
+  const [followUpModalVisible, setFollowUpModalVisible] = useState<boolean>(false);
+  const [followUpNote, setFollowUpNote] = useState<string>('');
+
+  // Multi-template SMS Modal
+  const [smsModalVisible, setSmsModalVisible] = useState<boolean>(false);
+  const [templates, setTemplates] = useState<SMSTemplate[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<SMSTemplate | null>(null);
+  const [customSmsBody, setCustomSmsBody] = useState<string>('');
+  const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false);
+
+  // Original Card Image / Proof of Contact Modal
+  const [imageModalVisible, setImageModalVisible] = useState<boolean>(false);
+
+  // Session stats
+  const [sessionDials, setSessionDials] = useState<number>(0);
+  const [sessionAppointments, setSessionAppointments] = useState<number>(0);
+  const [sessionConnects, setSessionConnects] = useState<number>(0);
+  const [sessionCallbacks, setSessionCallbacks] = useState<number>(0);
+
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Gesture Animation State
+  const pan = useRef(new Animated.ValueXY()).current;
+  const [swipeActionText, setSwipeActionText] = useState<string | null>(null);
+
+  const cardRotate = pan.x.interpolate({
+    inputRange: [-200, 0, 200],
+    outputRange: ['-6deg', '0deg', '6deg'],
+    extrapolate: 'clamp',
+  });
+
+  const loadQueue = async () => {
+    setLoading(true);
+    try {
+      const s = await SettingsRepository.getSettings();
+      setAppSettings(s);
+      const allTemplates = await CadenceRepository.getAllTemplates();
+      setTemplates(allTemplates);
+
+      const leads = schoolName
+        ? await LeadsRepository.getDialingQueueForSchool(schoolName, listId)
+        : await LeadsRepository.getDialingQueueForList(listId);
+      setQueue(leads);
+      setCurrentIndex(0);
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Error', 'Failed to load dialing queue.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadQueue();
+    return () => {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      if (callTimerRef.current) clearInterval(callTimerRef.current);
+    };
+  }, [listId]);
+
+  const currentLead: Lead | undefined = queue[currentIndex];
+  const timeInfo: ProspectTimeInfo | null = currentLead
+    ? TimeZoneService.getProspectTimeInfo(currentLead.phone)
+    : null;
+
+  // Web & Native Universal Swipe Engine
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+  const isSwipingHorizontally = useRef<boolean>(false);
+
+  const onGestureStart = (clientX: number, clientY: number) => {
+    touchStartX.current = clientX;
+    touchStartY.current = clientY;
+    isSwipingHorizontally.current = false;
+  };
+
+  const onGestureMove = (clientX: number, clientY: number) => {
+    if (touchStartX.current === null) return;
+    const dx = clientX - touchStartX.current;
+    const dy = clientY - (touchStartY.current || clientY);
+
+    if (!isSwipingHorizontally.current) {
+      if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
+        isSwipingHorizontally.current = true;
+      } else if (Math.abs(dy) > 10) {
+        touchStartX.current = null;
+        return;
+      }
+    }
+
+    if (isSwipingHorizontally.current) {
+      pan.setValue({ x: dx, y: 0 });
+      if (dx > 50) {
+        setSwipeActionText('📞 RELEASE TO DIAL');
+      } else if (dx < -50) {
+        setSwipeActionText('⏭️ RELEASE TO SKIP');
+      } else {
+        setSwipeActionText(null);
+      }
+    }
+  };
+
+  const onGestureEnd = () => {
+    if (touchStartX.current === null) return;
+    const wasSwiping = isSwipingHorizontally.current;
+    touchStartX.current = null;
+    touchStartY.current = null;
+    isSwipingHorizontally.current = false;
+
+    if (!wasSwiping) return;
+
+    const currentX = (pan.x as any)._value || 0;
+
+    if (currentX > 50) {
+      HapticsService.medium();
+      handleDial();
+      Animated.timing(pan, {
+        toValue: { x: 350, y: 0 },
+        duration: 160,
+        useNativeDriver: false,
+      }).start(() => {
+        pan.setValue({ x: 0, y: 0 });
+        setSwipeActionText(null);
+      });
+    } else if (currentX < -50) {
+      HapticsService.tick();
+      advanceNextLead();
+      Animated.timing(pan, {
+        toValue: { x: -350, y: 0 },
+        duration: 160,
+        useNativeDriver: false,
+      }).start(() => {
+        pan.setValue({ x: 0, y: 0 });
+        setSwipeActionText(null);
+      });
+    } else {
+      Animated.spring(pan, {
+        toValue: { x: 0, y: 0 },
+        friction: 6,
+        tension: 50,
+        useNativeDriver: false,
+      }).start();
+      setSwipeActionText(null);
+    }
+  };
+
+  // Swipe Gesture Controller (Native fallback)
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onStartShouldSetPanResponderCapture: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+      },
+      onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+      },
+      onPanResponderGrant: () => {
+        pan.setValue({ x: 0, y: 0 });
+      },
+      onPanResponderMove: (_, gestureState) => {
+        pan.setValue({ x: gestureState.dx, y: 0 });
+        if (gestureState.dx > 50) {
+          setSwipeActionText('📞 RELEASE TO DIAL');
+        } else if (gestureState.dx < -50) {
+          setSwipeActionText('⏭️ RELEASE TO SKIP');
+        } else {
+          setSwipeActionText(null);
+        }
+      },
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderTerminate: () => {
+        Animated.spring(pan, { toValue: { x: 0, y: 0 }, friction: 6, tension: 50, useNativeDriver: false }).start();
+        setSwipeActionText(null);
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        const isSwipeRight = gestureState.dx > 50 || gestureState.vx > 0.35;
+        const isSwipeLeft = gestureState.dx < -50 || gestureState.vx < -0.35;
+
+        if (isSwipeRight) {
+          HapticsService.medium();
+          handleDial();
+          Animated.timing(pan, {
+            toValue: { x: 350, y: 0 },
+            duration: 160,
+            useNativeDriver: false,
+          }).start(() => {
+            pan.setValue({ x: 0, y: 0 });
+            setSwipeActionText(null);
+          });
+        } else if (isSwipeLeft) {
+          HapticsService.tick();
+          advanceNextLead();
+          Animated.timing(pan, {
+            toValue: { x: -350, y: 0 },
+            duration: 160,
+            useNativeDriver: false,
+          }).start(() => {
+            pan.setValue({ x: 0, y: 0 });
+            setSwipeActionText(null);
+          });
+        } else {
+          Animated.spring(pan, {
+            toValue: { x: 0, y: 0 },
+            friction: 6,
+            tension: 50,
+            useNativeDriver: false,
+          }).start();
+          setSwipeActionText(null);
+        }
+      },
+    })
+  ).current;
+
+  // Trigger outbound call via zero-cost native SIM bridge
+  const handleDial = async () => {
+    if (!currentLead) return;
+    await HapticsService.medium();
+    setSessionDials((prev) => prev + 1);
+    setIsOnCall(true);
+    setCallDuration(0);
+
+    if (callTimerRef.current) clearInterval(callTimerRef.current);
+    callTimerRef.current = setInterval(() => {
+      setCallDuration((prev) => prev + 1);
+    }, 1000);
+
+    await TelephonyService.makeCall(currentLead.phone);
+  };
+
+  // Disposition Handlers
+  const handleDisposition = async (disposition: CallDisposition, note?: string) => {
+    if (!currentLead) return;
+
+    if (disposition === 'appointment_set') {
+      await HapticsService.success();
+      setSessionAppointments((prev) => prev + 1);
+    } else if (disposition === 'connected' || disposition === 'spoke') {
+      await HapticsService.success();
+      setSessionConnects((prev) => prev + 1);
+    } else if (disposition === 'callback_requested') {
+      await HapticsService.tick();
+      setSessionCallbacks((prev) => prev + 1);
+    } else if (disposition === 'bad_number') {
+      await HapticsService.heavy();
+    } else {
+      await HapticsService.tick();
+    }
+
+    if (callTimerRef.current) clearInterval(callTimerRef.current);
+    setIsOnCall(false);
+
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    setAutoAdvanceCountdown(null);
+
+    // Evaluate cadence rule for SMS trigger
+    const cadenceResult = await CadenceEngine.evaluateCadence(currentLead, disposition);
+
+    // Save disposition to SQLite
+    await LeadsRepository.updateLeadDisposition(currentLead.id, disposition, note);
+    await CallLogsRepository.logCall({
+      leadId: currentLead.id,
+      listId: currentLead.list_id,
+      durationSeconds: callDuration,
+      disposition,
+      note,
+      smsSent: false,
+    });
+
+    // Check if we should prompt SMS
+    if (cadenceResult.shouldPromptSMS && cadenceResult.template) {
+      promptCadenceSMS(currentLead, cadenceResult.template);
+    } else {
+      startAutoAdvanceTimer();
+    }
+  };
+
+  const handleScheduleFollowUp = async (presetHours: number) => {
+    if (!currentLead) return;
+    await HapticsService.success();
+    setFollowUpModalVisible(false);
+    setSessionCallbacks((prev) => prev + 1);
+
+    const followUpDate = new Date();
+    followUpDate.setHours(followUpDate.getHours() + presetHours);
+
+    await LeadsRepository.scheduleFollowUp(
+      currentLead.id,
+      followUpDate.toISOString(),
+      followUpNote || 'Scheduled Callback'
+    );
+
+    await CallLogsRepository.logCall({
+      leadId: currentLead.id,
+      listId: currentLead.list_id,
+      durationSeconds: 0,
+      disposition: 'callback_requested',
+      note: `Follow-up set for ${followUpDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+    });
+
+    Alert.alert('Follow-Up Saved', `Callback scheduled for ${followUpDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
+    startAutoAdvanceTimer();
+  };
+
+  const handleMarkDNC = async () => {
+    if (!currentLead) return;
+    await HapticsService.heavy();
+    await handleDisposition('do_not_call', 'Educator requested Do Not Call');
+  };
+
+  const promptCadenceSMS = (lead: Lead, template: SMSTemplate) => {
+    const interpolated = TelephonyService.interpolateTemplate(
+      template,
+      lead,
+      appSettings?.user_name || 'Alex'
+    );
+    Alert.alert(
+      'ValuTeachers SMS: Send Follow-Up Text?',
+      `"${interpolated}"`,
+      [
+        {
+          text: 'Skip SMS',
+          style: 'cancel',
+          onPress: () => startAutoAdvanceTimer(),
+        },
+        {
+          text: 'Review & Send SMS',
+          onPress: async () => {
+            setCustomSmsBody(interpolated);
+            setSmsModalVisible(true);
+          },
+        },
+      ]
+    );
+  };
+
+  const openSmsModal = async () => {
+    if (!currentLead) return;
+    await HapticsService.tick();
+    setSmsModalVisible(true);
+    handleGenerateAiSms();
+  };
+
+  const handleGenerateAiSms = async (toneFocus?: any) => {
+    if (!currentLead) return;
+    setIsGeneratingAi(true);
+    try {
+      const generated = await AiSmsService.generatePersuasiveSMS(
+        currentLead,
+        isOnCall ? 'connected' : 'no_answer',
+        appSettings?.gemini_api_key,
+        toneFocus
+      );
+      setCustomSmsBody(generated);
+      await HapticsService.success();
+    } catch {
+      if (templates.length > 0) {
+        setCustomSmsBody(
+          TelephonyService.interpolateTemplate(templates[0], currentLead, appSettings?.user_name || 'Alex')
+        );
+      }
+    } finally {
+      setIsGeneratingAi(false);
+    }
+  };
+
+  const handleSendCustomSms = async () => {
+    if (!currentLead) return;
+    await HapticsService.medium();
+    setSmsModalVisible(false);
+    await TelephonyService.sendSMS(currentLead.phone, customSmsBody);
+    await CallLogsRepository.logCall({
+      leadId: currentLead.id,
+      listId: currentLead.list_id,
+      durationSeconds: 0,
+      disposition: 'callback_requested',
+      note: 'Sent persuasive ValuTeachers SMS',
+      smsSent: true,
+      smsBody: customSmsBody,
+    });
+  };
+
+  const startAutoAdvanceTimer = () => {
+    if (isAutoPaused || !appSettings?.auto_advance_enabled) {
+      advanceNextLead();
+      return;
+    }
+
+    const duration = appSettings?.auto_advance_seconds || 3;
+    setAutoAdvanceCountdown(duration);
+    let secondsLeft = duration;
+
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    countdownTimerRef.current = setInterval(() => {
+      HapticsService.tick();
+      secondsLeft -= 1;
+      if (secondsLeft <= 0) {
+        if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+        setAutoAdvanceCountdown(null);
+        advanceNextLead();
+      } else {
+        setAutoAdvanceCountdown(secondsLeft);
+      }
+    }, 1000);
+  };
+
+  const advanceNextLead = () => {
+    if (currentIndex + 1 < queue.length) {
+      setCurrentIndex((prev) => prev + 1);
+    } else {
+      loadQueue();
+    }
+  };
+
+  const togglePause = async () => {
+    await HapticsService.tick();
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      setAutoAdvanceCountdown(null);
+    }
+    setIsAutoPaused(!isAutoPaused);
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color="#3B82F6" />
+          <Text style={styles.loadingText}>Loading ValuTeachers Queue...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Finished queue
+  if (!currentLead || queue.length === 0) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={Colors.sacredGreenDeep} />
+        <View style={styles.finishedContainer}>
+          <Flame size={64} color={Colors.heavenlyGold} />
+          <Text style={styles.finishedTitle}>Session Complete!</Text>
+          <Text style={styles.finishedSubtitle}>
+            You have called all active educators in "{listTitle}".
+          </Text>
+
+          <View style={styles.sessionSummaryBox}>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryVal}>{sessionDials}</Text>
+              <Text style={styles.summaryLabel}>Total Dials</Text>
+            </View>
+            <View style={styles.summaryDivider} />
+            <View style={styles.summaryItem}>
+              <Text style={[styles.summaryVal, { color: Colors.heavenlyGold }]}>{sessionAppointments}</Text>
+              <Text style={[styles.summaryLabel, { color: Colors.heavenlyGold }]}>🎯 Appts Set</Text>
+            </View>
+            <View style={styles.summaryDivider} />
+            <View style={styles.summaryItem}>
+              <Text style={[styles.summaryVal, { color: Colors.statusSitDownText }]}>{sessionConnects}</Text>
+              <Text style={styles.summaryLabel}>Spoke / Met</Text>
+            </View>
+            <View style={styles.summaryDivider} />
+            <View style={styles.summaryItem}>
+              <Text style={[styles.summaryVal, { color: '#C084FC' }]}>{sessionCallbacks}</Text>
+              <Text style={styles.summaryLabel}>Callbacks</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.returnButton}
+            onPress={() => navigation.navigate('Lists')}
+          >
+            <Text style={styles.returnButtonText}>Back to Lead Pipeline</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={Colors.sacredGreenDeep} />
+
+      {/* Top Header */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Lists')}
+          style={styles.backButton}
+        >
+          <ArrowLeft size={22} color={Colors.livingWhite} />
+        </TouchableOpacity>
+        <View style={{ alignItems: 'center', flex: 1, marginHorizontal: 6 }}>
+          <Text style={styles.queueCounter} numberOfLines={1}>
+            Educator {currentIndex + 1} of {queue.length}
+          </Text>
+          <Text style={styles.listSubheading} numberOfLines={1} ellipsizeMode="tail">{listTitle}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => {
+              HapticsService.tick();
+              setObjectionsModalVisible(true);
+            }}
+            style={styles.battlecardsHeaderBtn}
+          >
+            <ShieldCheck size={16} color={Colors.heavenlyGold} />
+            <Text style={styles.battlecardsHeaderBtnText}>Scripts</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={togglePause} style={styles.pauseButton}>
+            {isAutoPaused ? (
+              <Play size={20} color={Colors.statusSitDownText} />
+            ) : (
+              <Pause size={20} color={Colors.textMuted} />
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Auto Advance Countdown Banner */}
+      {autoAdvanceCountdown !== null && (
+        <View style={styles.countdownBanner}>
+          <Text style={styles.countdownText}>
+            Advancing to next contact in {autoAdvanceCountdown}s...
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+              setAutoAdvanceCountdown(null);
+            }}
+          >
+            <Text style={styles.countdownCancel}>Pause</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Main Scrollable Cockpit Viewport */}
+      <ScrollView
+        style={styles.scrollViewport}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Main Swipeable Educator Contact Card */}
+        <Animated.View
+          style={[
+            styles.contactCard,
+            {
+              transform: [{ translateX: pan.x }, { rotate: cardRotate }],
+            },
+          ]}
+          {...panResponder.panHandlers}
+          // @ts-ignore
+          onTouchStart={(e: any) => {
+            const t = e.touches ? e.touches[0] : e.nativeEvent?.touches ? e.nativeEvent.touches[0] : e.nativeEvent;
+            if (t) onGestureStart(t.clientX || t.pageX, t.clientY || t.pageY);
+          }}
+          // @ts-ignore
+          onTouchMove={(e: any) => {
+            const t = e.touches ? e.touches[0] : e.nativeEvent?.touches ? e.nativeEvent.touches[0] : e.nativeEvent;
+            if (t) onGestureMove(t.clientX || t.pageX, t.clientY || t.pageY);
+          }}
+          // @ts-ignore
+          onTouchEnd={() => onGestureEnd()}
+          // @ts-ignore
+          onTouchCancel={() => onGestureEnd()}
+          // @ts-ignore
+          onMouseDown={(e: any) => onGestureStart(e.clientX || e.pageX, e.clientY || e.pageY)}
+          // @ts-ignore
+          onMouseMove={(e: any) => onGestureMove(e.clientX || e.pageX, e.clientY || e.pageY)}
+          // @ts-ignore
+          onMouseUp={() => onGestureEnd()}
+          // @ts-ignore
+          onMouseLeave={() => onGestureEnd()}
+        >
+          {/* Swipe Feedback Banner */}
+          {swipeActionText && (
+            <View
+              style={[
+                styles.swipeIndicator,
+                swipeActionText.includes('DIAL') && { backgroundColor: '#10B981' },
+                swipeActionText.includes('SKIP') && { backgroundColor: '#F59E0B' },
+              ]}
+            >
+              <Text style={styles.swipeIndicatorText}>{swipeActionText}</Text>
+            </View>
+          )}
+
+          {/* Educator Header & School */}
+          <View style={styles.contactTopRow}>
+            <View style={styles.avatarCircle}>
+              <GraduationCap size={24} color={Colors.heavenlyGold} />
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.contactName}>{currentLead.name}</Text>
+              <Text style={styles.contactPhone}>{currentLead.phone}</Text>
+              {currentLead.email ? (
+                <Text style={styles.contactEmail}>{currentLead.email}</Text>
+              ) : null}
+            </View>
+            <View style={{ alignItems: 'flex-end', gap: 4 }}>
+              {currentLead.priority_tier === 3 ? (
+                <View style={styles.hudLegacyBadge}>
+                  <Archive size={10} color="#94A3B8" />
+                  <Text style={styles.hudLegacyBadgeText}>LEGACY LEAD</Text>
+                </View>
+              ) : (
+                <View style={styles.hudFreshBadge}>
+                  <Flame size={10} color={Colors.heavenlyGold} />
+                  <Text style={styles.hudFreshBadgeText}>FRESH PRIORITY</Text>
+                </View>
+              )}
+              <View style={styles.attemptBadge}>
+                <Text style={styles.attemptText}>
+                  Call #{currentLead.attempts_count + 1}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* School & FRS Profile Ribbon */}
+          <View style={styles.frsRibbon}>
+            <View style={styles.ribbonItem}>
+              <School size={14} color={Colors.heavenlyGold} />
+              <Text style={styles.ribbonText}>
+                {currentLead.school || 'School District'}
+                {currentLead.room_number ? ` • Room ${currentLead.room_number}` : ''}
+              </Text>
+            </View>
+            <View style={styles.ribbonRow}>
+              {currentLead.planning_period ? (
+                <View style={[styles.tagBadge, { backgroundColor: Colors.sacredGreenMuted, borderColor: Colors.borderGold }]}>
+                  <Text style={[styles.tagText, { color: Colors.heavenlyGold }]}>⏰ {currentLead.planning_period}</Text>
+                </View>
+              ) : null}
+              {currentLead.years_in_frs ? (
+                <View style={styles.tagBadge}>
+                  <Text style={styles.tagText}>🎓 {currentLead.years_in_frs} Yrs in FRS</Text>
+                </View>
+              ) : null}
+              {currentLead.age ? (
+                <View style={styles.tagBadge}>
+                  <Text style={styles.tagText}>Age: {currentLead.age}</Text>
+                </View>
+              ) : null}
+              {currentLead.frs_knowledge ? (
+                <View style={[styles.tagBadge, { backgroundColor: 'rgba(245, 158, 11, 0.15)', borderColor: '#F59E0B' }]}>
+                  <Text style={[styles.tagText, { color: '#F59E0B' }]}>
+                    FRS: "{currentLead.frs_knowledge}"
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+
+          {/* Custom Written Questions */}
+          {currentLead.custom_questions ? (
+            <View style={styles.customQuestionBox}>
+              <HelpCircle size={14} color={Colors.heavenlyGold} />
+              <Text style={styles.customQuestionText}>
+                Q: "{currentLead.custom_questions}"
+              </Text>
+            </View>
+          ) : null}
+
+          {/* FRS Report Card Checkboxes / Hot-Buttons */}
+          {currentLead.frs_interests && currentLead.frs_interests.length > 0 && (
+            <View style={styles.interestsBox}>
+              <Text style={styles.interestsHeader}>REPORT CARD NEEDS & INQUIRIES:</Text>
+              <View style={styles.interestsList}>
+                {currentLead.frs_interests.map((interest, idx) => (
+                  <View key={idx} style={styles.interestRow}>
+                    <Check size={13} color={Colors.statusSitDownText} style={{ marginTop: 2 }} />
+                    <Text style={styles.interestText}>{interest}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* Preferred Meeting Availability Callout */}
+          {currentLead.meeting_preferences && currentLead.meeting_preferences.length > 0 && (
+            <View style={styles.meetingPrefsBox}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <Calendar size={13} color={Colors.heavenlyGold} />
+                <Text style={styles.meetingPrefsTitle}>REQUESTED AVAILABILITY:</Text>
+              </View>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {currentLead.meeting_preferences.map((pref, idx) => (
+                  <View key={idx} style={styles.prefChip}>
+                    <Text style={styles.prefChipText}>{pref}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* Proof of Contact / View Scanned Sheet Button */}
+          <TouchableOpacity
+            style={styles.proofButton}
+            onPress={() => {
+              HapticsService.tick();
+              setImageModalVisible(true);
+            }}
+            activeOpacity={0.7}
+          >
+            <FileCheck size={15} color={Colors.heavenlyGold} />
+            <Text style={styles.proofButtonText}>View Original Report Card (Zoomable)</Text>
+            <Eye size={15} color={Colors.heavenlyGold} />
+          </TouchableOpacity>
+
+          {/* Live Call Duration Meter */}
+          {isOnCall && (
+            <View style={styles.callDurationBox}>
+              <Clock size={16} color={Colors.statusSitDownText} />
+              <Text style={styles.callDurationText}>
+                Call in progress: {Math.floor(callDuration / 60)}:
+                {(callDuration % 60).toString().padStart(2, '0')}
+              </Text>
+            </View>
+          )}
+
+          {/* Big Dial Trigger Button */}
+          <TouchableOpacity
+            style={[
+              styles.mainDialButton,
+              isOnCall && { backgroundColor: Colors.sacredGreen, borderColor: Colors.borderGold, borderWidth: 1.5 },
+            ]}
+            onPress={handleDial}
+            activeOpacity={0.8}
+          >
+            <PhoneCall size={22} color={isOnCall ? Colors.heavenlyGold : Colors.sacredGreenDeep} />
+            <Text style={[styles.mainDialButtonText, isOnCall && { color: Colors.heavenlyGold }]}>
+              {isOnCall ? `Active Call: ${currentLead.phone}` : `Dial ${currentLead.phone}`}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Gesture Hint */}
+          <Text style={styles.gestureHint}>👉 Swipe card right to Dial • Swipe left to Skip 👈</Text>
+        </Animated.View>
+
+        {/* 1-Tap Disposition Controls Dock */}
+        <View style={styles.dispositionContainer}>
+          <Text style={styles.dispositionHeading}>LOG CALL OUTCOME (1-TAP)</Text>
+
+          <View style={styles.buttonGrid}>
+            {/* APPOINTMENT SET (Hero Full-Width Action) */}
+            <TouchableOpacity
+              style={styles.apptSetHeroButton}
+              onPress={() => {
+                setIsSettingAppt(true);
+                const defaultPref = currentLead.meeting_preferences && currentLead.meeting_preferences.length > 0
+                  ? `Appt set for ${currentLead.meeting_preferences[0]}`
+                  : currentLead.planning_period
+                  ? `Appt set during ${currentLead.planning_period}`
+                  : '';
+                setCallNote(defaultPref);
+                setNoteModalVisible(true);
+              }}
+              activeOpacity={0.75}
+            >
+              <CheckCircle2 size={22} color={Colors.sacredGreenDeep} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.apptSetHeroTitle}>🎯 APPOINTMENT SET</Text>
+                <Text style={styles.apptSetHeroSubtitle}>Book classroom sit-down & record details</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Connected / Spoke without final date */}
+            <TouchableOpacity
+              style={[styles.dispositionButton, { backgroundColor: '#059669' }]}
+              onPress={() => {
+                setIsSettingAppt(false);
+                setCallNote('');
+                setNoteModalVisible(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <CheckCircle2 size={18} color="#FFFFFF" />
+              <Text style={styles.dispositionButtonText}>💬 Spoke</Text>
+              <Text style={styles.dispositionSubtext}>Connected on call</Text>
+            </TouchableOpacity>
+
+            {/* No Answer / VM Drop */}
+            <TouchableOpacity
+              style={[styles.dispositionButton, { backgroundColor: '#D97706' }]}
+              onPress={() => handleDisposition('no_answer')}
+              activeOpacity={0.7}
+            >
+              <PhoneOff size={18} color="#FFFFFF" />
+              <Text style={styles.dispositionButtonText}>📞 No Answer</Text>
+              <Text style={styles.dispositionSubtext}>Advance & SMS</Text>
+            </TouchableOpacity>
+
+            {/* Quick SMS */}
+            <TouchableOpacity
+              style={[styles.dispositionButton, { backgroundColor: '#2563EB' }]}
+              onPress={openSmsModal}
+              activeOpacity={0.7}
+            >
+              <MessageSquare size={18} color="#FFFFFF" />
+              <Text style={styles.dispositionButtonText}>✉️ AI SMS</Text>
+              <Text style={styles.dispositionSubtext}>Personalized text</Text>
+            </TouchableOpacity>
+
+            {/* Schedule Follow-up */}
+            <TouchableOpacity
+              style={[styles.dispositionButton, { backgroundColor: '#7C3AED' }]}
+              onPress={() => setFollowUpModalVisible(true)}
+              activeOpacity={0.7}
+            >
+              <Calendar size={18} color="#FFFFFF" />
+              <Text style={styles.dispositionButtonText}>📅 Callback</Text>
+              <Text style={styles.dispositionSubtext}>Set reminder</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Bottom Actions Row */}
+          <View style={styles.bottomActionsRow}>
+            <TouchableOpacity style={styles.dncLinkButton} onPress={handleMarkDNC}>
+              <ShieldAlert size={15} color="#EF4444" />
+              <Text style={styles.dncLinkText}>Block / DNC</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.skipButton} onPress={advanceNextLead}>
+              <SkipForward size={15} color={Colors.textMuted} />
+              <Text style={styles.skipButtonText}>Skip Educator</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Interactive Zoomable Report Card Photo Modal */}
+      <ZoomableImageModal
+        visible={imageModalVisible}
+        imageUri={currentLead?.source_image_uri || null}
+        title="Proof of Contact Request"
+        subtitle={`${currentLead?.name || 'Educator'} • ${currentLead?.school || 'ValuTeachers'}`}
+        onClose={() => setImageModalVisible(false)}
+      />
+
+      {/* Connected / Appointment Notes Modal */}
+      <Modal visible={noteModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              {isSettingAppt ? `🎯 Appointment Set: ${currentLead.name}` : `Call Notes: ${currentLead.name}`}
+            </Text>
+            <Text style={{ color: Colors.textSecondary, fontSize: 13, marginBottom: 8 }}>
+              {isSettingAppt
+                ? 'Record the confirmed date, time, and classroom room number for your sit-down:'
+                : 'Record key conversation takeaways and follow-up points:'}
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder={
+                isSettingAppt
+                  ? 'e.g. Confirmed sit-down for Thursday at 1:15 PM (Period 5) in Room 204...'
+                  : 'Enter conversation notes, retirement goals, or follow-up details...'
+              }
+              placeholderTextColor={Colors.textMuted}
+              multiline
+              numberOfLines={4}
+              value={callNote}
+              onChangeText={setCallNote}
+              autoFocus
+            />
+
+            {/* 1-Tap Calendar Sync Buttons for Confirmed Appointments */}
+            {isSettingAppt && (
+              <View style={{ marginTop: 10, marginBottom: 6 }}>
+                <Text style={{ color: Colors.heavenlyGold, fontSize: 11, fontWeight: '700', marginBottom: 6 }}>
+                  📅 1-TAP CALENDAR SYNC (PRE-FILLED 15-MIN PRE-ALARM)
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                  <TouchableOpacity
+                    style={styles.calSyncBtn}
+                    onPress={() => {
+                      HapticsService.medium();
+                      const event = CalendarService.buildEducatorEvent(currentLead, new Date(), 20, callNote);
+                      CalendarService.downloadIcsFile(event);
+                    }}
+                  >
+                    <Text style={styles.calSyncBtnText}>🍏 Apple / iCal (.ics)</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.calSyncBtn, { borderColor: '#38BDF8' }]}
+                    onPress={() => {
+                      HapticsService.medium();
+                      const event = CalendarService.buildEducatorEvent(currentLead, new Date(), 20, callNote);
+                      CalendarService.openGoogleCalendar(event);
+                    }}
+                  >
+                    <Text style={[styles.calSyncBtnText, { color: '#38BDF8' }]}>🌐 Google Calendar</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.calSyncBtn, { borderColor: '#A78BFA' }]}
+                    onPress={() => {
+                      HapticsService.medium();
+                      const event = CalendarService.buildEducatorEvent(currentLead, new Date(), 20, callNote);
+                      CalendarService.openOutlookCalendar(event);
+                    }}
+                  >
+                    <Text style={[styles.calSyncBtnText, { color: '#A78BFA' }]}>📧 Outlook Web</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setNoteModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSaveButton}
+                onPress={() => {
+                  setNoteModalVisible(false);
+                  handleDisposition(isSettingAppt ? 'appointment_set' : 'connected', callNote);
+                }}
+              >
+                <Text style={styles.modalSaveText}>
+                  {isSettingAppt ? 'Save Appt & Next' : 'Save & Next'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Live Objection Battlecards Modal */}
+      <Modal visible={objectionsModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '85%', paddingBottom: 20 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <ShieldCheck size={20} color={Colors.heavenlyGold} />
+                <Text style={styles.modalTitle}>FRS Objection Battlecards</Text>
+              </View>
+              <TouchableOpacity onPress={() => setObjectionsModalVisible(false)} style={{ padding: 4 }}>
+                <X size={20} color={Colors.livingWhite} />
+              </TouchableOpacity>
+            </View>
+            <Text style={{ color: Colors.textSecondary, fontSize: 12, marginBottom: 12 }}>
+              Tap any objection to view verbatim, word-for-word Florida educator talk-tracks:
+            </Text>
+
+            <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+              {FRS_OBJECTIONS.map((item) => {
+                const isExpanded = selectedObjection?.id === item.id;
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={[styles.objectionCardItem, isExpanded && styles.objectionCardItemActive]}
+                    onPress={() => {
+                      HapticsService.tick();
+                      setSelectedObjection(isExpanded ? null : item);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={styles.objectionCategoryText}>{item.category.toUpperCase()}</Text>
+                      <Text style={{ color: Colors.heavenlyGold, fontSize: 11, fontWeight: '700' }}>
+                        {isExpanded ? '▲ Hide Script' : '▼ Read Script'}
+                      </Text>
+                    </View>
+                    <Text style={styles.objectionTitleText}>{item.objection}</Text>
+                    <Text style={styles.objectionRebuttalSummary}>💡 Key: {item.quickRebuttal}</Text>
+
+                    {isExpanded && (
+                      <View style={styles.objectionExpandedBox}>
+                        <Text style={styles.objectionScriptLabel}>🗣️ WORD-FOR-WORD SCRIPT:</Text>
+                        <Text style={styles.objectionScriptText}>{item.verbatimScript}</Text>
+                        <Text style={styles.objectionPsychologyText}>🧠 Psychology: {item.psychologyNote}</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Schedule Follow-up Modal */}
+      <Modal visible={followUpModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Schedule Callback: {currentLead.name}</Text>
+            <Text style={{ color: '#94A3B8', fontSize: 13, marginBottom: 12 }}>
+              Choose a quick callback window based on educator availability:
+            </Text>
+
+            <View style={styles.presetButtonsGrid}>
+              <TouchableOpacity
+                style={styles.presetBtn}
+                onPress={() => handleScheduleFollowUp(2)}
+              >
+                <Text style={styles.presetBtnText}>⏱️ In 2 Hours</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.presetBtn}
+                onPress={() => handleScheduleFollowUp(24)}
+              >
+                <Text style={styles.presetBtnText}>🌅 Tomorrow 10 AM</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.presetBtn}
+                onPress={() => handleScheduleFollowUp(48)}
+              >
+                <Text style={styles.presetBtnText}>📅 In 2 Days</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.presetBtn}
+                onPress={() => handleScheduleFollowUp(168)}
+              >
+                <Text style={styles.presetBtnText}>📆 Next Week</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              style={[styles.modalInput, { height: 60, marginTop: 12 }]}
+              placeholder="Add reminder note (e.g. Call back during 4th period planning)..."
+              placeholderTextColor="#64748B"
+              value={followUpNote}
+              onChangeText={setFollowUpNote}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setFollowUpModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* AI-Powered Multi-template SMS Modal */}
+      <Modal visible={smsModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={styles.modalTitle}>Draft Text Message</Text>
+              <TouchableOpacity
+                style={styles.aiGenerateBtn}
+                onPress={() => handleGenerateAiSms()}
+                disabled={isGeneratingAi}
+              >
+                {isGeneratingAi ? (
+                  <ActivityIndicator size="small" color="#38BDF8" />
+                ) : (
+                  <>
+                    <Sparkles size={14} color="#38BDF8" />
+                    <Text style={styles.aiGenerateBtnText}>AI Re-Draft</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ color: '#94A3B8', fontSize: 12, marginBottom: 8 }}>
+              Preview & edit before sending. Gemini crafts personalized copy based on call notes and FRS needs:
+            </Text>
+
+            {/* Quick Focus Chips */}
+            <View style={styles.focusChipRow}>
+              {(currentLead?.custom_questions || currentLead?.notes) && (
+                <TouchableOpacity
+                  style={[styles.focusChip, { borderColor: Colors.heavenlyGold }]}
+                  onPress={() => handleGenerateAiSms('address_question')}
+                >
+                  <Text style={[styles.focusChipText, { color: Colors.heavenlyGold }]}>📝 Address Note</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={styles.focusChip}
+                onPress={() => handleGenerateAiSms('meeting_confirmation')}
+              >
+                <Text style={styles.focusChipText}>🎯 Meeting Slot</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.focusChip}
+                onPress={() => handleGenerateAiSms('drop_bonus_focus')}
+              >
+                <Text style={styles.focusChipText}>💰 5% Bonus & DROP</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.focusChip}
+                onPress={() => handleGenerateAiSms('planning_period')}
+              >
+                <Text style={styles.focusChipText}>🏫 Planning</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              style={[styles.modalInput, { height: 130, marginTop: 8 }]}
+              value={customSmsBody}
+              onChangeText={setCustomSmsBody}
+              multiline
+              placeholder="Drafting persuasive SMS..."
+              placeholderTextColor={Colors.textMuted}
+            />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+              <Text style={{ color: Colors.textMuted, fontSize: 11 }}>
+                {customSmsBody.length} characters • Tap above to re-generate or edit directly
+              </Text>
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setSmsModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSaveButton}
+                onPress={handleSendCustomSms}
+              >
+                <Text style={styles.modalSaveText}>Open in SMS App</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.sacredGreenDeep,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderSubtle,
+  },
+  backButton: {
+    padding: 8,
+  },
+  queueCounter: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.heavenlyGold,
+  },
+  listSubheading: {
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+  pauseButton: {
+    padding: 8,
+  },
+  countdownBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: Colors.sacredGreen,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderGold,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+  },
+  countdownText: {
+    color: Colors.heavenlyGold,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  countdownCancel: {
+    color: Colors.livingWhite,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  scrollViewport: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 36,
+  },
+  contactCard: {
+    backgroundColor: Colors.bgCard,
+    marginHorizontal: 14,
+    marginTop: 12,
+    marginBottom: 8,
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    touchAction: 'pan-y' as any,
+    userSelect: 'none' as any,
+    cursor: 'grab' as any,
+  },
+  swipeIndicator: {
+    backgroundColor: Colors.heavenlyGold,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  swipeIndicatorText: {
+    color: Colors.sacredGreenDeep,
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  contactTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatarCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.bgDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: Colors.borderGold,
+  },
+  contactName: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.livingWhite,
+  },
+  contactPhone: {
+    fontSize: 14,
+    color: Colors.heavenlyGold,
+    fontWeight: '700',
+    marginTop: 1,
+  },
+  contactEmail: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 1,
+  },
+  attemptBadge: {
+    backgroundColor: Colors.bgDark,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  attemptText: {
+    color: Colors.heavenlyGold,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  hudLegacyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(100, 116, 139, 0.25)',
+    borderWidth: 1,
+    borderColor: '#64748B',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 4,
+  },
+  hudLegacyBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#94A3B8',
+  },
+  hudFreshBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(218, 165, 32, 0.15)',
+    borderWidth: 1,
+    borderColor: Colors.heavenlyGoldBorder,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 4,
+  },
+  hudFreshBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: Colors.heavenlyGold,
+  },
+  frsRibbon: {
+    backgroundColor: Colors.bgDark,
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    gap: 6,
+  },
+  ribbonItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  ribbonText: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  ribbonRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2,
+  },
+  tagBadge: {
+    backgroundColor: Colors.bgCard,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  tagText: {
+    color: Colors.deepSkyBlueLight,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  interestsBox: {
+    backgroundColor: Colors.bgDark,
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    gap: 6,
+    width: '100%',
+  },
+  interestsHeader: {
+    color: Colors.statusSitDownText,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  interestsList: {
+    gap: 6,
+    marginTop: 2,
+    width: '100%',
+  },
+  interestRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    width: '100%',
+  },
+  interestText: {
+    color: Colors.livingWhite,
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
+    flexWrap: 'wrap',
+    lineHeight: 17,
+  },
+  customQuestionBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: Colors.heavenlyGoldMuted,
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: Colors.heavenlyGold,
+    gap: 8,
+    width: '100%',
+  },
+  customQuestionText: {
+    color: Colors.heavenlyGold,
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+    flexWrap: 'wrap',
+    lineHeight: 17,
+  },
+  meetingPrefsBox: {
+    backgroundColor: Colors.bgDark,
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  meetingPrefsTitle: {
+    color: Colors.heavenlyGold,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  prefChip: {
+    backgroundColor: Colors.bgCard,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  prefChipText: {
+    color: Colors.livingWhite,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  proofButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.bgDark,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: Colors.borderGold,
+  },
+  proofButtonText: {
+    color: Colors.heavenlyGold,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  callDurationBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.statusSitDownBg,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginTop: 8,
+    gap: 6,
+  },
+  callDurationText: {
+    color: Colors.statusSitDownText,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  mainDialButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.heavenlyGold,
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginTop: 10,
+    gap: 8,
+    shadowColor: Colors.heavenlyGold,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  mainDialButtonText: {
+    color: Colors.sacredGreenDeep,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  gestureHint: {
+    color: Colors.textMuted,
+    fontSize: 10,
+    textAlign: 'center',
+    marginTop: 6,
+    fontWeight: '600',
+  },
+  dispositionContainer: {
+    paddingHorizontal: 14,
+    marginTop: 4,
+    paddingBottom: 16,
+  },
+  dispositionHeading: {
+    color: Colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  apptSetHeroButton: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.heavenlyGold,
+    borderRadius: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    gap: 12,
+    marginBottom: 8,
+    shadowColor: Colors.heavenlyGold,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  apptSetHeroTitle: {
+    color: Colors.sacredGreenDeep,
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  apptSetHeroSubtitle: {
+    color: Colors.sacredGreen,
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 1,
+  },
+  buttonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  dispositionButton: {
+    width: '48.5%',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  dispositionButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  dispositionSubtext: {
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  bottomActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  dncLinkButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    padding: 6,
+  },
+  dncLinkText: {
+    color: Colors.statusDangerText,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  skipButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    padding: 6,
+  },
+  skipButtonText: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 14,
+  },
+  loadingText: {
+    color: Colors.textMuted,
+    fontSize: 15,
+  },
+  finishedContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  finishedTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: Colors.heavenlyGold,
+    marginTop: 18,
+  },
+  finishedSubtitle: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 20,
+  },
+  sessionSummaryBox: {
+    flexDirection: 'row',
+    backgroundColor: Colors.bgCard,
+    borderRadius: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 36,
+    marginTop: 32,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  summaryItem: {
+    alignItems: 'center',
+  },
+  summaryVal: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: Colors.livingWhite,
+  },
+  summaryLabel: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: 4,
+  },
+  summaryDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: Colors.borderSubtle,
+    marginHorizontal: 30,
+  },
+  returnButton: {
+    backgroundColor: Colors.sacredGreen,
+    borderWidth: 1,
+    borderColor: Colors.borderGold,
+    paddingVertical: 16,
+    paddingHorizontal: 28,
+    borderRadius: 14,
+    marginTop: 36,
+  },
+  returnButtonText: {
+    color: Colors.livingWhite,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: Colors.bgModal,
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.livingWhite,
+  },
+  aiGenerateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.heavenlyGoldMuted,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.heavenlyGold,
+    gap: 4,
+  },
+  aiGenerateBtnText: {
+    color: Colors.heavenlyGold,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  focusChipRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 6,
+  },
+  focusChip: {
+    backgroundColor: Colors.bgDark,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  focusChipText: {
+    color: Colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  imageModalOverlay: {
+    flex: 1,
+    backgroundColor: Colors.bgModal,
+    justifyContent: 'center',
+    padding: 16,
+  },
+  imageModalContent: {
+    backgroundColor: Colors.bgDark,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.borderGold,
+    maxHeight: '90%',
+  },
+  imageModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  imageModalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: Colors.livingWhite,
+  },
+  imageModalSubtitle: {
+    fontSize: 12,
+    color: Colors.heavenlyGold,
+    marginTop: 2,
+    fontWeight: '600',
+  },
+  imageModalCloseBtn: {
+    padding: 6,
+    backgroundColor: Colors.bgCard,
+    borderRadius: 10,
+  },
+  imageFrame: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: 12,
+    overflow: 'hidden',
+    height: 400,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  proofImage: {
+    width: '100%',
+    height: '100%',
+  },
+  complianceFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.statusSitDownBg,
+    padding: 10,
+    borderRadius: 10,
+    marginTop: 12,
+    gap: 8,
+  },
+  complianceText: {
+    color: Colors.statusSitDownText,
+    fontSize: 12,
+    fontWeight: '700',
+    flex: 1,
+  },
+  presetButtonsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  presetBtn: {
+    width: '48%',
+    backgroundColor: Colors.bgDark,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    alignItems: 'center',
+  },
+  presetBtnText: {
+    color: Colors.livingWhite,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  modalInput: {
+    backgroundColor: Colors.bgInput,
+    color: Colors.livingWhite,
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    textAlignVertical: 'top',
+    fontSize: 14,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 16,
+    gap: 12,
+  },
+  modalCancelButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  modalCancelText: {
+    color: Colors.textMuted,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  modalSaveButton: {
+    backgroundColor: Colors.heavenlyGold,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+  },
+  modalSaveText: {
+    color: Colors.sacredGreenDeep,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  battlecardsHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.bgCard,
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.borderGold,
+    gap: 4,
+  },
+  battlecardsHeaderBtnText: {
+    color: Colors.heavenlyGold,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  calSyncBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: Colors.bgDark,
+    borderWidth: 1,
+    borderColor: Colors.heavenlyGold,
+  },
+  calSyncBtnText: {
+    color: Colors.heavenlyGold,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  objectionCardItem: {
+    backgroundColor: Colors.bgDark,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  objectionCardItemActive: {
+    borderColor: Colors.heavenlyGold,
+    backgroundColor: 'rgba(218, 165, 32, 0.08)',
+  },
+  objectionCategoryText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#38BDF8',
+    letterSpacing: 0.8,
+  },
+  objectionTitleText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.livingWhite,
+    marginTop: 4,
+  },
+  objectionRebuttalSummary: {
+    fontSize: 12,
+    color: Colors.heavenlyGold,
+    marginTop: 4,
+    fontWeight: '600',
+  },
+  objectionExpandedBox: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: Colors.borderSubtle,
+  },
+  objectionScriptLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.statusSitDownText,
+    marginBottom: 4,
+  },
+  objectionScriptText: {
+    fontSize: 13,
+    color: Colors.livingWhite,
+    lineHeight: 19,
+    fontStyle: 'italic',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    padding: 10,
+    borderRadius: 8,
+  },
+  objectionPsychologyText: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 6,
+  },
+});

@@ -1,0 +1,5 @@
+err: {
+  errors: [ 'request did not complete' ],
+  messages: [ 'request did not complete' ],
+  details: { request: 'did not complete' }
+} acc: undefined

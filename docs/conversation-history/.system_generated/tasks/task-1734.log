@@ -1,0 +1,7 @@
+Successfully scheduled one-shot timer.
+Expected to fire at: 2026-08-23T09:07:57-04:00
+Prompt: Check expo export completion
+Early Termination: task-1722
+
+[2026-08-23T09:07:52-04:00] Still waiting. Remaining time: 5s
+[2026-08-23T09:07:57-04:00] Timer fired.

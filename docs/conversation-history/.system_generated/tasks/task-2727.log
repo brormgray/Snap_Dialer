@@ -1,0 +1,8 @@
+Resolve-DnsName : valuteachers-dialer.surge.sh : This operation returned because the timeout period expired
+At line:1 char:1
++ Resolve-DnsName valuteachers-dialer.surge.sh -Server 8.8.8.8
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationTimeout: (valuteachers-dialer.surge.sh:String) [Resolve-DnsName], Win32Exceptio 
+   n
+    + FullyQualifiedErrorId : ERROR_TIMEOUT,Microsoft.DnsClient.Commands.ResolveDnsName
+ 

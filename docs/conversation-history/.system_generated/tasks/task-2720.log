@@ -1,0 +1,8 @@
+* Host valuteachers-dialer.surge.sh:443 was resolved.
+* IPv6: (none)
+* IPv4: 10.1.102.155
+*   Trying 10.1.102.155:443...
+* connect to 10.1.102.155 port 443 from 0.0.0.0 port 65236 failed: Timed out
+* Failed to connect to valuteachers-dialer.surge.sh:443 after 21719 ms: Could not connect to server
+* closing connection #0
+curl: (28) Failed to connect to valuteachers-dialer.surge.sh:443 after 21719 ms: Could not connect to server

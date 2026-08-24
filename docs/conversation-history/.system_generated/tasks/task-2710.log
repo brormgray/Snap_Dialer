@@ -1,0 +1,10 @@
+C:\Users\brorm\AppData\Local\npm-cache\_npx\23158936acd5c32d\node_modules\surge-sdk\lib\sdk.js:78
+      if (error) return callback(failResponse)
+                        ^
+
+TypeError: callback is not a function
+    at C:\Users\brorm\AppData\Local\npm-cache\_npx\23158936acd5c32d\node_modules\surge-sdk\lib\sdk.js:78:25
+    at C:\Users\brorm\AppData\Local\npm-cache\_npx\23158936acd5c32d\node_modules\surge-sdk\lib\request.js:103:12
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+
+Node.js v24.12.0

@@ -1,0 +1,6 @@
+Successfully scheduled one-shot timer.
+Expected to fire at: 2026-08-24T12:15:55-04:00
+Prompt: Check build completion for Dexie engine
+Early Termination: 9c9b5ef4-82a1-483f-9e9e-cb421c9396b3/task-2497
+
+[2026-08-24T12:15:55-04:00] Timer fired.

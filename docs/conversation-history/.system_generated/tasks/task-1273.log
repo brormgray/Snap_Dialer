@@ -1,0 +1,17 @@
+C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\typescript\lib\_tsc.js:123168
+      throw e;
+      ^
+
+RangeError: Maximum call stack size exceeded
+    at checkIdentifier (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\typescript\lib\_tsc.js:71997:27)
+    at checkExpressionWorker (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\typescript\lib\_tsc.js:80903:16)
+    at checkExpression (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\typescript\lib\_tsc.js:80846:32)
+    at checkNonNullExpression (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\typescript\lib\_tsc.js:74853:29)
+    at checkPropertyAccessExpression (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\typescript\lib\_tsc.js:74932:162)
+    at checkExpressionWorker (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\typescript\lib\_tsc.js:80937:16)
+    at checkExpression (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\typescript\lib\_tsc.js:80846:32)
+    at checkNonNullExpression (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\typescript\lib\_tsc.js:74853:29)
+    at getEffectsSignature (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\typescript\lib\_tsc.js:70090:22)
+    at getTypeAtFlowCall (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\typescript\lib\_tsc.js:70442:25)
+
+Node.js v24.12.0

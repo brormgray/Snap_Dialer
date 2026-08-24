@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "SnapDialer",
+    "slug": "snap-dialer",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.valuteachers.snapdialer",
+      "infoPlist": {
+        "NSCameraUsageDescription": "SnapDialer uses the camera to scan and digitize paper lead sheets.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.valuteachers.snapdialer",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.CALL_PHONE",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "SnapDialer uses the camera to scan paper lead sheets."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "SnapDialer needs access to your photos to import lead sheets."
+        }
+      ]
+    ],
+    "web": {
+      "bundler": "metro"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "d6f74f49-7f16-44e1-8e7c-ed3248c8e472"
+      }
+    }
+  }
+}

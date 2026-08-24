@@ -1,0 +1,8 @@
+* Host api.surge.io:443 was resolved.
+* IPv6: (none)
+* IPv4: 10.1.102.154
+*   Trying 10.1.102.154:443...
+* connect to 10.1.102.154 port 443 from 0.0.0.0 port 56181 failed: Timed out
+* Failed to connect to api.surge.io:443 after 21346 ms: Could not connect to server
+* closing connection #0
+curl: (28) Failed to connect to api.surge.io:443 after 21346 ms: Could not connect to server

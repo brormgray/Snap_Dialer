@@ -1,0 +1,17 @@
+src/db/database.ts(311,24): error TS1323: Dynamic imports are only supported when the '--module' flag is set to 'es2020', 'es2022', 'esnext', 'commonjs', 'amd', 'system', 'umd', 'node16', 'node18', 'node20', or 'nodenext'.
+src/db/leadsRepository.ts(117,5): error TS2322: Type 'Lead | { id: string; list_id: string; name: string; phone: string; school: string; email: string | null; age: string | null; planning_period: string | null; room_number: string | null; ... 15 more ...; updated_at: string; }' is not assignable to type 'Lead'.
+  Type '{ id: string; list_id: string; name: string; phone: string; school: string; email: string | null; age: string | null; planning_period: string | null; room_number: string | null; years_in_frs: string | null; ... 14 more ...; updated_at: string; }' is not assignable to type 'Lead'.
+    Types of property 'email' are incompatible.
+      Type 'string | null' is not assignable to type 'string | undefined'.
+        Type 'null' is not assignable to type 'string | undefined'.
+src/screens/CadenceSettingsScreen.tsx(72,18): error TS2367: This comparison appears to be unintentional because the types '"call_only" | "call_and_sms" | "sms_only"' and '"sms"' have no overlap.
+src/screens/LeadDetailScreen.tsx(92,22): error TS1323: Dynamic imports are only supported when the '--module' flag is set to 'es2020', 'es2022', 'esnext', 'commonjs', 'amd', 'system', 'umd', 'node16', 'node18', 'node20', or 'nodenext'.
+src/screens/LeadDetailScreen.tsx(163,26): error TS1323: Dynamic imports are only supported when the '--module' flag is set to 'es2020', 'es2022', 'esnext', 'commonjs', 'amd', 'system', 'umd', 'node16', 'node18', 'node20', or 'nodenext'.
+src/screens/LeadDetailScreen.tsx(177,28): error TS1323: Dynamic imports are only supported when the '--module' flag is set to 'es2020', 'es2022', 'esnext', 'commonjs', 'amd', 'system', 'umd', 'node16', 'node18', 'node20', or 'nodenext'.
+src/screens/SettingsScreen.tsx(185,24): error TS1323: Dynamic imports are only supported when the '--module' flag is set to 'es2020', 'es2022', 'esnext', 'commonjs', 'amd', 'system', 'umd', 'node16', 'node18', 'node20', or 'nodenext'.
+src/services/documentScannerService.ts(21,39): error TS1323: Dynamic imports are only supported when the '--module' flag is set to 'es2020', 'es2022', 'esnext', 'commonjs', 'amd', 'system', 'umd', 'node16', 'node18', 'node20', or 'nodenext'.
+src/services/documentScannerService.ts(21,46): error TS2307: Cannot find module 'react-native-document-scanner-plugin' or its corresponding type declarations.
+src/services/documentScannerService.ts(66,38): error TS1323: Dynamic imports are only supported when the '--module' flag is set to 'es2020', 'es2022', 'esnext', 'commonjs', 'amd', 'system', 'umd', 'node16', 'node18', 'node20', or 'nodenext'.
+src/services/documentScannerService.ts(66,45): error TS2307: Cannot find module 'expo-image-manipulator' or its corresponding type declarations.
+src/services/hapticsService.ts(10,36): error TS1323: Dynamic imports are only supported when the '--module' flag is set to 'es2020', 'es2022', 'esnext', 'commonjs', 'amd', 'system', 'umd', 'node16', 'node18', 'node20', or 'nodenext'.
+src/services/hapticsService.ts(10,43): error TS2307: Cannot find module 'expo-haptics' or its corresponding type declarations.

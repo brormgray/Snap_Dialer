@@ -1,0 +1,7 @@
+Successfully scheduled one-shot timer.
+Expected to fire at: 2026-08-23T09:19:10-04:00
+Prompt: Check build completion
+Early Termination: task-1816
+
+[2026-08-23T09:19:05-04:00] Still waiting. Remaining time: 5s
+[2026-08-23T09:19:10-04:00] Timer fired.

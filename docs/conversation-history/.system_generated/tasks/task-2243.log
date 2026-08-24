@@ -1,0 +1,34 @@
+
+   Running as bro.rmgray@gmail.com (Free)
+
+        project: ./dist
+         domain: valuteachers-dialer.surge.sh
+           size: 8 files, 2.6 MB
+
+
+
+
+  ┌──────────┬────────────────────────────────────────────────────────────────┬───────────────────────┐
+  │   CERT   │   *.surge.sh, surge.sh                                         │   auto-renew          │
+  ├──────────┼────────────────────────────────────────────────────────────────┼───────────────────────┤
+  │   DNS    │   using Surge Name Servers                                     │   geo-aware           │
+  └──────────┴────────────────────────────────────────────────────────────────┴───────────────────────┘
+  ┌──────────┬──────────────────┬───────────────────────┬─────────────────────┬─────────────┬─────────┐
+  │   HTTP   │   sfo.surge.sh   │   US, San Francisco   │   138.197.235.123   │   D.Ocean   │   ✔ ◍   │
+  │   HTTP   │   lhr.surge.sh   │   GB, London          │   46.101.67.123     │   D.Ocean   │   ✔ ◍   │
+  │   HTTP   │   yyz.surge.sh   │   CA, Toronto         │   159.203.50.177    │   D.Ocean   │   ✔ ◍   │
+  │   HTTP   │   jfk.surge.sh   │   US, New York        │   159.203.159.100   │   D.Ocean   │   ✔ ◍   │
+  │   HTTP   │   ams.surge.sh   │   NL, Amsterdam       │   188.166.132.94    │   D.Ocean   │   ✔ ◍   │
+  │   HTTP   │   fra.surge.sh   │   DE, Frankfurt       │   138.68.112.220    │   D.Ocean   │   ✔ ◍   │
+  │   HTTP   │   sgp.surge.sh   │   SG, Singapore       │   139.59.195.30     │   D.Ocean   │   ✔ ◍   │
+  │   HTTP   │   blr.surge.sh   │   IN, Bangalore       │   139.59.50.135     │   D.Ocean   │   ✔ ◍   │
+  │   HTTP   │   syd.surge.sh   │   AU, Sydney          │   45.76.126.95      │   Vultr     │   ✔ ◍   │
+  │   HTTP   │   nrt.surge.sh   │   JP, Tokyo           │   172.104.96.133    │   Linode    │   ✔ ◍   │
+  └──────────┴──────────────────┴───────────────────────┴─────────────────────┴─────────────┴─────────┘
+   Live preview ........................................... 1787520799601-valuteachers-dialer.surge.sh
+   Production ........................................................... valuteachers-dialer.surge.sh
+
+   Success! - Published to valuteachers-dialer.surge.sh
+
+   domain written to dist\CNAME
+

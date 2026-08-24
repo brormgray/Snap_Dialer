@@ -1,0 +1,39 @@
+
+
+    Directory: C:\Users\brorm\AppData\Local\npm-cache\_npx\23158936acd5c32d\node_modules
+
+
+Mode                 LastWriteTime         Length Name                                                                 
+----                 -------------         ------ ----                                                                 
+d-----         8/20/2026  12:54 PM                surge                                                                
+d-----         8/20/2026  12:54 PM                surge-ignore                                                         
+d-----         8/20/2026  12:54 PM                surge-sdk                                                            
+d-----         8/20/2026  12:54 PM                surge-stream                                                         
+
+
+    Directory: C:\Users\brorm\AppData\Local\npm-cache\_npx\23158936acd5c32d\node_modules\.bin
+
+
+Mode                 LastWriteTime         Length Name                                                                 
+----                 -------------         ------ ----                                                                 
+-a----         8/20/2026  12:54 PM            379 surge                                                                
+-a----         8/20/2026  12:54 PM            320 surge.cmd                                                            
+-a----         8/20/2026  12:54 PM            785 surge.ps1                                                            
+
+
+    Directory: C:\Users\brorm\AppData\Local\npm-cache\_npx\23158936acd5c32d\node_modules\surge\bin
+
+
+Mode                 LastWriteTime         Length Name                                                                 
+----                 -------------         ------ ----                                                                 
+-a----         8/20/2026  12:54 PM            348 surge                                                                
+
+
+    Directory: C:\Users\brorm\AppData\Local\npm-cache\_npx\23158936acd5c32d\node_modules\surge\lib
+
+
+Mode                 LastWriteTime         Length Name                                                                 
+----                 -------------         ------ ----                                                                 
+-a----         8/20/2026  12:54 PM          38077 surge.js                                                             
+
+

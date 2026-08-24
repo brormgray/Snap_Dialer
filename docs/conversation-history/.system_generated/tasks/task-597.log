@@ -1,0 +1,70 @@
+Starting Metro Bundler
+Web Bundling failed 3321ms index.ts (2077 modules)
+SyntaxError: SyntaxError: C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\src\services\aiSmsService.ts: Unexpected token (100:6)
+
+   98 |           // try next model
+   99 |       }
+> 100 |     } catch (e) {
+      |       ^
+  101 |       console.warn('AI SMS generation failed, falling back to local copy:', e);
+  102 |     }
+  103 |
+SyntaxError: C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\src\services\aiSmsService.ts: Unexpected token (100:6)
+
+   98 |           // try next model
+   99 |       }
+> 100 |     } catch (e) {
+      |       ^
+  101 |       console.warn('AI SMS generation failed, falling back to local copy:', e);
+  102 |     }
+  103 |
+    at constructor (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:369:19)
+    at TypeScriptParserMixin.raise (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:6620:19)
+    at TypeScriptParserMixin.unexpected (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:6640:16)
+    at TypeScriptParserMixin.parseExprAtom (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:11468:22)
+    at TypeScriptParserMixin.parseExprSubscripts (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:11102:23)
+    at TypeScriptParserMixin.parseUpdate (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:11087:21)
+    at TypeScriptParserMixin.parseMaybeUnary (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:11067:23)
+    at TypeScriptParserMixin.parseMaybeUnary (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:9858:18)
+    at TypeScriptParserMixin.parseMaybeUnaryOrPrivate (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:10920:61)
+    at TypeScriptParserMixin.parseExprOps (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:10925:23)
+    at TypeScriptParserMixin.parseMaybeConditional (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:10902:23)
+    at TypeScriptParserMixin.parseMaybeAssign (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:10852:21)
+    at TypeScriptParserMixin.parseMaybeAssign (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:9807:20)
+    at TypeScriptParserMixin.parseExpressionBase (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:10805:23)
+    at C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:10801:39
+    at TypeScriptParserMixin.allowInAnd (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:12450:16)
+    at TypeScriptParserMixin.parseExpression (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:10801:17)
+    at TypeScriptParserMixin.parseStatementContent (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:12924:23)
+    at TypeScriptParserMixin.parseStatementContent (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:9529:18)
+    at TypeScriptParserMixin.parseStatementLike (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:12796:17)
+    at TypeScriptParserMixin.parseStatementListItem (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:12776:17)
+    at TypeScriptParserMixin.parseBlockOrModuleBlockBody (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:13345:61)
+    at TypeScriptParserMixin.parseBlockBody (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:13338:10)
+    at TypeScriptParserMixin.parseBlock (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:13326:10)
+    at TypeScriptParserMixin.parseTryStatement (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:13234:23)
+    at TypeScriptParserMixin.parseStatementContent (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:12833:21)
+    at TypeScriptParserMixin.parseStatementContent (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:9529:18)
+    at TypeScriptParserMixin.parseStatementLike (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:12796:17)
+    at TypeScriptParserMixin.parseStatementListItem (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:12776:17)
+    at TypeScriptParserMixin.parseBlockOrModuleBlockBody (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:13345:61)
+    at TypeScriptParserMixin.parseBlockBody (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:13338:10)
+    at TypeScriptParserMixin.parseBlock (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:13326:10)
+    at TypeScriptParserMixin.parseFunctionBody (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:12129:24)
+    at TypeScriptParserMixin.parseFunctionBodyAndFinish (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:12115:10)
+    at TypeScriptParserMixin.parseFunctionBodyAndFinish (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:9193:18)
+    at TypeScriptParserMixin.parseMethod (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:12073:31)
+    at TypeScriptParserMixin.parseMethod (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:10121:26)
+    at TypeScriptParserMixin.pushClassMethod (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:13756:30)
+    at TypeScriptParserMixin.pushClassMethod (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:9729:11)
+    at TypeScriptParserMixin.parseClassMemberWithIsStatic (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:13667:14)
+    at TypeScriptParserMixin.parseClassMemberWithIsStatic (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:9599:11)
+    at callParseClassMemberWithIsStatic (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:9562:14)
+    at TypeScriptParserMixin.parseClassMember (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:9568:7)
+    at C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:13546:14
+    at TypeScriptParserMixin.withSmartMixTopicForbiddingContext (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:12432:14)
+    at TypeScriptParserMixin.parseClassBody (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:13528:10)
+    at TypeScriptParserMixin.parseClass (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:13503:22)
+    at TypeScriptParserMixin.parseClass (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:10100:20)
+    at TypeScriptParserMixin.parseExportDeclaration (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:13960:25)
+    at TypeScriptParserMixin.parseExportDeclaration (C:\Users\brorm\.gemini\antigravity\scratch\snap-dialer\node_modules\@babel\parser\lib\index.js:9650:85)
