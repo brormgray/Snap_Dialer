@@ -16,6 +16,15 @@ export class CadenceEngine {
     disposition: CallDisposition
   ): Promise<CadenceActionResult> {
     const currentStep = lead.attempts_count + 1;
+
+    // Check SMS consent compliance (TCPA / Florida standard)
+    if (lead.text_ok === false || lead.text_ok === (0 as any)) {
+      return {
+        shouldPromptSMS: false,
+        nextStepNumber: currentStep + 1,
+      };
+    }
+
     const rule = await CadenceRepository.getRuleForStep(currentStep);
 
     if (!rule) {

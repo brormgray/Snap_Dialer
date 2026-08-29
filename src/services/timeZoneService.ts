@@ -20,6 +20,8 @@ const AREA_CODE_MAP: { [code: string]: { state: string; tz: string } } = {
   '305': { state: 'FL', tz: 'America/New_York' },
   '321': { state: 'FL', tz: 'America/New_York' },
   '347': { state: 'NY', tz: 'America/New_York' },
+  '352': { state: 'FL', tz: 'America/New_York' },
+  '386': { state: 'FL', tz: 'America/New_York' },
   '404': { state: 'GA', tz: 'America/New_York' },
   '407': { state: 'FL', tz: 'America/New_York' },
   '410': { state: 'MD', tz: 'America/New_York' },
@@ -28,6 +30,7 @@ const AREA_CODE_MAP: { [code: string]: { state: string; tz: string } } = {
   '561': { state: 'FL', tz: 'America/New_York' },
   '617': { state: 'MA', tz: 'America/New_York' },
   '646': { state: 'NY', tz: 'America/New_York' },
+  '689': { state: 'FL', tz: 'America/New_York' },
   '704': { state: 'NC', tz: 'America/New_York' },
   '718': { state: 'NY', tz: 'America/New_York' },
   '770': { state: 'GA', tz: 'America/New_York' },
@@ -35,7 +38,9 @@ const AREA_CODE_MAP: { [code: string]: { state: string; tz: string } } = {
   '786': { state: 'FL', tz: 'America/New_York' },
   '813': { state: 'FL', tz: 'America/New_York' },
   '845': { state: 'NY', tz: 'America/New_York' },
+  '850': { state: 'FL', tz: 'America/New_York' },
   '856': { state: 'NJ', tz: 'America/New_York' },
+  '863': { state: 'FL', tz: 'America/New_York' },
   '904': { state: 'FL', tz: 'America/New_York' },
   '908': { state: 'NJ', tz: 'America/New_York' },
   '914': { state: 'NY', tz: 'America/New_York' },
@@ -124,19 +129,19 @@ export class TimeZoneService {
       const hourFormatter = new Intl.DateTimeFormat('en-US', {
         timeZone: mapping.tz,
         hour: 'numeric',
-        hour12: false,
+        hourCycle: 'h23',
       });
 
       const localTimeFormatted = formatter.format(now);
       const localHour = parseInt(hourFormatter.format(now), 10);
 
-      // Safe window: 8:00 AM (8) to 8:30 PM (20)
-      const isSafeToCall = localHour >= 8 && localHour < 21;
+      // Safe window under Florida FTSA § 501.059 & TCPA: 8:00 AM (8) to 8:00 PM (19:59)
+      const isSafeToCall = localHour >= 8 && localHour < 20;
       let warningMessage: string | undefined;
 
       if (localHour < 8) {
         warningMessage = `Early morning (${localTimeFormatted})`;
-      } else if (localHour >= 21) {
+      } else if (localHour >= 20) {
         warningMessage = `Late evening (${localTimeFormatted})`;
       }
 

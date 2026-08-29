@@ -67,20 +67,20 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
     const pLower = periodLabel.toLowerCase();
     return leads.filter((l) => {
       const p = (l.planning_period || '').toLowerCase();
-      if (p.includes(pLower)) return true;
-      if (pLower.includes('period 1') && (p.includes('1st') || p.includes('p1') || p.includes('per 1'))) return true;
-      if (pLower.includes('period 2') && (p.includes('2nd') || p.includes('p2') || p.includes('per 2'))) return true;
-      if (pLower.includes('period 3') && (p.includes('3rd') || p.includes('p3') || p.includes('per 3'))) return true;
-      if (pLower.includes('period 4') && (p.includes('4th') || p.includes('p4') || p.includes('per 4'))) return true;
-      if (pLower.includes('period 5') && (p.includes('5th') || p.includes('p5') || p.includes('per 5'))) return true;
-      if (pLower.includes('period 6') && (p.includes('6th') || p.includes('p6') || p.includes('per 6'))) return true;
-      if (pLower.includes('period 7') && (p.includes('7th') || p.includes('p7') || p.includes('per 7'))) return true;
-      if (pLower.includes('after') && (p.includes('after') || p.includes('pm') || p.includes('3:30'))) return true;
+      if (!p) return false;
+      if (pLower.includes('period 1') && (/\b(period\s*1|1st(\s*period)?|p1|per\s*1)\b/i.test(p) && !/\b(1[0-9]|21st|31st)\b/i.test(p))) return true;
+      if (pLower.includes('period 2') && (/\b(period\s*2|2nd(\s*period)?|p2|per\s*2)\b/i.test(p) && !/\b(2[0-9]|12th)\b/i.test(p))) return true;
+      if (pLower.includes('period 3') && (/\b(period\s*3|3rd(\s*period)?|p3|per\s*3)\b/i.test(p) && !/\b(13th|23rd)\b/i.test(p))) return true;
+      if (pLower.includes('period 4') && (/\b(period\s*4|4th(\s*period)?|p4|per\s*4)\b/i.test(p) && !/\b(14th|24th)\b/i.test(p))) return true;
+      if (pLower.includes('period 5') && (/\b(period\s*5|5th(\s*period)?|p5|per\s*5)\b/i.test(p) && !/\b(15th|25th)\b/i.test(p))) return true;
+      if (pLower.includes('period 6') && (/\b(period\s*6|6th(\s*period)?|p6|per\s*6)\b/i.test(p) && !/\b(16th|26th)\b/i.test(p))) return true;
+      if (pLower.includes('period 7') && (/\b(period\s*7|7th(\s*period)?|p7|per\s*7)\b/i.test(p) && !/\b(17th|27th)\b/i.test(p))) return true;
+      if (pLower.includes('after') && (p.includes('after') || p.includes('dismissal') || /\b(3:[3-5]\d|[4-5]:\d\d|[4-5]\s*pm)\b/i.test(p))) return true;
       return false;
     });
   };
 
-  const apptLeads = leads.filter((l) => ['appointment_set', 'connected'].includes(l.last_disposition || ''));
+  const apptLeads = leads.filter((l) => l.last_disposition === 'appointment_set');
   const totalSlotsCount = leads.filter((l) => Boolean(l.planning_period)).length;
 
   return (
@@ -130,7 +130,7 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
 
           {PERIODS.map((period) => {
             const periodLeads = getLeadsForPeriod(period.label);
-            const confirmedInPeriod = periodLeads.filter((l) => ['appointment_set', 'connected'].includes(l.last_disposition || ''));
+            const confirmedInPeriod = periodLeads.filter((l) => l.last_disposition === 'appointment_set');
 
             return (
               <View key={period.id} style={styles.periodCard}>
@@ -152,7 +152,7 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
                 ) : (
                   <View style={styles.leadsGrid}>
                     {periodLeads.map((lead) => {
-                      const isConfirmed = ['appointment_set', 'connected'].includes(lead.last_disposition || '');
+                      const isConfirmed = lead.last_disposition === 'appointment_set';
 
                       return (
                         <TouchableOpacity

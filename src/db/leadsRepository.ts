@@ -317,8 +317,8 @@ export class LeadsRepository {
       const stats = await db.getFirstAsync<{ total: number; completed: number; connected: number }>(
         `SELECT 
            COUNT(*) as total,
-           SUM(CASE WHEN last_disposition IN ('connected', 'bad_number', 'do_not_call') THEN 1 ELSE 0 END) as completed,
-           SUM(CASE WHEN last_disposition = 'connected' THEN 1 ELSE 0 END) as connected
+           SUM(CASE WHEN last_disposition IN ('connected', 'spoke', 'appointment_set', 'bad_number', 'do_not_call') THEN 1 ELSE 0 END) as completed,
+           SUM(CASE WHEN last_disposition IN ('connected', 'spoke', 'appointment_set') THEN 1 ELSE 0 END) as connected
          FROM leads WHERE list_id = ?`,
         [lead.list_id]
       );
@@ -382,6 +382,15 @@ export class LeadsRepository {
     } catch {}
     const lead = await this.getLeadById(leadId);
     return lead?.source_image_uri || null;
+  }
+
+  static async updateLeadNotes(leadId: string, notes: string | null): Promise<void> {
+    const db = await getDatabase();
+    const now = new Date().toISOString();
+    await db.runAsync(
+      'UPDATE leads SET notes = ?, updated_at = ? WHERE id = ?',
+      [notes || null, now, leadId]
+    );
   }
 
   static async saveLeadCardPhoto(leadId: string, photoUri: string): Promise<void> {

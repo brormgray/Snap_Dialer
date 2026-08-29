@@ -240,50 +240,91 @@ export class BackupService {
 
       // Sync with active Database instance
       const db = await getDatabase();
-      if (overwrite) {
-        await db.runAsync('DELETE FROM leads');
-        await db.runAsync('DELETE FROM lists');
-        await db.runAsync('DELETE FROM call_logs');
-      }
+      await db.withTransactionAsync(async () => {
+        if (overwrite) {
+          await db.runAsync('DELETE FROM leads');
+          await db.runAsync('DELETE FROM lists');
+          await db.runAsync('DELETE FROM call_logs');
+        }
 
-      for (const lead of leadsToImport) {
-        const leadId = lead.id || `lead_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-        await db.runAsync(
-          `INSERT INTO leads (
-            id, list_id, name, phone, school, email, age, planning_period,
-            room_number, years_in_frs, text_ok, frs_knowledge, frs_interests,
-            custom_questions, meeting_preferences, annual_salary, present_403b_contribution,
-            source_image_uri, company, notes, cadence_step, last_disposition, attempts_count, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            leadId,
-            lead.list_id || 'master_queue',
-            lead.name || 'Educator',
-            lead.phone || '',
-            lead.school || 'VOL',
-            lead.email || null,
-            lead.age || null,
-            lead.planning_period || null,
-            lead.room_number || null,
-            lead.years_in_frs || null,
-            lead.text_ok !== undefined ? (lead.text_ok ? 1 : 0) : 1,
-            lead.frs_knowledge || null,
-            typeof lead.frs_interests === 'string' ? lead.frs_interests : JSON.stringify(lead.frs_interests || []),
-            lead.custom_questions || null,
-            typeof lead.meeting_preferences === 'string' ? lead.meeting_preferences : JSON.stringify(lead.meeting_preferences || []),
-            lead.annual_salary || null,
-            lead.present_403b_contribution || null,
-            lead.source_image_uri || null,
-            lead.company || 'ValuTeachers',
-            lead.notes || null,
-            lead.cadence_step || 1,
-            lead.last_disposition || 'pending',
-            lead.attempts_count || 0,
-            lead.created_at || new Date().toISOString(),
-            lead.updated_at || new Date().toISOString(),
-          ]
-        );
-      }
+        // Restore Lists
+        for (const lst of listsToImport) {
+          await db.runAsync(
+            `INSERT OR REPLACE INTO lists (id, title, source_image_uri, total_leads, completed_leads, connected_leads, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              lst.id,
+              lst.title || 'Imported List',
+              lst.source_image_uri || null,
+              lst.total_leads || 0,
+              lst.completed_leads || 0,
+              lst.connected_leads || 0,
+              lst.created_at || new Date().toISOString(),
+              lst.updated_at || new Date().toISOString(),
+            ]
+          );
+        }
+
+        // Restore Leads
+        for (const lead of leadsToImport) {
+          const leadId = lead.id || `lead_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+          await db.runAsync(
+            `INSERT OR REPLACE INTO leads (
+              id, list_id, name, phone, school, email, age, planning_period,
+              room_number, years_in_frs, text_ok, frs_knowledge, frs_interests,
+              custom_questions, meeting_preferences, annual_salary, present_403b_contribution,
+              source_image_uri, company, notes, priority_tier, cadence_step, last_disposition, attempts_count, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              leadId,
+              lead.list_id || 'master_queue',
+              lead.name || 'Educator',
+              lead.phone || '',
+              lead.school || 'VOL',
+              lead.email || null,
+              lead.age || null,
+              lead.planning_period || null,
+              lead.room_number || null,
+              lead.years_in_frs || null,
+              lead.text_ok !== undefined ? (lead.text_ok ? 1 : 0) : 1,
+              lead.frs_knowledge || null,
+              typeof lead.frs_interests === 'string' ? lead.frs_interests : JSON.stringify(lead.frs_interests || []),
+              lead.custom_questions || null,
+              typeof lead.meeting_preferences === 'string' ? lead.meeting_preferences : JSON.stringify(lead.meeting_preferences || []),
+              lead.annual_salary || null,
+              lead.present_403b_contribution || null,
+              lead.source_image_uri || null,
+              lead.company || 'ValuTeachers',
+              lead.notes || null,
+              lead.priority_tier !== undefined && lead.priority_tier !== null ? Number(lead.priority_tier) : 1,
+              lead.cadence_step || 1,
+              lead.last_disposition || 'pending',
+              lead.attempts_count || 0,
+              lead.created_at || new Date().toISOString(),
+              lead.updated_at || new Date().toISOString(),
+            ]
+          );
+        }
+
+        // Restore Call Logs
+        for (const log of callLogsToImport) {
+          await db.runAsync(
+            `INSERT OR REPLACE INTO call_logs (id, lead_id, list_id, timestamp, duration_seconds, disposition, note, sms_sent, sms_body)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              log.id || `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+              log.lead_id,
+              log.list_id || 'master_queue',
+              log.timestamp || new Date().toISOString(),
+              log.duration_seconds || 0,
+              log.disposition || 'no_answer',
+              log.note || null,
+              log.sms_sent ? 1 : 0,
+              log.sms_body || null,
+            ]
+          );
+        }
+      });
 
       return {
         success: true,

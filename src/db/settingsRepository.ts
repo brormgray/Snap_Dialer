@@ -24,7 +24,7 @@ export class SettingsRepository {
       if (row.key === 'gemini_api_key') settings.gemini_api_key = row.value;
       if (row.key === 'user_name') settings.user_name = row.value;
       if (row.key === 'auto_advance_seconds') settings.auto_advance_seconds = parseInt(row.value, 10) || 3;
-      if (row.key === 'auto_advance_enabled') settings.auto_advance_enabled = row.value === '1';
+      if (row.key === 'auto_advance_enabled') settings.auto_advance_enabled = row.value === '1' || row.value === 'true' || (row.value as any) === true;
     }
     return settings;
   }

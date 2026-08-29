@@ -46,6 +46,9 @@ import {
   Archive,
   ShieldCheck,
   BookOpen,
+  Edit3,
+  Trash2,
+  Plus,
 } from 'lucide-react-native';
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
@@ -57,6 +60,7 @@ import { HapticsService } from '../services/hapticsService';
 import { TimeZoneService, ProspectTimeInfo } from '../services/timeZoneService';
 import { AiSmsService } from '../services/aiSmsService';
 import { CalendarService } from '../services/calendarService';
+import { NotesService, NoteEntry, EDUCATOR_QUICK_TAGS } from '../services/notesService';
 import { FRS_OBJECTIONS, ObjectionCard } from '../data/objections';
 import { Lead, CallDisposition, SMSTemplate, AppSettings } from '../types';
 import { Colors } from '../theme/colors';
@@ -78,6 +82,12 @@ export default function DialerHudScreen({ route, navigation }: any) {
   const [isOnCall, setIsOnCall] = useState<boolean>(false);
   const [callDuration, setCallDuration] = useState<number>(0);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const callStartTimeRef = useRef<number | null>(null);
+
+  // Structured Notes Manager Modal
+  const [notesModalVisible, setNotesModalVisible] = useState<boolean>(false);
+  const [noteDraftText, setNoteDraftText] = useState<string>('');
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
 
   // Quick Notes modal for Connected calls / Appointments
   const [noteModalVisible, setNoteModalVisible] = useState<boolean>(false);
@@ -147,7 +157,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       if (callTimerRef.current) clearInterval(callTimerRef.current);
     };
-  }, [listId]);
+  }, [listId, schoolName]);
 
   const currentLead: Lead | undefined = queue[currentIndex];
   const timeInfo: ProspectTimeInfo | null = currentLead
@@ -310,10 +320,13 @@ export default function DialerHudScreen({ route, navigation }: any) {
     setSessionDials((prev) => prev + 1);
     setIsOnCall(true);
     setCallDuration(0);
+    callStartTimeRef.current = Date.now();
 
     if (callTimerRef.current) clearInterval(callTimerRef.current);
     callTimerRef.current = setInterval(() => {
-      setCallDuration((prev) => prev + 1);
+      if (callStartTimeRef.current) {
+        setCallDuration(Math.floor((Date.now() - callStartTimeRef.current) / 1000));
+      }
     }, 1000);
 
     await TelephonyService.makeCall(currentLead.phone);
@@ -372,6 +385,9 @@ export default function DialerHudScreen({ route, navigation }: any) {
     setFollowUpModalVisible(false);
     setSessionCallbacks((prev) => prev + 1);
 
+    if (callTimerRef.current) clearInterval(callTimerRef.current);
+    setIsOnCall(false);
+
     const followUpDate = new Date();
     followUpDate.setHours(followUpDate.getHours() + presetHours);
 
@@ -384,7 +400,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
     await CallLogsRepository.logCall({
       leadId: currentLead.id,
       listId: currentLead.list_id,
-      durationSeconds: 0,
+      durationSeconds: callDuration,
       disposition: 'callback_requested',
       note: `Follow-up set for ${followUpDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
     });
@@ -399,30 +415,26 @@ export default function DialerHudScreen({ route, navigation }: any) {
     await handleDisposition('do_not_call', 'Educator requested Do Not Call');
   };
 
+  const handleSaveNote = async () => {
+    if (!currentLead) return;
+    await HapticsService.success();
+    setNoteModalVisible(false);
+
+    const disposition: CallDisposition = isSettingAppt ? 'appointment_set' : 'connected';
+    await handleDisposition(disposition, callNote);
+    setCallNote('');
+    setIsSettingAppt(false);
+  };
+
   const promptCadenceSMS = (lead: Lead, template: SMSTemplate) => {
+    setSelectedTemplate(template);
     const interpolated = TelephonyService.interpolateTemplate(
       template,
       lead,
       appSettings?.user_name || 'Alex'
     );
-    Alert.alert(
-      'ValuTeachers SMS: Send Follow-Up Text?',
-      `"${interpolated}"`,
-      [
-        {
-          text: 'Skip SMS',
-          style: 'cancel',
-          onPress: () => startAutoAdvanceTimer(),
-        },
-        {
-          text: 'Review & Send SMS',
-          onPress: async () => {
-            setCustomSmsBody(interpolated);
-            setSmsModalVisible(true);
-          },
-        },
-      ]
-    );
+    setCustomSmsBody(interpolated);
+    setSmsModalVisible(true);
   };
 
   const openSmsModal = async () => {
@@ -435,6 +447,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
   const handleGenerateAiSms = async (toneFocus?: any) => {
     if (!currentLead) return;
     setIsGeneratingAi(true);
+    await HapticsService.medium();
     try {
       const generated = await AiSmsService.generatePersuasiveSMS(
         currentLead,
@@ -442,9 +455,12 @@ export default function DialerHudScreen({ route, navigation }: any) {
         appSettings?.gemini_api_key,
         toneFocus
       );
-      setCustomSmsBody(generated);
-      await HapticsService.success();
-    } catch {
+      if (generated && generated.trim().length > 0) {
+        setCustomSmsBody(generated.trim().replace(/^"|"$/g, ''));
+        await HapticsService.success();
+      }
+    } catch (e: any) {
+      console.warn('AI SMS generation fallback:', e);
       if (templates.length > 0) {
         setCustomSmsBody(
           TelephonyService.interpolateTemplate(templates[0], currentLead, appSettings?.user_name || 'Alex')
@@ -455,25 +471,104 @@ export default function DialerHudScreen({ route, navigation }: any) {
     }
   };
 
+  const handleSelectTemplate = (template: SMSTemplate) => {
+    if (!currentLead) return;
+    setSelectedTemplate(template);
+    const interpolated = TelephonyService.interpolateTemplate(
+      template,
+      currentLead,
+      appSettings?.user_name || 'Alex'
+    );
+    setCustomSmsBody(interpolated);
+  };
+
+  // Structured Notes CRUD Handlers
+  const openNotesModal = () => {
+    setEditingNoteId(null);
+    setNoteDraftText('');
+    setNotesModalVisible(true);
+  };
+
+  const handleAddNote = async (customText?: string) => {
+    if (!currentLead) return;
+    const textToAdd = (customText || noteDraftText).trim();
+    if (!textToAdd) return;
+    await HapticsService.success();
+    const updatedNotes = NotesService.addNote(currentLead.notes, textToAdd);
+    currentLead.notes = updatedNotes;
+    setQueue((prev) => {
+      const next = [...prev];
+      if (next[currentIndex]) next[currentIndex] = { ...next[currentIndex], notes: updatedNotes };
+      return next;
+    });
+    await LeadsRepository.updateLeadNotes(currentLead.id, updatedNotes);
+    setNoteDraftText('');
+  };
+
+  const handleStartEditNote = (entry: NoteEntry) => {
+    setEditingNoteId(entry.id);
+    setNoteDraftText(entry.text);
+  };
+
+  const handleSaveEditNote = async () => {
+    if (!currentLead || !editingNoteId) return;
+    await HapticsService.success();
+    const updatedNotes = NotesService.editNote(currentLead.notes, editingNoteId, noteDraftText);
+    currentLead.notes = updatedNotes;
+    setQueue((prev) => {
+      const next = [...prev];
+      if (next[currentIndex]) next[currentIndex] = { ...next[currentIndex], notes: updatedNotes };
+      return next;
+    });
+    await LeadsRepository.updateLeadNotes(currentLead.id, updatedNotes);
+    setEditingNoteId(null);
+    setNoteDraftText('');
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    if (!currentLead) return;
+    await HapticsService.heavy();
+    const updatedNotes = NotesService.deleteNote(currentLead.notes, noteId);
+    currentLead.notes = updatedNotes;
+    setQueue((prev) => {
+      const next = [...prev];
+      if (next[currentIndex]) next[currentIndex] = { ...next[currentIndex], notes: updatedNotes };
+      return next;
+    });
+    await LeadsRepository.updateLeadNotes(currentLead.id, updatedNotes);
+    if (editingNoteId === noteId) {
+      setEditingNoteId(null);
+      setNoteDraftText('');
+    }
+  };
+
   const handleSendCustomSms = async () => {
     if (!currentLead) return;
     await HapticsService.medium();
     setSmsModalVisible(false);
     await TelephonyService.sendSMS(currentLead.phone, customSmsBody);
+    // Log the SMS event using the lead's current/actual disposition so it doesn't
+    // falsely inflate the Callbacks KPI counter.
+    const smsLogDisposition: CallDisposition =
+      currentLead.last_disposition && currentLead.last_disposition !== 'pending'
+        ? currentLead.last_disposition
+        : 'no_answer';
     await CallLogsRepository.logCall({
       leadId: currentLead.id,
       listId: currentLead.list_id,
       durationSeconds: 0,
-      disposition: 'callback_requested',
+      disposition: smsLogDisposition,
       note: 'Sent persuasive ValuTeachers SMS',
       smsSent: true,
       smsBody: customSmsBody,
     });
+    startAutoAdvanceTimer();
   };
+
 
   const startAutoAdvanceTimer = () => {
     if (isAutoPaused || !appSettings?.auto_advance_enabled) {
-      advanceNextLead();
+      // Stay on current lead for manual skip/dial
       return;
     }
 
@@ -496,6 +591,19 @@ export default function DialerHudScreen({ route, navigation }: any) {
   };
 
   const advanceNextLead = () => {
+    // Clear active call state and timers when advancing/skipping
+    setIsOnCall(false);
+    setCallDuration(0);
+    if (callTimerRef.current) {
+      clearInterval(callTimerRef.current);
+      callTimerRef.current = null;
+    }
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+      setAutoAdvanceCountdown(null);
+    }
+
     if (currentIndex + 1 < queue.length) {
       setCurrentIndex((prev) => prev + 1);
     } else {
@@ -640,28 +748,6 @@ export default function DialerHudScreen({ route, navigation }: any) {
             },
           ]}
           {...panResponder.panHandlers}
-          // @ts-ignore
-          onTouchStart={(e: any) => {
-            const t = e.touches ? e.touches[0] : e.nativeEvent?.touches ? e.nativeEvent.touches[0] : e.nativeEvent;
-            if (t) onGestureStart(t.clientX || t.pageX, t.clientY || t.pageY);
-          }}
-          // @ts-ignore
-          onTouchMove={(e: any) => {
-            const t = e.touches ? e.touches[0] : e.nativeEvent?.touches ? e.nativeEvent.touches[0] : e.nativeEvent;
-            if (t) onGestureMove(t.clientX || t.pageX, t.clientY || t.pageY);
-          }}
-          // @ts-ignore
-          onTouchEnd={() => onGestureEnd()}
-          // @ts-ignore
-          onTouchCancel={() => onGestureEnd()}
-          // @ts-ignore
-          onMouseDown={(e: any) => onGestureStart(e.clientX || e.pageX, e.clientY || e.pageY)}
-          // @ts-ignore
-          onMouseMove={(e: any) => onGestureMove(e.clientX || e.pageX, e.clientY || e.pageY)}
-          // @ts-ignore
-          onMouseUp={() => onGestureEnd()}
-          // @ts-ignore
-          onMouseLeave={() => onGestureEnd()}
         >
           {/* Swipe Feedback Banner */}
           {swipeActionText && (
@@ -719,7 +805,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
             </View>
             <View style={styles.ribbonRow}>
               {currentLead.planning_period ? (
-                <View style={[styles.tagBadge, { backgroundColor: Colors.sacredGreenMuted, borderColor: Colors.borderGold }]}>
+                <View style={[styles.tagBadge, { backgroundColor: Colors.heavenlyGoldMuted, borderColor: Colors.borderGold }]}>
                   <Text style={[styles.tagText, { color: Colors.heavenlyGold }]}>⏰ {currentLead.planning_period}</Text>
                 </View>
               ) : null}
@@ -784,6 +870,38 @@ export default function DialerHudScreen({ route, navigation }: any) {
               </View>
             </View>
           )}
+
+          {/* Educator Notes Interactive Pill */}
+          <TouchableOpacity
+            style={styles.notesPreviewPill}
+            onPress={() => {
+              HapticsService.tick();
+              openNotesModal();
+            }}
+            activeOpacity={0.7}
+          >
+            <View style={styles.notesPreviewHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <FileText size={14} color={Colors.heavenlyGold} />
+                <Text style={styles.notesPreviewTitle}>
+                  {NotesService.parseNotes(currentLead.notes).length > 0
+                    ? `Educator Notes (${NotesService.parseNotes(currentLead.notes).length})`
+                    : 'Educator Notes'}
+                </Text>
+              </View>
+              <View style={styles.notesAddChip}>
+                <Plus size={12} color={Colors.sacredGreenDeep} />
+                <Text style={styles.notesAddChipText}>Add Note</Text>
+              </View>
+            </View>
+            {NotesService.parseNotes(currentLead.notes).length > 0 ? (
+              <Text style={styles.notesPreviewSnippet} numberOfLines={2} ellipsizeMode="tail">
+                "{NotesService.parseNotes(currentLead.notes)[0].text}"
+              </Text>
+            ) : (
+              <Text style={styles.notesEmptyPrompt}>Tap to record classroom notes, FRS details, or callback preferences...</Text>
+            )}
+          </TouchableOpacity>
 
           {/* Proof of Contact / View Scanned Sheet Button */}
           <TouchableOpacity
@@ -1209,7 +1327,10 @@ export default function DialerHudScreen({ route, navigation }: any) {
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={styles.modalCancelButton}
-                onPress={() => setSmsModalVisible(false)}
+                onPress={() => {
+                  setSmsModalVisible(false);
+                  startAutoAdvanceTimer();
+                }}
               >
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
@@ -1223,11 +1344,143 @@ export default function DialerHudScreen({ route, navigation }: any) {
           </View>
         </View>
       </Modal>
+
+      {/* Structured Notes Manager Modal */}
+      <Modal
+        visible={notesModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setNotesModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '85%', width: '92%' }]}>
+            {/* Modal Header */}
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                <FileText size={18} color={Colors.heavenlyGold} />
+                <Text style={styles.modalTitle} numberOfLines={1}>
+                  Notes: {currentLead?.name || 'Educator'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setNotesModalVisible(false)}
+              >
+                <X size={18} color={Colors.livingWhite} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Notes List Scroll Area */}
+            <ScrollView
+              style={{ maxHeight: 220, marginVertical: 8 }}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+            >
+              {currentLead && NotesService.parseNotes(currentLead.notes).length > 0 ? (
+                NotesService.parseNotes(currentLead.notes).map((entry) => (
+                  <View key={entry.id} style={styles.noteItemCard}>
+                    <View style={styles.noteItemTopRow}>
+                      <View style={styles.noteTimestampBadge}>
+                        <Clock size={11} color={Colors.heavenlyGold} />
+                        <Text style={styles.noteTimestampText}>{entry.timestamp}</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        <TouchableOpacity
+                          style={styles.noteActionBtn}
+                          onPress={() => handleStartEditNote(entry)}
+                        >
+                          <Edit3 size={13} color={Colors.deepSkyBlueLight} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.noteActionBtn}
+                          onPress={() => handleDeleteNote(entry.id)}
+                        >
+                          <Trash2 size={13} color={Colors.statusDangerText} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    <Text style={styles.noteItemBodyText}>{entry.text}</Text>
+                  </View>
+                ))
+              ) : (
+                <View style={styles.noNotesEmptyBox}>
+                  <Text style={styles.noNotesEmptyText}>No notes recorded for this educator yet.</Text>
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Quick-Tag Chips */}
+            <Text style={{ color: Colors.textMuted, fontSize: 11, fontWeight: '700', marginBottom: 4, letterSpacing: 0.5 }}>
+              QUICK PRE-FILLS:
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxHeight: 36, marginBottom: 8 }}>
+              {EDUCATOR_QUICK_TAGS.map((tag, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={styles.quickTagPill}
+                  onPress={() => handleAddNote(tag)}
+                >
+                  <Text style={styles.quickTagText}>+ {tag}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {/* Add / Edit Input */}
+            <TextInput
+              style={[styles.modalInput, { height: 75, marginTop: 4 }]}
+              value={noteDraftText}
+              onChangeText={setNoteDraftText}
+              placeholder={editingNoteId ? "Editing note content..." : "Type custom educator note..."}
+              placeholderTextColor={Colors.textMuted}
+              multiline
+            />
+
+            {/* Modal Buttons */}
+            <View style={styles.modalButtons}>
+              {editingNoteId ? (
+                <>
+                  <TouchableOpacity
+                    style={styles.modalCancelButton}
+                    onPress={() => {
+                      setEditingNoteId(null);
+                      setNoteDraftText('');
+                    }}
+                  >
+                    <Text style={styles.modalCancelText}>Cancel Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.modalSaveButton}
+                    onPress={handleSaveEditNote}
+                  >
+                    <Text style={styles.modalSaveText}>Save Changes</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <TouchableOpacity
+                    style={styles.modalCancelButton}
+                    onPress={() => setNotesModalVisible(false)}
+                  >
+                    <Text style={styles.modalCancelText}>Close</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalSaveButton, !noteDraftText.trim() && { opacity: 0.5 }]}
+                    onPress={() => handleAddNote()}
+                    disabled={!noteDraftText.trim()}
+                  >
+                    <Text style={styles.modalSaveText}>Add Note</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create<any>({
   container: {
     flex: 1,
     backgroundColor: Colors.sacredGreenDeep,
@@ -1983,5 +2236,124 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.textMuted,
     marginTop: 6,
+  },
+  // Structured Notes UI Styles
+  notesPreviewPill: {
+    backgroundColor: 'rgba(212, 175, 55, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.25)',
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 10,
+  },
+  notesPreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  notesPreviewTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.heavenlyGold,
+    letterSpacing: 0.5,
+  },
+  notesAddChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: Colors.heavenlyGold,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  notesAddChipText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.sacredGreenDeep,
+  },
+  notesPreviewSnippet: {
+    fontSize: 12,
+    color: Colors.livingWhite,
+    fontStyle: 'italic',
+    lineHeight: 16,
+  },
+  notesEmptyPrompt: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    fontStyle: 'italic',
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderSubtle,
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  noteItemCard: {
+    backgroundColor: Colors.bgCardElevated,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    padding: 10,
+    marginBottom: 8,
+  },
+  noteItemTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  noteTimestampBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(212, 175, 55, 0.12)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  noteTimestampText: {
+    fontSize: 10,
+    color: Colors.heavenlyGold,
+    fontWeight: '700',
+  },
+  noteActionBtn: {
+    padding: 4,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  noteItemBodyText: {
+    fontSize: 13,
+    color: Colors.livingWhite,
+    lineHeight: 18,
+  },
+  noNotesEmptyBox: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noNotesEmptyText: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+  quickTagPill: {
+    backgroundColor: Colors.sacredGreenLight,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginRight: 6,
+  },
+  quickTagText: {
+    color: Colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '600',
   },
 });

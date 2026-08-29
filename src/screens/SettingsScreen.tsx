@@ -540,19 +540,19 @@ export default function SettingsScreen({ navigation }: any) {
               onChangeText={setPastedCsv}
             />
 
-            <View style={styles.modalActions}>
+            <View style={styles.modalActionsRow}>
               <TouchableOpacity
-                style={styles.modalButtonSecondary}
+                style={styles.overwriteBtn}
                 onPress={() => setCsvModalVisible(false)}
               >
-                <Text style={styles.modalButtonSecondaryText}>Cancel</Text>
+                <Text style={[styles.btnTextWhite, { color: Colors.statusDangerText }]}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.modalButtonPrimary}
+                style={styles.mergeBtn}
                 onPress={handleImportRosterCsv}
               >
-                <Text style={styles.modalButtonPrimaryText}>Import to Queue</Text>
+                <Text style={styles.btnTextWhite}>Import to Queue</Text>
               </TouchableOpacity>
             </View>
           </SafeAreaView>

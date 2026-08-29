@@ -85,6 +85,12 @@ export default function ScanSheetScreen({ navigation }: any) {
   const pickImage = async () => {
     await HapticsService.tick();
     try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission Needed', 'Media library permission is required to import photos of lead sheets.');
+        return;
+      }
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,

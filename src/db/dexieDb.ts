@@ -1,5 +1,5 @@
 import Dexie, { Table } from 'dexie';
-import { Lead, LeadList, CallLog, AppSettings, CadenceRule, SmsTemplate } from '../types';
+import { Lead, LeadList, CallLog, AppSettings, CadenceRule, SMSTemplate } from '../types';
 import { IndexedDbStorage, DatabaseState } from './indexedDbStorage';
 
 export interface LeadPhotoRecord {
@@ -14,7 +14,7 @@ export class SnapDialerDexieDB extends Dexie {
   call_logs!: Table<CallLog, string>;
   lead_photos!: Table<LeadPhotoRecord, string>;
   settings!: Table<{ key: string; value: string }, string>;
-  sms_templates!: Table<SmsTemplate, string>;
+  sms_templates!: Table<SMSTemplate, string>;
   cadence_rules!: Table<CadenceRule, string>;
 
   private isInitialized: boolean = false;
@@ -24,7 +24,7 @@ export class SnapDialerDexieDB extends Dexie {
     super('SnapDialerValuTeachersDexieDB');
 
     this.version(1).stores({
-      leads: 'id, list_id, school, priority_tier, last_disposition, follow_up_at, created_at, [school+last_disposition], [list_id+priority_tier+last_disposition]',
+      leads: 'id, list_id, school, priority_tier, last_disposition, follow_up_at, created_at',
       lists: 'id, created_at',
       call_logs: 'id, lead_id, list_id, timestamp, disposition',
       lead_photos: 'lead_id',
@@ -59,7 +59,8 @@ export class SnapDialerDexieDB extends Dexie {
         this.isInitialized = true;
       } catch (e) {
         console.warn('Dexie DB initialization note:', e);
-        this.isInitialized = true;
+        this.isInitialized = false;
+        this.initPromise = null;
       }
     })();
 

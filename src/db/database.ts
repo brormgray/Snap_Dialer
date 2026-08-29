@@ -94,8 +94,26 @@ class WebDatabase implements IDatabase {
   async execAsync(sql: string): Promise<void> {}
 
   async withTransactionAsync(fn: () => Promise<void>): Promise<void> {
-    await fn();
-    await this.saveToStorage();
+    const snapshot = {
+      leads: [...this.leads],
+      lists: [...this.lists],
+      call_logs: [...this.call_logs],
+      sms_templates: [...this.sms_templates],
+      cadence_rules: [...this.cadence_rules],
+      settings: [...this.settings],
+    };
+    try {
+      await fn();
+      await this.saveToStorage();
+    } catch (err) {
+      this.leads = snapshot.leads;
+      this.lists = snapshot.lists;
+      this.call_logs = snapshot.call_logs;
+      this.sms_templates = snapshot.sms_templates;
+      this.cadence_rules = snapshot.cadence_rules;
+      this.settings = snapshot.settings;
+      throw err;
+    }
   }
 
   async getAllAsync<T>(sql: string, params: any[] = []): Promise<T[]> {
@@ -104,7 +122,11 @@ class WebDatabase implements IDatabase {
       return [...this.settings] as any;
     }
     if (s.includes('from lists')) {
-      return [...this.lists] as any;
+      const sorted = [...this.lists];
+      if (s.includes('order by created_at desc')) {
+        sorted.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+      }
+      return sorted as any;
     }
     if (s.includes('from leads')) {
       let filtered = [...this.leads];
@@ -117,6 +139,9 @@ class WebDatabase implements IDatabase {
           (l) => !l.last_disposition || ['pending', 'no_answer', 'voicemail'].includes(l.last_disposition)
         );
       }
+      if (s.includes('follow_up_at is not null')) {
+        filtered = filtered.filter((l) => !!l.follow_up_at);
+      }
       if (s.includes('order by')) {
         if (s.includes('priority_tier') || s.includes('attempts_count')) {
           filtered.sort((a, b) => {
@@ -128,17 +153,24 @@ class WebDatabase implements IDatabase {
             if (attA !== attB) return attA - attB;
             return (a.created_at || '').localeCompare(b.created_at || '');
           });
+        } else if (s.includes('follow_up_at asc')) {
+          filtered.sort((a, b) => (a.follow_up_at || '').localeCompare(b.follow_up_at || ''));
         } else if (s.includes('created_at desc')) {
           filtered.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
         }
       }
       return filtered as any;
     }
+
     if (s.includes('from call_logs')) {
+      let logs = [...this.call_logs];
       if (s.includes('where lead_id = ?')) {
-        return this.call_logs.filter((c) => c.lead_id === params[0]) as any;
+        logs = logs.filter((c) => c.lead_id === params[0]);
       }
-      return [...this.call_logs] as any;
+      if (s.includes('order by timestamp desc')) {
+        logs.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+      }
+      return logs as any;
     }
     if (s.includes('from cadence_rules')) {
       return [...this.cadence_rules] as any;
@@ -151,20 +183,84 @@ class WebDatabase implements IDatabase {
 
   async getFirstAsync<T>(sql: string, params: any[] = []): Promise<T | null> {
     const s = sql.toLowerCase();
-    if (s.includes('from sms_templates') && s.includes('count(*)')) {
-      return { count: this.sms_templates.length } as any;
-    }
-    if (s.includes('from sms_templates where id = ?')) {
-      const match = this.sms_templates.find((t) => t.id === params[0]);
-      return (match || null) as any;
+    if (s.includes('from sms_templates')) {
+      if (s.includes('count(*)')) {
+        return { count: this.sms_templates.length } as any;
+      }
+      if (s.includes('where id = ?')) {
+        const match = this.sms_templates.find((t) => t.id === params[0]);
+        return (match || null) as any;
+      }
+      return (this.sms_templates[0] || null) as any;
     }
     if (s.includes('from cadence_rules where step_number = ?')) {
       const match = this.cadence_rules.find((r) => r.step_number === params[0]);
       return (match || null) as any;
     }
-    if (s.includes('from leads where id = ?')) {
-      const match = this.leads.find((l) => l.id === params[0]);
-      return (match || null) as any;
+    if (s.includes('from call_logs')) {
+      if (s.includes('count(*)') || s.includes('sum(')) {
+        let totalDials = this.call_logs.length;
+        let appointmentCount = 0;
+        let connectedCount = 0;
+        let noAnswerCount = 0;
+        let voicemailCount = 0;
+        let badNumberCount = 0;
+        let smsSentCount = 0;
+
+        for (const log of this.call_logs) {
+          const disp = log.disposition;
+          if (disp === 'appointment_set') {
+            appointmentCount++;
+          }
+          if (disp === 'connected' || disp === 'spoke') {
+            connectedCount++;
+          }
+          if (disp === 'no_answer') {
+            noAnswerCount++;
+          }
+          if (disp === 'voicemail') {
+            voicemailCount++;
+          }
+          if (disp === 'bad_number') {
+            badNumberCount++;
+          }
+          if (log.sms_sent === 1 || log.sms_sent === true) {
+            smsSentCount++;
+          }
+        }
+
+        return {
+          totalDials,
+          appointmentCount,
+          connectedCount,
+          noAnswerCount,
+          voicemailCount,
+          badNumberCount,
+          smsSentCount,
+        } as any;
+      }
+      return (this.call_logs[0] || null) as any;
+    }
+    if (s.includes('from leads')) {
+      if (s.includes('where id = ?')) {
+        const match = this.leads.find((l) => l.id === params[0]);
+        return (match || null) as any;
+      }
+      if (s.includes('where list_id = ?') && (s.includes('count(*)') || s.includes('sum('))) {
+        const listLeads = this.leads.filter((l) => l.list_id === params[0]);
+        const total = listLeads.length;
+        const completed = listLeads.filter((l) =>
+          ['connected', 'spoke', 'appointment_set', 'bad_number', 'do_not_call'].includes(l.last_disposition || '')
+        ).length;
+        const connected = listLeads.filter((l) =>
+          ['connected', 'spoke', 'appointment_set'].includes(l.last_disposition || '')
+        ).length;
+        return { total, completed, connected } as any;
+      }
+      if (s.includes('count(*)')) {
+        return { count: this.leads.length } as any;
+      }
+      return (this.leads[0] || null) as any;
     }
     if (s.includes('from lists where id = ?')) {
       const match = this.lists.find((l) => l.id === params[0]);
@@ -180,16 +276,52 @@ class WebDatabase implements IDatabase {
   async runAsync(sql: string, params: any[] = []): Promise<any> {
     const s = sql.toLowerCase();
     if (s.includes('insert into lists')) {
-      this.lists.push({
-        id: params[0],
-        title: params[1],
-        source_image_uri: params[2],
-        total_leads: params[3],
-        completed_leads: params[4] || 0,
-        connected_leads: params[5] || 0,
-        created_at: params[6] || new Date().toISOString(),
-        updated_at: params[7] || new Date().toISOString(),
-      });
+      let listId = params[0];
+      let title = params[1] || 'Campaign List';
+      let sourceImageUri: string | null = null;
+      let totalLeads = 0;
+      let completedLeads = 0;
+      let connectedLeads = 0;
+      let createdAt = new Date().toISOString();
+      let updatedAt = new Date().toISOString();
+
+      if (params.length === 4) {
+        // [id, title, created_at, updated_at]
+        createdAt = params[2] || createdAt;
+        updatedAt = params[3] || updatedAt;
+      } else if (params.length === 6) {
+        // [id, title, source_image_uri, total_leads, created_at, updated_at]
+        sourceImageUri = params[2] || null;
+        totalLeads = Number(params[3]) || 0;
+        createdAt = params[4] || createdAt;
+        updatedAt = params[5] || updatedAt;
+      } else if (params.length >= 8) {
+        // [id, title, source_image_uri, total_leads, completed_leads, connected_leads, created_at, updated_at]
+        sourceImageUri = params[2] || null;
+        totalLeads = Number(params[3]) || 0;
+        completedLeads = Number(params[4]) || 0;
+        connectedLeads = Number(params[5]) || 0;
+        createdAt = params[6] || createdAt;
+        updatedAt = params[7] || updatedAt;
+      }
+
+      const listObj = {
+        id: listId,
+        title,
+        source_image_uri: sourceImageUri,
+        total_leads: totalLeads,
+        completed_leads: completedLeads,
+        connected_leads: connectedLeads,
+        created_at: createdAt,
+        updated_at: updatedAt,
+      };
+
+      const existingIdx = this.lists.findIndex((l) => l.id === listId);
+      if (existingIdx >= 0) {
+        this.lists[existingIdx] = { ...this.lists[existingIdx], ...listObj };
+      } else {
+        this.lists.push(listObj);
+      }
     } else if (s.includes('insert into leads')) {
       let interests: string[] = [];
       let preferences: string[] = [];
@@ -204,8 +336,17 @@ class WebDatabase implements IDatabase {
         preferences = [];
       }
 
-      this.leads.push({
-        id: params[0] || `lead_${Date.now()}`,
+      // Check if this is a full-field restore insert (26 params with explicit cadence/disposition/attempts)
+      const isFullRestore = params.length >= 26;
+      const cadenceStep = isFullRestore && params[21] !== undefined ? Number(params[21]) : 1;
+      const lastDisp = isFullRestore && params[22] ? params[22] : 'pending';
+      const attemptsCount = isFullRestore && params[23] !== undefined ? Number(params[23]) : 0;
+      const createdAt = (isFullRestore ? params[24] : params[21]) || new Date().toISOString();
+      const updatedAt = (isFullRestore ? params[25] : params[22]) || new Date().toISOString();
+      const leadId = params[0] || `lead_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+      const leadObj = {
+        id: leadId,
         list_id: params[1] || 'master_queue',
         name: params[2] || '',
         phone: params[3] || '',
@@ -215,7 +356,7 @@ class WebDatabase implements IDatabase {
         planning_period: params[7] || null,
         room_number: params[8] || null,
         years_in_frs: params[9] || null,
-        text_ok: params[10] !== undefined ? params[10] : 1,
+        text_ok: params[10] !== undefined ? (params[10] === 1 || params[10] === true) : true,
         frs_knowledge: params[11] || null,
         frs_interests: interests,
         custom_questions: params[13] || null,
@@ -224,26 +365,40 @@ class WebDatabase implements IDatabase {
         present_403b_contribution: params[16] || null,
         source_image_uri: params[17] || null,
         company: params[18] || 'ValuTeachers',
-        notes: params[19] || null,
-        priority_tier: params[20] !== undefined ? Number(params[20]) : 1,
-        cadence_step: 1,
-        last_disposition: 'pending',
-        attempts_count: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      });
+        notes: params[19] !== undefined ? params[19] : null,
+        priority_tier: params[20] !== undefined && params[20] !== null ? Number(params[20]) : 1,
+        cadence_step: cadenceStep,
+        last_disposition: lastDisp,
+        attempts_count: attemptsCount,
+        created_at: createdAt,
+        updated_at: updatedAt,
+      };
+
+      const existingIdx = this.leads.findIndex((l) => l.id === leadId);
+      if (existingIdx >= 0) {
+        this.leads[existingIdx] = { ...this.leads[existingIdx], ...leadObj };
+      } else {
+        this.leads.push(leadObj);
+      }
     } else if (s.includes('insert into call_logs')) {
-      this.call_logs.push({
-        id: params[0],
+      const logId = params[0] || `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const logObj = {
+        id: logId,
         lead_id: params[1],
         list_id: params[2],
-        timestamp: params[3],
-        duration_seconds: params[4],
+        timestamp: params[3] || new Date().toISOString(),
+        duration_seconds: Number(params[4]) || 0,
         disposition: params[5],
-        note: params[6],
-        sms_sent: params[7],
-        sms_body: params[8],
-      });
+        note: params[6] || null,
+        sms_sent: params[7] === 1 || params[7] === true,
+        sms_body: params[8] || null,
+      };
+      const existingIdx = this.call_logs.findIndex((c) => c.id === logId);
+      if (existingIdx >= 0) {
+        this.call_logs[existingIdx] = logObj;
+      } else {
+        this.call_logs.push(logObj);
+      }
     } else if (s.includes('insert into sms_templates')) {
       const existingIdx = this.sms_templates.findIndex((t) => t.id === params[0]);
       if (existingIdx >= 0) {
@@ -260,6 +415,19 @@ class WebDatabase implements IDatabase {
         sms_template_id: params[4],
         delay_hours: params[5],
       });
+    } else if (s.includes("set last_disposition = 'pending'") || s.includes("where last_disposition in ('no_answer', 'voicemail')")) {
+      for (const lead of this.leads) {
+        if (['no_answer', 'voicemail'].includes(lead.last_disposition)) {
+          lead.last_disposition = 'pending';
+        }
+      }
+    } else if (s.includes('update cadence_rules set')) {
+      const ruleId = params[params.length - 1];
+      const rule = this.cadence_rules.find((r) => r.id === ruleId);
+      if (rule) {
+        rule.action_type = params[0];
+        rule.sms_template_id = params[1];
+      }
     } else if (s.includes('update leads set')) {
       const leadId = params[params.length - 1];
       const lead = this.leads.find((l) => l.id === leadId);
@@ -267,7 +435,7 @@ class WebDatabase implements IDatabase {
         if (s.includes('follow_up_at = ?')) {
           lead.follow_up_at = params[0];
           lead.last_disposition = 'callback_requested';
-          if (params[1]) lead.notes = params[1];
+          if (params[1] !== undefined && params[1] !== null) lead.notes = params[1];
           lead.updated_at = params[2] || new Date().toISOString();
         } else if (s.includes('name = ?')) {
           lead.name = params[0];
@@ -277,14 +445,14 @@ class WebDatabase implements IDatabase {
             lead.email = params[3] || null;
             lead.planning_period = params[4] || null;
             lead.years_in_frs = params[5] || null;
-            lead.notes = params[6] || null;
+            if (params[6] !== undefined && params[6] !== null) lead.notes = params[6];
             if (params[7] !== undefined) lead.priority_tier = Number(params[7]);
             if (params[8]) lead.list_id = params[8];
             lead.updated_at = params[9] || new Date().toISOString();
           } else {
             lead.planning_period = params[3] || null;
             lead.years_in_frs = params[4] || null;
-            lead.notes = params[5] || null;
+            if (params[5] !== undefined && params[5] !== null) lead.notes = params[5];
             if (params[6] !== undefined) lead.priority_tier = Number(params[6]);
             if (params[7]) lead.list_id = params[7];
             lead.updated_at = params[8] || new Date().toISOString();
@@ -296,12 +464,15 @@ class WebDatabase implements IDatabase {
         } else if (s.includes('priority_tier = ?')) {
           lead.priority_tier = Number(params[0]);
           lead.updated_at = params[1] || new Date().toISOString();
+        } else if (s.includes('notes = ?') && s.includes('updated_at = ?') && params.length === 3) {
+          lead.notes = params[0] || null;
+          lead.updated_at = params[1] || new Date().toISOString();
         } else {
           lead.last_disposition = params[0];
           lead.attempts_count = params[1];
           lead.cadence_step = params[2];
           lead.last_attempt_at = params[3];
-          if (params[4]) lead.notes = params[4];
+          if (params[4] !== undefined && params[4] !== null) lead.notes = params[4];
           lead.updated_at = params[5] || new Date().toISOString();
         }
       }
@@ -336,12 +507,6 @@ class WebDatabase implements IDatabase {
       this.lists = [];
     } else if (s.includes('delete from call_logs')) {
       this.call_logs = [];
-    } else if (s.includes("set last_disposition = 'pending'")) {
-      for (const lead of this.leads) {
-        if (['no_answer', 'voicemail'].includes(lead.last_disposition)) {
-          lead.last_disposition = 'pending';
-        }
-      }
     }
     await this.saveToStorage();
     return { changes: 1 };

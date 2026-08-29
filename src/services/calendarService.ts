@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Platform, Linking } from 'react-native';
 import { Lead } from '../types';
 
 export interface CalendarEventPayload {
@@ -116,22 +116,26 @@ export class CalendarService {
   }
 
   /**
-   * Opens Google Calendar directly in browser
+   * Opens Google Calendar directly in browser or native calendar app
    */
   static openGoogleCalendar(event: CalendarEventPayload) {
     const url = this.getGoogleCalendarUrl(event);
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && window.open) {
       window.open(url, '_blank');
+    } else {
+      Linking.openURL(url).catch((err) => console.warn('Could not open Google Calendar link:', err));
     }
   }
 
   /**
-   * Opens Outlook Calendar directly in browser
+   * Opens Outlook Calendar directly in browser or native calendar app
    */
   static openOutlookCalendar(event: CalendarEventPayload) {
     const url = this.getOutlookCalendarUrl(event);
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && window.open) {
       window.open(url, '_blank');
+    } else {
+      Linking.openURL(url).catch((err) => console.warn('Could not open Outlook link:', err));
     }
   }
 
@@ -142,7 +146,7 @@ export class CalendarService {
     lead: Lead,
     scheduledDate?: Date,
     durationMinutes: number = 20,
-    customNotes?: string
+    customNotes?: string | null
   ): CalendarEventPayload {
     const validStart = (scheduledDate instanceof Date && !isNaN(scheduledDate.getTime())) ? scheduledDate : new Date();
     const endDate = new Date(validStart.getTime() + durationMinutes * 60000);
@@ -170,7 +174,7 @@ export class CalendarService {
       title,
       description,
       location,
-      startDate: scheduledDate,
+      startDate: validStart,
       endDate,
       alarmMinutes: 15,
       contactName: lead.name,

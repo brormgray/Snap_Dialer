@@ -40,6 +40,21 @@ export default function AnalyticsScreen({ navigation }: any) {
       ? Math.round((stats.appointmentCount / stats.totalDials) * 100)
       : 0;
 
+  const connectedRate =
+    stats.totalDials > 0
+      ? Math.round((stats.connectedCount / stats.totalDials) * 100)
+      : 0;
+
+  const unansweredRate =
+    stats.totalDials > 0
+      ? Math.round(((stats.noAnswerCount + stats.voicemailCount) / stats.totalDials) * 100)
+      : 0;
+
+  const badNumberRate =
+    stats.totalDials > 0
+      ? Math.round((stats.badNumberCount / stats.totalDials) * 100)
+      : 0;
+
   const handleExportData = async () => {
     try {
       const lists = await LeadsRepository.getAllLists();
@@ -71,11 +86,73 @@ export default function AnalyticsScreen({ navigation }: any) {
       <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 40 }}>
         {/* Main Appointment Set Rate Card */}
         <View style={styles.heroCard}>
-          <Text style={styles.heroLabel}>APPOINTMENT SET RATE</Text>
+          <Text style={styles.heroLabel}>APPOINTMENT CONVERSION ACCURACY</Text>
           <Text style={styles.heroValue}>{apptSetRate}%</Text>
           <Text style={styles.heroSubtext}>
-            {stats.appointmentCount} confirmed appointment{stats.appointmentCount !== 1 ? 's' : ''} booked from {stats.totalDials} total outreach dials
+            {stats.appointmentCount} confirmed appointment{stats.appointmentCount !== 1 ? 's' : ''} booked from {stats.totalDials} total voice outreach dials
           </Text>
+        </View>
+
+        {/* Visual Outcome Distribution Chart */}
+        <Text style={styles.sectionHeader}>OUTCOME DISTRIBUTION & PIPELINE CURVE</Text>
+        <View style={styles.chartCard}>
+          {/* Multi-segment distribution bar */}
+          <View style={styles.multiBar}>
+            {apptSetRate > 0 && <View style={[styles.barSegment, { flex: apptSetRate, backgroundColor: Colors.heavenlyGold }]} />}
+            {connectedRate > 0 && <View style={[styles.barSegment, { flex: connectedRate, backgroundColor: Colors.statusSitDownText }]} />}
+            {unansweredRate > 0 && <View style={[styles.barSegment, { flex: unansweredRate, backgroundColor: Colors.textMuted }]} />}
+            {badNumberRate > 0 && <View style={[styles.barSegment, { flex: badNumberRate, backgroundColor: Colors.statusDangerText }]} />}
+            {stats.totalDials === 0 && <View style={[styles.barSegment, { flex: 1, backgroundColor: Colors.borderSubtle }]} />}
+          </View>
+
+          {/* Breakdown progress rows */}
+          <View style={styles.chartRows}>
+            <View style={styles.chartRow}>
+              <View style={styles.chartRowHeader}>
+                <View style={[styles.dotIndicator, { backgroundColor: Colors.heavenlyGold }]} />
+                <Text style={styles.chartRowLabel}>Appointments Set</Text>
+                <Text style={styles.chartRowValue}>{stats.appointmentCount} ({apptSetRate}%)</Text>
+              </View>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressBar, { width: `${apptSetRate}%`, backgroundColor: Colors.heavenlyGold }]} />
+              </View>
+            </View>
+
+            <View style={styles.chartRow}>
+              <View style={styles.chartRowHeader}>
+                <View style={[styles.dotIndicator, { backgroundColor: Colors.statusSitDownText }]} />
+                <Text style={styles.chartRowLabel}>Spoke / Connected</Text>
+                <Text style={styles.chartRowValue}>{stats.connectedCount} ({connectedRate}%)</Text>
+              </View>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressBar, { width: `${connectedRate}%`, backgroundColor: Colors.statusSitDownText }]} />
+              </View>
+            </View>
+
+            <View style={styles.chartRow}>
+              <View style={styles.chartRowHeader}>
+                <View style={[styles.dotIndicator, { backgroundColor: Colors.textMuted }]} />
+                <Text style={styles.chartRowLabel}>No Answer / Voicemail</Text>
+                <Text style={styles.chartRowValue}>{stats.noAnswerCount + stats.voicemailCount} ({unansweredRate}%)</Text>
+              </View>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressBar, { width: `${unansweredRate}%`, backgroundColor: Colors.textMuted }]} />
+              </View>
+            </View>
+
+            {stats.badNumberCount > 0 && (
+              <View style={styles.chartRow}>
+                <View style={styles.chartRowHeader}>
+                  <View style={[styles.dotIndicator, { backgroundColor: Colors.statusDangerText }]} />
+                  <Text style={styles.chartRowLabel}>Bad / Disconnected Numbers</Text>
+                  <Text style={styles.chartRowValue}>{stats.badNumberCount} ({badNumberRate}%)</Text>
+                </View>
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressBar, { width: `${badNumberRate}%`, backgroundColor: Colors.statusDangerText }]} />
+                </View>
+              </View>
+            )}
+          </View>
         </View>
 
         {/* Breakdown Metric Grid */}
@@ -246,5 +323,62 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontSize: 12,
     marginTop: 2,
+  },
+  chartCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    marginBottom: 24,
+  },
+  multiBar: {
+    flexDirection: 'row',
+    height: 12,
+    borderRadius: 6,
+    overflow: 'hidden',
+    marginBottom: 16,
+    backgroundColor: Colors.bgDark,
+  },
+  barSegment: {
+    height: '100%',
+  },
+  chartRows: {
+    gap: 12,
+  },
+  chartRow: {
+    gap: 4,
+  },
+  chartRowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dotIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  chartRowLabel: {
+    fontSize: 12,
+    color: Colors.livingWhite,
+    flex: 1,
+  },
+  chartRowValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  progressTrack: {
+    height: 6,
+    backgroundColor: Colors.bgDark,
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginTop: 2,
+  },
+  progressBar: {
+    height: '100%',
+    borderRadius: 3,
   },
 });

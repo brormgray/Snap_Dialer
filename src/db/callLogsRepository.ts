@@ -52,7 +52,16 @@ export class CallLogsRepository {
     );
     return rows.map((r) => ({
       ...r,
-      sms_sent: r.sms_sent === 1,
+      sms_sent: r.sms_sent === 1 || r.sms_sent === true,
+    }));
+  }
+
+  static async getAllCallLogs(): Promise<CallLog[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<any>('SELECT * FROM call_logs ORDER BY timestamp DESC');
+    return rows.map((r) => ({
+      ...r,
+      sms_sent: r.sms_sent === 1 || r.sms_sent === true,
     }));
   }
 
@@ -66,26 +75,70 @@ export class CallLogsRepository {
     smsSentCount: number;
   }> {
     const db = await getDatabase();
-    const result = await db.getFirstAsync<any>(`
-      SELECT 
-        COUNT(*) as totalDials,
-        SUM(CASE WHEN disposition IN ('appointment_set', 'connected') THEN 1 ELSE 0 END) as appointmentCount,
-        SUM(CASE WHEN disposition IN ('connected', 'spoke') THEN 1 ELSE 0 END) as connectedCount,
-        SUM(CASE WHEN disposition = 'no_answer' THEN 1 ELSE 0 END) as noAnswerCount,
-        SUM(CASE WHEN disposition = 'voicemail' THEN 1 ELSE 0 END) as voicemailCount,
-        SUM(CASE WHEN disposition = 'bad_number' THEN 1 ELSE 0 END) as badNumberCount,
-        SUM(CASE WHEN sms_sent = 1 THEN 1 ELSE 0 END) as smsSentCount
-      FROM call_logs
-    `);
+    const rows = await db.getAllAsync<any>('SELECT * FROM call_logs');
+
+    let totalDials = 0;
+    let appointmentCount = 0;
+    let connectedCount = 0;
+    let noAnswerCount = 0;
+    let voicemailCount = 0;
+    let badNumberCount = 0;
+    let smsSentCount = 0;
+
+    for (const r of rows) {
+      if (r.sms_sent === 1 || r.sms_sent === true) {
+        smsSentCount++;
+      }
+      // Only count as an outbound call dial if it was a voice attempt, not a standalone SMS log
+      const isVoiceDial = !r.sms_sent || Number(r.duration_seconds) > 0 || (r.note && r.note !== 'Sent persuasive ValuTeachers SMS');
+      if (isVoiceDial && r.disposition) {
+        totalDials++;
+        if (r.disposition === 'appointment_set') {
+          appointmentCount++;
+        } else if (r.disposition === 'connected' || r.disposition === 'spoke') {
+          connectedCount++;
+        } else if (r.disposition === 'no_answer') {
+          noAnswerCount++;
+        } else if (r.disposition === 'voicemail') {
+          voicemailCount++;
+        } else if (r.disposition === 'bad_number') {
+          badNumberCount++;
+        }
+      }
+    }
+
+    // Fallback: If no call_logs records yet, aggregate directly from leads dispositions & attempts
+    if (totalDials === 0) {
+      const leads = await db.getAllAsync<any>('SELECT * FROM leads');
+      for (const l of leads) {
+        if (l.attempts_count && l.attempts_count > 0) {
+          totalDials += Number(l.attempts_count);
+        } else if (l.last_disposition && l.last_disposition !== 'pending') {
+          totalDials += 1;
+        }
+
+        if (l.last_disposition === 'appointment_set') {
+          appointmentCount++;
+        } else if (l.last_disposition === 'connected' || l.last_disposition === 'spoke') {
+          connectedCount++;
+        } else if (l.last_disposition === 'no_answer') {
+          noAnswerCount++;
+        } else if (l.last_disposition === 'voicemail') {
+          voicemailCount++;
+        } else if (l.last_disposition === 'bad_number') {
+          badNumberCount++;
+        }
+      }
+    }
 
     return {
-      totalDials: result?.totalDials || 0,
-      appointmentCount: result?.appointmentCount || 0,
-      connectedCount: result?.connectedCount || 0,
-      noAnswerCount: result?.noAnswerCount || 0,
-      voicemailCount: result?.voicemailCount || 0,
-      badNumberCount: result?.badNumberCount || 0,
-      smsSentCount: result?.smsSentCount || 0,
+      totalDials,
+      appointmentCount,
+      connectedCount,
+      noAnswerCount,
+      voicemailCount,
+      badNumberCount,
+      smsSentCount,
     };
   }
 }

@@ -31,6 +31,20 @@ dns.lookup = function(hostname, options, callback) {
   return origLookup(hostname, options, callback);
 };
 
+// Ensure sw.js is copied into ./dist
+const fs = require('fs');
+const path = require('path');
+try {
+  const swSrc = path.join(__dirname, 'web', 'sw.js');
+  const swDest = path.join(__dirname, 'dist', 'sw.js');
+  if (fs.existsSync(swSrc) && fs.existsSync(path.join(__dirname, 'dist'))) {
+    fs.copyFileSync(swSrc, swDest);
+    console.log('Copied web/sw.js to dist/sw.js for PWA offline caching.');
+  }
+} catch (e) {
+  console.warn('Service worker copy note:', e);
+}
+
 const surge = require('C:/Users/brorm/AppData/Local/npm-cache/_npx/23158936acd5c32d/node_modules/surge')({
   endpoint: 'https://surge.surge.sh'
 });

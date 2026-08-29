@@ -24,13 +24,14 @@ export default function CadenceSettingsScreen({ navigation }: any) {
     loadData();
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (preserveId?: string) => {
     const loadedRules = await CadenceRepository.getAllRules();
     const loadedTemplates = await CadenceRepository.getAllTemplates();
     setRules(loadedRules);
     setTemplates(loadedTemplates);
     if (loadedTemplates.length > 0) {
-      setActiveTemplate(loadedTemplates[0]);
+      const match = loadedTemplates.find((t) => t.id === (preserveId || activeTemplate?.id));
+      setActiveTemplate(match || loadedTemplates[0]);
     }
   };
 
@@ -38,7 +39,7 @@ export default function CadenceSettingsScreen({ navigation }: any) {
     if (!activeTemplate) return;
     await CadenceRepository.saveTemplate(activeTemplate);
     Alert.alert('Success', 'SMS template saved successfully.');
-    loadData();
+    loadData(activeTemplate.id);
   };
 
   return (

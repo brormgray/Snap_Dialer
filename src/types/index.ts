@@ -29,6 +29,7 @@ export interface Lead {
   present_403b_contribution?: string | null;
   source_image_uri?: string | null;
   company?: string | null;
+  notes?: string | null;
   priority_tier: number; // 1 = Fresh/Hot (Default), 2 = Standard, 3 = Legacy/Archive
   cadence_step: number;
   last_attempt_at?: string | null;
@@ -79,7 +80,7 @@ export interface SMSTemplate {
 }
 
 export interface ExtractedLeadItem {
-  id: string;
+  id?: string;
   name: string;
   phone: string;
   email?: string;

@@ -88,15 +88,15 @@ export class CsvService {
   }
 
   /**
-   * Flexible CSV Parser to import school staff rosters
+   * Flexible, RFC 4180 compliant CSV Parser to import school staff rosters,
+   * supporting multi-line quoted fields, escaped quotes, and automated column detection.
    */
   static parseCsvToLeads(csvText: string): Partial<ExtractedLeadItem>[] {
-    const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
-    if (lines.length < 2) return [];
+    const allRows = this.parseAllCsvRows(csvText);
+    if (allRows.length < 2) return [];
 
     // Parse header row
-    const headerLine = lines[0];
-    const headers = this.parseCsvRow(headerLine).map((h) => h.toLowerCase().trim().replace(/[^a-z0-9]/g, ''));
+    const headers = allRows[0].map((h) => h.toLowerCase().trim().replace(/[^a-z0-9]/g, ''));
 
     // Map header indices
     const nameIdx = headers.findIndex((h) => h.includes('name') || h.includes('teacher') || h.includes('educator'));
@@ -110,10 +110,11 @@ export class CsvService {
 
     const results: Partial<ExtractedLeadItem>[] = [];
 
-    for (let i = 1; i < lines.length; i++) {
-      const cols = this.parseCsvRow(lines[i]);
+    for (let i = 1; i < allRows.length; i++) {
+      const cols = allRows[i];
       const rawName = nameIdx >= 0 ? cols[nameIdx]?.trim() : '';
       const rawPhone = phoneIdx >= 0 ? cols[phoneIdx]?.trim() : '';
+      const digitsOnly = rawPhone ? rawPhone.replace(/\D/g, '') : '';
 
       if (rawName || rawPhone) {
         results.push({
@@ -125,7 +126,7 @@ export class CsvService {
           years_in_frs: yearsIdx >= 0 && cols[yearsIdx] ? cols[yearsIdx].trim() : undefined,
           email: emailIdx >= 0 && cols[emailIdx] ? cols[emailIdx].trim() : undefined,
           notes: notesIdx >= 0 && cols[notesIdx] ? cols[notesIdx].trim() : undefined,
-          isValid: Boolean(rawName && rawPhone),
+          isValid: Boolean(rawName && digitsOnly.length >= 7),
         });
       }
     }
@@ -133,28 +134,51 @@ export class CsvService {
     return results;
   }
 
-  private static parseCsvRow(row: string): string[] {
-    const result: string[] = [];
-    let current = '';
+  /**
+   * Full-text state-machine parser that correctly handles multi-line fields within quotes
+   */
+  private static parseAllCsvRows(text: string): string[][] {
+    const rows: string[][] = [];
+    let currentRow: string[] = [];
+    let currentCell = '';
     let inQuotes = false;
 
-    for (let i = 0; i < row.length; i++) {
-      const char = row[i];
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+
       if (char === '"') {
-        if (inQuotes && row[i + 1] === '"') {
-          current += '"';
-          i++;
+        if (inQuotes && nextChar === '"') {
+          currentCell += '"';
+          i++; // Skip escaped quote
         } else {
           inQuotes = !inQuotes;
         }
       } else if (char === ',' && !inQuotes) {
-        result.push(current);
-        current = '';
+        currentRow.push(currentCell.trim());
+        currentCell = '';
+      } else if ((char === '\r' || char === '\n') && !inQuotes) {
+        if (char === '\r' && nextChar === '\n') {
+          i++; // Skip \n in \r\n
+        }
+        currentRow.push(currentCell.trim());
+        if (currentRow.some((c) => c.length > 0)) {
+          rows.push(currentRow);
+        }
+        currentRow = [];
+        currentCell = '';
       } else {
-        current += char;
+        currentCell += char;
       }
     }
-    result.push(current);
-    return result;
+
+    if (currentCell.length > 0 || currentRow.length > 0) {
+      currentRow.push(currentCell.trim());
+      if (currentRow.some((c) => c.length > 0)) {
+        rows.push(currentRow);
+      }
+    }
+
+    return rows;
   }
 }

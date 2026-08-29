@@ -41,21 +41,23 @@ import {
   MapPin,
 } from 'lucide-react-native';
 import { LeadsRepository } from '../db/leadsRepository';
+import { CallLogsRepository } from '../db/callLogsRepository';
 import { HapticsService } from '../services/hapticsService';
 import { CsvService } from '../services/csvService';
-import { Lead, LeadList } from '../types';
+import { Lead, LeadList, CallLog } from '../types';
 import { Colors } from '../theme/colors';
 import ZoomableImageModal from '../components/ZoomableImageModal';
 
 export default function ListsScreen({ navigation }: any) {
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [availableLists, setAvailableLists] = useState<LeadList[]>([]);
   const [availableSchools, setAvailableSchools] = useState<{ school: string; count: number }[]>([]);
   const [selectedListId, setSelectedListId] = useState<string>('all');
   const [selectedSchool, setSelectedSchool] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'fresh' | 'legacy'>('all');
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
-  const [filterTab, setFilterTab] = useState<'all' | 'pending' | 'connected' | 'callback' | 'unanswered'>('all');
+  const [filterTab, setFilterTab] = useState<'all' | 'pending' | 'appts' | 'connected' | 'callback' | 'unanswered'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -64,14 +66,16 @@ export default function ListsScreen({ navigation }: any) {
 
   const loadLeads = async () => {
     try {
-      const [all, lists, schools] = await Promise.all([
+      const [all, lists, schools, logs] = await Promise.all([
         LeadsRepository.getAllLeads(),
         LeadsRepository.getAllLists(),
         LeadsRepository.getAllSchools(),
+        CallLogsRepository.getAllCallLogs(),
       ]);
       setLeads(all);
       setAvailableLists(lists);
       setAvailableSchools(schools);
+      setCallLogs(logs);
     } catch (e) {
       console.error('Failed to load leads:', e);
     } finally {
@@ -85,9 +89,17 @@ export default function ListsScreen({ navigation }: any) {
     }, [])
   );
 
+  // Helper to check if a lead has ever been called at least once
+  const hasEverBeenCalled = (l: Lead) => {
+    if (l.attempts_count && l.attempts_count > 0) return true;
+    if (l.last_attempt_at) return true;
+    if (l.last_disposition && l.last_disposition !== 'pending') return true;
+    return false;
+  };
+
   useEffect(() => {
     applyFilters();
-  }, [leads, filterTab, searchQuery, selectedListId, selectedSchool, priorityFilter]);
+  }, [leads, callLogs, filterTab, searchQuery, selectedListId, selectedSchool, priorityFilter]);
 
   const applyFilters = () => {
     let result = [...leads];
@@ -111,11 +123,17 @@ export default function ListsScreen({ navigation }: any) {
 
     // Filter by Tab
     if (filterTab === 'pending') {
-      result = result.filter((l) => !l.last_disposition || l.last_disposition === 'pending');
+      result = result.filter((l) => !hasEverBeenCalled(l));
+    } else if (filterTab === 'appts') {
+      result = result.filter((l) => l.last_disposition === 'appointment_set');
     } else if (filterTab === 'connected') {
-      result = result.filter((l) => ['appointment_set', 'connected'].includes(l.last_disposition || ''));
+      result = result.filter((l) => ['connected', 'spoke'].includes(l.last_disposition || ''));
     } else if (filterTab === 'callback') {
-      result = result.filter((l) => l.last_disposition === 'callback_requested' || !!l.follow_up_at);
+      result = result.filter((l) => {
+        const isAnswered = ['appointment_set', 'connected', 'spoke', 'do_not_call', 'bad_number'].includes(l.last_disposition || '');
+        if (isAnswered) return false;
+        return l.last_disposition === 'callback_requested' || !!l.follow_up_at;
+      });
     } else if (filterTab === 'unanswered') {
       result = result.filter((l) => ['no_answer', 'voicemail'].includes(l.last_disposition || ''));
     }
@@ -138,14 +156,14 @@ export default function ListsScreen({ navigation }: any) {
 
   const handleStartMasterQueue = async () => {
     await HapticsService.success();
-    const pendingCount = filteredLeads.filter(
+    const callableCount = scopedLeads.filter(
       (l) => !l.last_disposition || ['pending', 'no_answer', 'voicemail'].includes(l.last_disposition)
     ).length;
 
-    if (pendingCount === 0) {
+    if (callableCount === 0) {
       Alert.alert(
         'Queue Complete',
-        'All educators in this view have been contacted! Snap a new report card or recycle unanswered calls.'
+        'All educators in this campaign view have been contacted! Snap a new report card or recycle unanswered calls.'
       );
       return;
     }
@@ -251,14 +269,49 @@ export default function ListsScreen({ navigation }: any) {
     return { label: 'Ready to Call', bg: Colors.statusPendingBg, color: Colors.statusPendingText };
   };
 
+  // Scope leads based on Campaign & School & Priority filters (before Tab filter)
+  const scopedLeads = leads.filter((l) => {
+    if (selectedListId !== 'all' && l.list_id !== selectedListId) return false;
+    if (selectedSchool !== 'all' && (l.school || 'VOL').toLowerCase().trim() !== selectedSchool.toLowerCase().trim()) return false;
+    if (priorityFilter === 'fresh' && (l.priority_tier || 1) !== 1) return false;
+    if (priorityFilter === 'legacy' && l.priority_tier !== 3) return false;
+    return true;
+  });
+
   // Stats calculation
-  const totalCount = leads.length;
-  const pendingCount = leads.filter(
+  const totalCount = scopedLeads.length;
+
+  // 'To Call': ONLY leads that have NOT been called at least once ever (0 attempts)
+  const pendingCount = scopedLeads.filter((l) => !hasEverBeenCalled(l)).length;
+
+  // 'Appts Set': Running count of ALL appointments set, ever
+  const scopedLeadIds = new Set(scopedLeads.map((l) => l.id));
+  const apptsInLogs = callLogs.filter(
+    (log) => log.disposition === 'appointment_set' && (selectedListId === 'all' && selectedSchool === 'all' && priorityFilter === 'all' ? true : scopedLeadIds.has(log.lead_id))
+  ).length;
+  const apptsInLeads = scopedLeads.filter((l) => l.last_disposition === 'appointment_set').length;
+  const appointmentCount = Math.max(apptsInLogs, apptsInLeads);
+
+  // 'Callbacks': Leads scheduled for a callback, removed once called back and answered (connected/spoke/appt/dnc/bad_number)
+  const callbackCount = scopedLeads.filter((l) => {
+    const isAnswered = ['appointment_set', 'connected', 'spoke', 'do_not_call', 'bad_number'].includes(l.last_disposition || '');
+    if (isAnswered) return false;
+    return l.last_disposition === 'callback_requested' || !!l.follow_up_at;
+  }).length;
+
+  const unansweredCount = scopedLeads.filter(
+    (l) => ['no_answer', 'voicemail'].includes(l.last_disposition || '')
+  ).length;
+
+  // 'Spoke / Connected': Leads spoken with but not yet dispositioned as a booked appt
+  const spokeCount = scopedLeads.filter(
+    (l) => ['connected', 'spoke'].includes(l.last_disposition || '')
+  ).length;
+
+  // 'Callable' = all dialable leads (never called + unanswered/voicemail). Used to drive CTA button state.
+  const callableCount = scopedLeads.filter(
     (l) => !l.last_disposition || ['pending', 'no_answer', 'voicemail'].includes(l.last_disposition)
   ).length;
-  const appointmentCount = leads.filter((l) => ['appointment_set', 'connected'].includes(l.last_disposition || '')).length;
-  const callbackCount = leads.filter((l) => l.last_disposition === 'callback_requested' || !!l.follow_up_at).length;
-  const unansweredCount = leads.filter((l) => ['no_answer', 'voicemail'].includes(l.last_disposition || '')).length;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -335,7 +388,7 @@ export default function ListsScreen({ navigation }: any) {
       {/* Main Start Power Dialer CTA */}
       <View style={styles.ctaContainer}>
         <TouchableOpacity
-          style={[styles.startQueueButton, pendingCount === 0 && { backgroundColor: Colors.sacredGreenDark, borderColor: Colors.borderSubtle }]}
+          style={[styles.startQueueButton, callableCount === 0 && { backgroundColor: Colors.sacredGreenDark, borderColor: Colors.borderSubtle }]}
           onPress={handleStartMasterQueue}
           activeOpacity={0.8}
         >
@@ -344,12 +397,12 @@ export default function ListsScreen({ navigation }: any) {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.startQueueTitle}>
-              {pendingCount > 0 ? 'Start Power Dialing Queue' : 'Calling Queue Complete'}
+              {callableCount > 0 ? 'Start Power Dialing Queue' : 'Calling Queue Complete'}
             </Text>
             <Text style={styles.startQueueSubtitle}>
-              {pendingCount > 0
-                ? `${pendingCount} educator${pendingCount > 1 ? 's' : ''} ready for planning sit-downs`
-                : 'All current leads called. Snap another card to add more.'}
+              {callableCount > 0
+                ? `${callableCount} educator${callableCount > 1 ? 's' : ''} ready for planning sit-downs`
+                : 'All current leads contacted. Snap another card to add more.'}
             </Text>
           </View>
           <ChevronRight size={22} color={Colors.heavenlyGold} />
@@ -359,6 +412,7 @@ export default function ListsScreen({ navigation }: any) {
           <TouchableOpacity style={styles.recycleButton} onPress={handleRecycleUnanswered}>
             <RotateCcw size={15} color={Colors.heavenlyGold} />
             <Text style={styles.recycleText}>
+
               Recycle {unansweredCount} Unanswered / Voicemail Lead{unansweredCount > 1 ? 's' : ''}
             </Text>
           </TouchableOpacity>
@@ -501,13 +555,23 @@ export default function ListsScreen({ navigation }: any) {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.tabChip, filterTab === 'connected' && styles.tabChipActive]}
-            onPress={() => setFilterTab('connected')}
+            style={[styles.tabChip, filterTab === 'appts' && styles.tabChipActive]}
+            onPress={() => setFilterTab('appts')}
           >
-            <Text style={[styles.tabChipText, filterTab === 'connected' && styles.tabChipTextActive]}>
+            <Text style={[styles.tabChipText, filterTab === 'appts' && styles.tabChipTextActive]}>
               Appts Set ({appointmentCount})
             </Text>
           </TouchableOpacity>
+          {spokeCount > 0 && (
+            <TouchableOpacity
+              style={[styles.tabChip, filterTab === 'connected' && styles.tabChipActive]}
+              onPress={() => setFilterTab('connected')}
+            >
+              <Text style={[styles.tabChipText, filterTab === 'connected' && styles.tabChipTextActive]}>
+                Spoke ({spokeCount})
+              </Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={[styles.tabChip, filterTab === 'callback' && styles.tabChipActive]}
             onPress={() => setFilterTab('callback')}

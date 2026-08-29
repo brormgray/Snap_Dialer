@@ -40,6 +40,8 @@ import {
   Layers,
   Mail,
   RotateCcw,
+  Edit3,
+  Plus,
 } from 'lucide-react-native';
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
@@ -47,6 +49,7 @@ import { TelephonyService } from '../services/telephonyService';
 import { HapticsService } from '../services/hapticsService';
 import { AiSmsService } from '../services/aiSmsService';
 import { CalendarService } from '../services/calendarService';
+import { NotesService, NoteEntry, EDUCATOR_QUICK_TAGS } from '../services/notesService';
 import { Lead, CallLog, CallDisposition, LeadList } from '../types';
 import { Colors } from '../theme/colors';
 import ZoomableImageModal from '../components/ZoomableImageModal';
@@ -59,6 +62,12 @@ export default function LeadDetailScreen({ route, navigation }: any) {
   const [availableLists, setAvailableLists] = useState<LeadList[]>([]);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [imageModalVisible, setImageModalVisible] = useState<boolean>(false);
+
+  // Notes CRUD state
+  const [noteInputText, setNoteInputText] = useState<string>('');
+  const [noteEditModalVisible, setNoteEditModalVisible] = useState<boolean>(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState<string>('');
 
   // SMS Modal State
   const [smsModalVisible, setSmsModalVisible] = useState<boolean>(false);
@@ -226,11 +235,17 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     await HapticsService.medium();
     setSmsModalVisible(false);
     await TelephonyService.sendSMS(lead.phone, smsBody);
+    // Log the SMS event using the lead's current/actual disposition so it doesn't
+    // falsely inflate the Callbacks KPI counter.
+    const smsLogDisposition: CallDisposition =
+      lead.last_disposition && lead.last_disposition !== 'pending'
+        ? lead.last_disposition
+        : 'no_answer';
     await CallLogsRepository.logCall({
       leadId: lead.id,
       listId: lead.list_id,
       durationSeconds: 0,
-      disposition: 'callback_requested',
+      disposition: smsLogDisposition,
       note: 'Sent persuasive ValuTeachers SMS',
       smsSent: true,
       smsBody: smsBody,
@@ -238,13 +253,66 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     loadLeadData();
   };
 
+  // Structured Notes CRUD
+  const handleAddNote = async (customText?: string) => {
+    if (!lead) return;
+    const textToAdd = (customText || noteInputText).trim();
+    if (!textToAdd) return;
+    await HapticsService.success();
+    const updated = NotesService.addNote(lead.notes, textToAdd);
+    setLead({ ...lead, notes: updated });
+    setNotes(updated);
+    await LeadsRepository.updateLeadNotes(lead.id, updated);
+    setNoteInputText('');
+  };
+
+  const handleStartEditNote = (entry: NoteEntry) => {
+    setEditingNoteId(entry.id);
+    setEditingNoteText(entry.text);
+    setNoteEditModalVisible(true);
+  };
+
+  const handleSaveEditNote = async () => {
+    if (!lead || !editingNoteId) return;
+    await HapticsService.success();
+    const updated = NotesService.editNote(lead.notes, editingNoteId, editingNoteText);
+    setLead({ ...lead, notes: updated });
+    setNotes(updated);
+    await LeadsRepository.updateLeadNotes(lead.id, updated);
+    setNoteEditModalVisible(false);
+    setEditingNoteId(null);
+    setEditingNoteText('');
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    if (!lead) return;
+    const doDelete = async () => {
+      await HapticsService.heavy();
+      const updated = NotesService.deleteNote(lead.notes, noteId);
+      setLead({ ...lead, notes: updated });
+      setNotes(updated);
+      await LeadsRepository.updateLeadNotes(lead.id, updated);
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' && window.confirm('Are you sure you want to delete this note?');
+      if (confirmed) await doDelete();
+      return;
+    }
+
+    Alert.alert('Delete Note', 'Are you sure you want to delete this note?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: doDelete },
+    ]);
+  };
+
+
   const handleDeleteLead = async () => {
     if (Platform.OS === 'web') {
       const confirmed = typeof window !== 'undefined' && window.confirm('Are you sure you want to permanently delete this lead?');
       if (confirmed) {
         await HapticsService.heavy();
-        const db = await import('../db/database').then((m) => m.getDatabase());
-        await db.runAsync('DELETE FROM leads WHERE id = ?', [leadId]);
+        await LeadsRepository.deleteLead(leadId);
         navigation.goBack();
       }
       return;
@@ -257,8 +325,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         style: 'destructive',
         onPress: async () => {
           await HapticsService.heavy();
-          const db = await import('../db/database').then((m) => m.getDatabase());
-          await db.runAsync('DELETE FROM leads WHERE id = ?', [leadId]);
+          await LeadsRepository.deleteLead(leadId);
           navigation.goBack();
         },
       },
@@ -486,12 +553,89 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                 <Eye size={16} color="#38BDF8" />
               </TouchableOpacity>
 
-              {lead.notes ? (
-                <View style={[styles.infoRow, { marginTop: 10 }]}>
-                  <FileText size={16} color="#94A3B8" />
-                  <Text style={styles.infoText}>{lead.notes}</Text>
+              {/* Educator Structured Notes Card */}
+              <View style={styles.detailNotesCard}>
+                <View style={styles.detailNotesHeader}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <FileText size={15} color={Colors.heavenlyGold} />
+                    <Text style={styles.detailNotesTitle}>CLASSROOM & ADVISOR NOTES</Text>
+                  </View>
+                  <View style={styles.notesCountBadge}>
+                    <Text style={styles.notesCountBadgeText}>
+                      {NotesService.parseNotes(lead.notes).length} Notes
+                    </Text>
+                  </View>
                 </View>
-              ) : null}
+
+                {/* Notes List */}
+                {NotesService.parseNotes(lead.notes).length > 0 ? (
+                  <View style={styles.detailNotesList}>
+                    {NotesService.parseNotes(lead.notes).map((entry) => (
+                      <View key={entry.id} style={styles.detailNoteItem}>
+                        <View style={styles.detailNoteItemHeader}>
+                          <View style={styles.detailNoteTimestamp}>
+                            <Clock size={11} color={Colors.heavenlyGold} />
+                            <Text style={styles.detailNoteTimestampText}>{entry.timestamp}</Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', gap: 6 }}>
+                            <TouchableOpacity
+                              style={styles.detailNoteActionBtn}
+                              onPress={() => handleStartEditNote(entry)}
+                            >
+                              <Edit3 size={13} color={Colors.deepSkyBlueLight} />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.detailNoteActionBtn}
+                              onPress={() => handleDeleteNote(entry.id)}
+                            >
+                              <Trash2 size={13} color={Colors.statusDangerText} />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                        <Text style={styles.detailNoteBody}>{entry.text}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={styles.detailNotesEmptyText}>No educator notes recorded yet.</Text>
+                )}
+
+                {/* Quick Add Note Section */}
+                <View style={{ marginTop: 10 }}>
+                  <Text style={{ color: Colors.textMuted, fontSize: 10, fontWeight: '700', marginBottom: 4, letterSpacing: 0.5 }}>
+                    QUICK TAGS:
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxHeight: 34, marginBottom: 8 }}>
+                    {EDUCATOR_QUICK_TAGS.map((tag, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        style={styles.quickTagDetailPill}
+                        onPress={() => handleAddNote(tag)}
+                      >
+                        <Text style={styles.quickTagDetailText}>+ {tag}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+
+                  <View style={styles.addNoteInputRow}>
+                    <TextInput
+                      style={styles.addNoteInput}
+                      value={noteInputText}
+                      onChangeText={setNoteInputText}
+                      placeholder="Add relevant classroom or FRS note..."
+                      placeholderTextColor={Colors.textMuted}
+                    />
+                    <TouchableOpacity
+                      style={[styles.addNoteButton, !noteInputText.trim() && { opacity: 0.5 }]}
+                      onPress={() => handleAddNote()}
+                      disabled={!noteInputText.trim()}
+                    >
+                      <Plus size={14} color={Colors.sacredGreenDeep} />
+                      <Text style={styles.addNoteButtonText}>Add</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
 
               {/* 1-Tap Calendar Piping Card */}
               <View style={styles.calCardContainer}>
@@ -819,6 +963,58 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                 onPress={handleSendSms}
               >
                 <Text style={styles.modalSaveText}>Open in SMS App</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Note Edit Modal */}
+      <Modal visible={noteEditModalVisible} animationType="slide" transparent>
+        <View style={styles.imageModalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Edit3 size={16} color={Colors.heavenlyGold} />
+                <Text style={styles.modalTitle}>Edit Educator Note</Text>
+              </View>
+              <TouchableOpacity
+                style={{ padding: 4 }}
+                onPress={() => {
+                  setNoteEditModalVisible(false);
+                  setEditingNoteId(null);
+                  setEditingNoteText('');
+                }}
+              >
+                <X size={18} color={Colors.livingWhite} />
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              style={[styles.modalInput, { height: 120, textAlignVertical: 'top' }]}
+              value={editingNoteText}
+              onChangeText={setEditingNoteText}
+              placeholder="Edit note content..."
+              placeholderTextColor={Colors.textMuted}
+              multiline
+            />
+
+            <View style={[styles.modalButtons, { marginTop: 12 }]}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => {
+                  setNoteEditModalVisible(false);
+                  setEditingNoteId(null);
+                  setEditingNoteText('');
+                }}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSaveButton}
+                onPress={handleSaveEditNote}
+              >
+                <Text style={styles.modalSaveText}>Save Changes</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1492,5 +1688,132 @@ const styles = StyleSheet.create({
     color: Colors.heavenlyGold,
     fontSize: 11,
     fontWeight: '700',
+  },
+  // Structured Notes Card Styles
+  detailNotesCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  detailNotesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderSubtle,
+  },
+  detailNotesTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.heavenlyGold,
+    letterSpacing: 0.8,
+  },
+  notesCountBadge: {
+    backgroundColor: 'rgba(212, 175, 55, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.3)',
+  },
+  notesCountBadgeText: {
+    fontSize: 11,
+    color: Colors.heavenlyGold,
+    fontWeight: '700',
+  },
+  detailNotesList: {
+    gap: 8,
+  },
+  detailNoteItem: {
+    backgroundColor: Colors.bgDark,
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  detailNoteItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  detailNoteTimestamp: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(212, 175, 55, 0.1)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  detailNoteTimestampText: {
+    fontSize: 10,
+    color: Colors.heavenlyGold,
+    fontWeight: '700',
+  },
+  detailNoteActionBtn: {
+    padding: 4,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  detailNoteBody: {
+    fontSize: 13,
+    color: Colors.livingWhite,
+    lineHeight: 18,
+  },
+  detailNotesEmptyText: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    fontStyle: 'italic',
+    paddingVertical: 6,
+  },
+  quickTagDetailPill: {
+    backgroundColor: Colors.sacredGreenLight,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginRight: 6,
+  },
+  quickTagDetailText: {
+    color: Colors.textSecondary,
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  addNoteInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  addNoteInput: {
+    flex: 1,
+    backgroundColor: Colors.bgDark,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: Colors.livingWhite,
+  },
+  addNoteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.heavenlyGold,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 10,
+  },
+  addNoteButtonText: {
+    color: Colors.sacredGreenDeep,
+    fontSize: 13,
+    fontWeight: '800',
   },
 });

@@ -80,7 +80,7 @@ export class TelephonyService {
   }
 
   /**
-   * Replaces dynamic tokens ({{name}}, {{school}}, {{years_in_frs}}, {{meeting_pref}}, {{my_name}}) with lead info
+   * Replaces dynamic tokens ({{name}}, {{school}}, {{planning_period}}, {{room_number}}, {{years_in_frs}}, {{meeting_pref}}, {{my_name}}) with lead info
    */
   static interpolateTemplate(template: SMSTemplate, lead: Lead, myName: string = 'Alex'): string {
     const primaryMeetingPref =
@@ -88,13 +88,18 @@ export class TelephonyService {
         ? lead.meeting_preferences[0].replace(/^[0-9]\.\s*/, '')
         : 'during your planning period';
 
+    const planningPeriodText = lead.planning_period || 'your planning period';
+    const roomText = lead.room_number ? `Room ${lead.room_number}` : 'your classroom';
+
     return template.body
-      .replace(/{{name}}/g, lead.name ? lead.name.split(' ')[0] : 'there')
-      .replace(/{{full_name}}/g, lead.name || 'there')
-      .replace(/{{school}}/g, lead.school || 'your school')
-      .replace(/{{years_in_frs}}/g, lead.years_in_frs ? `${lead.years_in_frs} years` : 'your time')
-      .replace(/{{meeting_pref}}/g, primaryMeetingPref)
-      .replace(/{{company}}/g, lead.company || 'ValuTeachers')
-      .replace(/{{my_name}}/g, myName);
+      .replace(/{{name}}/gi, lead.name ? lead.name.split(' ')[0] : 'there')
+      .replace(/{{full_name}}/gi, lead.name || 'there')
+      .replace(/{{school}}/gi, lead.school || 'your school')
+      .replace(/{{planning_period}}/gi, planningPeriodText)
+      .replace(/{{room_number}}/gi, roomText)
+      .replace(/{{years_in_frs}}/gi, lead.years_in_frs ? `${lead.years_in_frs} years` : 'your time')
+      .replace(/{{meeting_pref}}/gi, primaryMeetingPref)
+      .replace(/{{company}}/gi, lead.company || 'ValuTeachers')
+      .replace(/{{my_name}}/gi, myName);
   }
 }

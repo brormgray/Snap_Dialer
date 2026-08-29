@@ -4,6 +4,7 @@ import { ExtractedLeadItem } from '../types';
 import { SettingsRepository } from '../db/settingsRepository';
 import { DocumentScannerService } from './documentScannerService';
 import { GeminiModelService } from './geminiModelService';
+import { CsvService } from './csvService';
 
 export class VisionService {
   /**
@@ -180,7 +181,10 @@ Never output conversational text. Output pure JSON adhering to the schema.`;
         const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!rawText) throw new Error('Empty response from vision model');
 
-        const parsed: any[] = JSON.parse(rawText);
+        const parsedRaw: any = JSON.parse(rawText);
+        const parsed: any[] = Array.isArray(parsedRaw)
+          ? parsedRaw
+          : (parsedRaw && typeof parsedRaw === 'object' ? [parsedRaw] : []);
         const seenNumbers = new Set<string>();
 
         return parsed.map((item, index) => {
@@ -208,7 +212,7 @@ Never output conversational text. Output pure JSON adhering to the schema.`;
             company: 'ValuTeachers',
             notes: item.notes || '',
             isDuplicate: isDup,
-            isValid: item.name.length > 0 && cleaned.length >= 7,
+            isValid: Boolean((item.name || '').trim().length > 0 && cleaned.length >= 7),
           };
         });
       } catch (err: any) {
@@ -221,31 +225,28 @@ Never output conversational text. Output pure JSON adhering to the schema.`;
   }
 
   public static parseCsvLeads(csvText: string): ExtractedLeadItem[] {
-    const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
-    if (lines.length === 0) return [];
-
-    const leads: ExtractedLeadItem[] = [];
-    const startIndex =
-      lines[0].toLowerCase().includes('name') || lines[0].toLowerCase().includes('phone')
-        ? 1
-        : 0;
-
-    for (let i = startIndex; i < lines.length; i++) {
-      const cols = lines[i].split(',').map((c) => c.replace(/^["']|["']$/g, '').trim());
-      if (cols.length >= 2) {
-        leads.push({
-          id: `csv_${Date.now()}_${i}`,
-          name: cols[0] || 'Unknown',
-          phone: this.cleanPhone(cols[1] || ''),
-          school: cols[2] || 'VOL',
-          email: cols[3] || '',
-          years_in_frs: cols[4] || '',
-          notes: cols.slice(5).join(', ') || '',
-          isValid: true,
-        });
-      }
-    }
-    return leads;
+    const partials = CsvService.parseCsvToLeads(csvText);
+    return partials.map((p, index) => ({
+      id: `csv_${Date.now()}_${index}`,
+      name: p.name || 'Educator',
+      phone: this.cleanPhone(p.phone || ''),
+      school: p.school || 'VOL',
+      email: p.email || '',
+      age: '',
+      planning_period: p.planning_period || '',
+      room_number: p.room_number || '',
+      years_in_frs: p.years_in_frs || '',
+      text_ok: true,
+      frs_knowledge: 'I know a little',
+      frs_interests: [],
+      custom_questions: '',
+      meeting_preferences: [],
+      annual_salary: '',
+      present_403b_contribution: '',
+      company: 'ValuTeachers',
+      notes: p.notes || '',
+      isValid: Boolean(p.isValid),
+    }));
   }
 
   /**
