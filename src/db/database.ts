@@ -151,6 +151,9 @@ class WebDatabase implements IDatabase {
             const attA = a.attempts_count || 0;
             const attB = b.attempts_count || 0;
             if (attA !== attB) return attA - attB;
+            const lastA = a.last_attempt_at || '';
+            const lastB = b.last_attempt_at || '';
+            if (lastA !== lastB) return lastA.localeCompare(lastB);
             return (a.created_at || '').localeCompare(b.created_at || '');
           });
         } else if (s.includes('follow_up_at asc')) {

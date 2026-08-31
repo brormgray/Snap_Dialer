@@ -161,7 +161,7 @@ export class LeadsRepository {
     const rawLeads = await db.getAllAsync<any>(
       `SELECT * FROM leads 
        WHERE (last_disposition IS NULL OR last_disposition IN ('pending', 'no_answer', 'voicemail'))
-       ORDER BY priority_tier ASC, attempts_count ASC, created_at ASC`
+       ORDER BY priority_tier ASC, attempts_count ASC, last_attempt_at ASC, created_at ASC`
     );
     return rawLeads.map(this.hydrateLead);
   }
@@ -239,7 +239,7 @@ export class LeadsRepository {
       `SELECT * FROM leads 
        WHERE list_id = ? 
          AND (last_disposition IS NULL OR last_disposition IN ('pending', 'no_answer', 'voicemail'))
-       ORDER BY priority_tier ASC, attempts_count ASC, created_at ASC`,
+       ORDER BY priority_tier ASC, attempts_count ASC, last_attempt_at ASC, created_at ASC`,
       [listId]
     );
     return rawLeads.map(this.hydrateLead);
