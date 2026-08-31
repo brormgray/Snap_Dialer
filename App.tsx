@@ -37,13 +37,24 @@ export default function App() {
   useEffect(() => {
     getDatabase().catch((e) => console.warn('Database initialization note:', e));
 
-    // Register PWA Service Worker on Web for 100% Offline Resilience
+    // Register PWA Service Worker on Web for 100% Offline Resilience & Auto-Updates
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker
           .register('/sw.js')
           .then((reg) => {
             console.log('SnapDialer PWA Service Worker registered:', reg.scope);
+            // Detect background updates
+            reg.onupdatefound = () => {
+              const installingWorker = reg.installing;
+              if (installingWorker) {
+                installingWorker.onstatechange = () => {
+                  if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    console.log('New SnapDialer version downloaded and cached over-the-air.');
+                  }
+                };
+              }
+            };
           })
           .catch((err) => {
             console.log('PWA Service Worker registration note:', err);

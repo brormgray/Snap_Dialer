@@ -31,8 +31,7 @@ export class AiSmsService {
         .slice(0, 3)
         .map(
           (h) =>
-            `- Outreach on ${new Date(h.timestamp).toLocaleDateString()}: "${h.disposition}"${
-              h.note ? ` (Note: ${h.note})` : ''
+            `- Outreach on ${new Date(h.timestamp).toLocaleDateString()}: "${h.disposition}"${h.note ? ` (Note: ${h.note})` : ''
             }`
         )
         .join('\n');
@@ -66,7 +65,7 @@ ${toneFocus ? `- Tone / Focus Preference: ${toneFocus.replace('_', ' ')}` : ''}
 WRITING OBJECTIVES & GUIDELINES:
 1. Warm, Friendly & Professional: Write as an approachable local retirement specialist visiting their campus.
 2. Address Their Handwritten Notes: If the teacher wrote a specific question or note on their card ("${handwrittenQuestion}"), ALWAYS acknowledge it directly (e.g., "I saw your note asking about..." or "Regarding your question on...").
-3. Clear Goal: Invite them for a relaxed, 15-20 minute sit-down in their classroom during their planning period (${lead.planning_period || 'planning period'}) or preferred time (${preferredTimes || 'this week'}) to walk through their personalized FRS numbers.
+3. Clear Goal: Invite them for a relaxed, 30-45 minute sit-down in their classroom during their planning period (${lead.planning_period || 'planning period'}) or preferred time (${preferredTimes || 'this week'}) to walk through their personalized FRS numbers.
 4. Seamlessly incorporate relevant details: Mention their years in FRS (${lead.years_in_frs || 'service'}), DROP calculation, 5% bonus, or 403(b) clarity naturally without sounding like a robotic form letter.
 5. NEVER Cut Off / Complete Thought: The message MUST be complete, grammatically sound, and end with an easy-to-answer closing question.
 6. Length: Concise mobile length (around 2 to 4 sentences).

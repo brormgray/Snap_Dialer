@@ -1,5 +1,7 @@
 const { Agent, setGlobalDispatcher } = require('undici');
 const dns = require('dns');
+const fs = require('fs');
+const path = require('path');
 
 // Undici dispatcher for fetch
 const agent = new Agent({
@@ -31,18 +33,46 @@ dns.lookup = function(hostname, options, callback) {
   return origLookup(hostname, options, callback);
 };
 
-// Ensure sw.js is copied into ./dist
-const fs = require('fs');
-const path = require('path');
+// Helper: Recursively find all files in directory
+function getAllFiles(dirPath, arrayOfFiles = []) {
+  const files = fs.readdirSync(dirPath);
+  files.forEach((file) => {
+    const fullPath = path.join(dirPath, file);
+    if (fs.statSync(fullPath).isDirectory()) {
+      arrayOfFiles = getAllFiles(fullPath, arrayOfFiles);
+    } else {
+      arrayOfFiles.push(fullPath);
+    }
+  });
+  return arrayOfFiles;
+}
+
+// Generate Offline-First Service Worker Manifest from compiled ./dist
 try {
+  const distDir = path.join(__dirname, 'dist');
   const swSrc = path.join(__dirname, 'web', 'sw.js');
-  const swDest = path.join(__dirname, 'dist', 'sw.js');
-  if (fs.existsSync(swSrc) && fs.existsSync(path.join(__dirname, 'dist'))) {
-    fs.copyFileSync(swSrc, swDest);
-    console.log('Copied web/sw.js to dist/sw.js for PWA offline caching.');
+  const swDest = path.join(distDir, 'sw.js');
+
+  if (fs.existsSync(distDir) && fs.existsSync(swSrc)) {
+    const allFiles = getAllFiles(distDir);
+    const relativeUrls = allFiles
+      .map((f) => '/' + path.relative(distDir, f).replace(/\\/g, '/'))
+      .filter((url) => !url.endsWith('/sw.js') && !url.endsWith('/CNAME'));
+
+    if (!relativeUrls.includes('/')) {
+      relativeUrls.unshift('/');
+    }
+
+    const cacheVersion = `snapdialer-pwa-v1.0.1-${Date.now()}`;
+    let swContent = fs.readFileSync(swSrc, 'utf8');
+    swContent = swContent.replace(/const CACHE_NAME = ['"][^'"]+['"];/, `const CACHE_NAME = '${cacheVersion}';`);
+    swContent = swContent.replace(/const ASSETS_TO_CACHE = \[[^\]]*\];/s, `const ASSETS_TO_CACHE = ${JSON.stringify(relativeUrls, null, 2)};`);
+
+    fs.writeFileSync(swDest, swContent, 'utf8');
+    console.log(`[PWA Offline Engine] Generated dist/sw.js with ${relativeUrls.length} pre-cached assets (Cache: ${cacheVersion})`);
   }
 } catch (e) {
-  console.warn('Service worker copy note:', e);
+  console.warn('Service worker manifest generator note:', e);
 }
 
 const surge = require('C:/Users/brorm/AppData/Local/npm-cache/_npx/23158936acd5c32d/node_modules/surge')({
