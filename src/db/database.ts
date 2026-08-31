@@ -56,6 +56,24 @@ class WebDatabase implements IDatabase {
           console.warn('Dexie secondary init note:', dexErr);
         }
       }
+
+      // 3. Disaster Recovery: If local storage is completely blank, try pulling from Supabase Cloud
+      if (this.leads.length === 0) {
+        try {
+          const { SupabaseSyncService } = await import('../services/supabaseSyncService');
+          const recovery = await SupabaseSyncService.pullCloudToLocal();
+          if (recovery.success && recovery.restoredLeads && recovery.restoredLeads > 0) {
+            const recoveredState = await IndexedDbStorage.loadState();
+            this.lists = recoveredState.lists || [];
+            this.leads = recoveredState.leads || [];
+            this.call_logs = recoveredState.call_logs || [];
+            this.cadence_rules = recoveredState.cadence_rules || [];
+            this.sms_templates = recoveredState.sms_templates || [];
+          }
+        } catch (cloudErr) {
+          // Non-fatal
+        }
+      }
       this.isInitialized = true;
     } catch (e) {
       console.warn('WebDatabase init fallback:', e);
@@ -95,6 +113,14 @@ class WebDatabase implements IDatabase {
       if (this.settings.length > 0) dexieDb.settings.bulkPut(this.settings).catch(() => {});
       if (this.sms_templates.length > 0) dexieDb.sms_templates.bulkPut(this.sms_templates).catch(() => {});
       if (this.cadence_rules.length > 0) dexieDb.cadence_rules.bulkPut(this.cadence_rules).catch(() => {});
+    } catch (e) {
+      // Non-fatal
+    }
+
+    // Silent background push to Supabase Cloud if configured
+    try {
+      const { SupabaseSyncService } = await import('../services/supabaseSyncService');
+      SupabaseSyncService.triggerAutoSync();
     } catch (e) {
       // Non-fatal
     }

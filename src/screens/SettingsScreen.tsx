@@ -12,6 +12,7 @@ import {
   Alert,
   Modal,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import {
   ArrowLeft,
@@ -29,12 +30,17 @@ import {
   X,
   ShieldCheck,
   FileSpreadsheet,
+  RefreshCw,
+  Server,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react-native';
 import { SettingsRepository } from '../db/settingsRepository';
 import { LeadsRepository } from '../db/leadsRepository';
 import { BackupService, RestoreResult } from '../services/backupService';
 import { CsvService } from '../services/csvService';
 import { HapticsService } from '../services/hapticsService';
+import { SupabaseSyncService, SUPABASE_SQL_SETUP } from '../services/supabaseSyncService';
 import { Colors } from '../theme/colors';
 
 export default function SettingsScreen({ navigation }: any) {
@@ -44,6 +50,16 @@ export default function SettingsScreen({ navigation }: any) {
   const [autoAdvanceSeconds, setAutoAdvanceSeconds] = useState<string>('3');
   const [leadCount, setLeadCount] = useState<number>(0);
   const [logCount, setLogCount] = useState<number>(0);
+
+  // Supabase Cloud Sync State
+  const [supabaseUrl, setSupabaseUrl] = useState<string>('');
+  const [supabaseAnonKey, setSupabaseAnonKey] = useState<string>('');
+  const [isTestingConnection, setIsTestingConnection] = useState<boolean>(false);
+  const [connectionStatus, setConnectionStatus] = useState<{ connected: boolean; message: string } | null>(null);
+  const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
+  const [isPullingCloud, setIsPullingCloud] = useState<boolean>(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  const [sqlCopied, setSqlCopied] = useState<boolean>(false);
 
   // Status Banners
   const [savedBanner, setSavedBanner] = useState<string | null>(null);
@@ -70,6 +86,18 @@ export default function SettingsScreen({ navigation }: any) {
     setUserName(s.user_name || 'Alex');
     setAutoAdvanceEnabled(s.auto_advance_enabled);
     setAutoAdvanceSeconds(String(s.auto_advance_seconds || 3));
+
+    // Load Supabase credentials from local storage
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const savedUrl = localStorage.getItem('snap_supabase_url') || '';
+      const savedKey = localStorage.getItem('snap_supabase_anon_key') || '';
+      setSupabaseUrl(savedUrl);
+      setSupabaseAnonKey(savedKey);
+      setLastSyncTime(SupabaseSyncService.getLastSyncTime());
+      if (savedUrl && savedKey) {
+        setConnectionStatus({ connected: true, message: '✓ Supabase Cloud credentials active.' });
+      }
+    }
 
     try {
       const db = await import('../db/database').then((m) => m.getDatabase());
@@ -262,6 +290,80 @@ export default function SettingsScreen({ navigation }: any) {
     }
   };
 
+  // Supabase Cloud Actions
+  const handleTestSupabaseConnection = async () => {
+    if (!supabaseUrl.trim() || !supabaseAnonKey.trim()) {
+      Alert.alert('Missing Credentials', 'Please enter both your Supabase Project URL and Anon API Key.');
+      return;
+    }
+    setIsTestingConnection(true);
+    await HapticsService.medium();
+    const res = await SupabaseSyncService.testConnection(supabaseUrl, supabaseAnonKey);
+    setIsTestingConnection(false);
+    setConnectionStatus({ connected: res.success, message: res.message });
+    if (res.success) {
+      await HapticsService.success();
+      showBanner('✓ Connected to Supabase Cloud.');
+      Alert.alert('Connection Successful', 'SnapDialer is now connected to your private Supabase cloud backend.');
+    } else {
+      Alert.alert('Connection Notice', res.message);
+    }
+  };
+
+  const handlePushToSupabase = async () => {
+    if (!supabaseUrl.trim() || !supabaseAnonKey.trim()) {
+      Alert.alert('Configure Supabase', 'Please connect your Supabase credentials first.');
+      return;
+    }
+    setIsSyncingCloud(true);
+    await HapticsService.medium();
+    const res = await SupabaseSyncService.pushLocalToCloud();
+    setIsSyncingCloud(false);
+    if (res.success) {
+      await HapticsService.success();
+      setLastSyncTime(new Date().toISOString());
+      showBanner(`✓ Synced ${res.syncedLeads} educators to Supabase Cloud.`);
+      Alert.alert('Cloud Sync Complete', `Successfully uploaded ${res.syncedLeads} educators, ${res.syncedLists} campaign lists, and ${res.syncedLogs} call records to your secure Supabase database.`);
+    } else {
+      Alert.alert('Sync Failed', res.error || 'Could not sync data to Supabase.');
+    }
+  };
+
+  const handlePullFromSupabase = async () => {
+    if (!supabaseUrl.trim() || !supabaseAnonKey.trim()) {
+      Alert.alert('Configure Supabase', 'Please connect your Supabase credentials first.');
+      return;
+    }
+    setIsPullingCloud(true);
+    await HapticsService.medium();
+    const res = await SupabaseSyncService.pullCloudToLocal();
+    setIsPullingCloud(false);
+    if (res.success) {
+      await HapticsService.success();
+      setLastSyncTime(new Date().toISOString());
+      await loadSettings();
+      showBanner(`✓ Restored ${res.restoredLeads} educators from Supabase Cloud.`);
+      Alert.alert('Disaster Recovery Complete', `Successfully restored ${res.restoredLeads} educators, ${res.restoredLists} campaign lists, and ${res.restoredLogs} call records from your Supabase cloud database onto this device.`);
+    } else {
+      Alert.alert('Download Failed', res.error || 'Could not download data from Supabase.');
+    }
+  };
+
+  const handleCopySqlScript = async () => {
+    await HapticsService.tick();
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(SUPABASE_SQL_SETUP);
+        setSqlCopied(true);
+        setTimeout(() => setSqlCopied(false), 4000);
+        showBanner('✓ SQL setup script copied to clipboard.');
+        Alert.alert('Copied to Clipboard', 'The SQL setup script has been copied. Go to Supabase SQL Editor, paste, and click RUN.');
+      } catch {
+        Alert.alert('Notice', 'Please copy the script manually.');
+      }
+    }
+  };
+
   // 6. Wipe All Leads
   const handleClearAllData = async () => {
     const doClear = async () => {
@@ -431,8 +533,117 @@ export default function SettingsScreen({ navigation }: any) {
           </View>
         </View>
 
+        {/* Supabase Cloud Sync & Auto-Backup */}
+        <Text style={[styles.sectionHeader, { marginTop: 24 }]}>SUPABASE CLOUD SYNC & DISASTER RECOVERY</Text>
+        <View style={styles.card}>
+          <View style={styles.cardHeaderRow}>
+            <Server size={18} color={Colors.heavenlyGold} />
+            <Text style={styles.cardTitle}>Private Cloud Database (Supabase)</Text>
+          </View>
+          <Text style={styles.cardDesc}>
+            Connect your private Supabase PostgreSQL database. Your device remains the lightning-fast primary database (0ms offline speed), while updates automatically sync to the cloud for indestructible disaster recovery.
+          </Text>
+
+          {/* Safe Isolation Notice */}
+          <View style={styles.isolationNoticeBox}>
+            <ShieldCheck size={16} color="#34D399" />
+            <Text style={styles.isolationNoticeText}>
+              <Text style={{ fontWeight: '800', color: '#34D399' }}>100% Safe Isolation: </Text>
+              SnapDialer strictly uses dedicated tables prefixed with <Text style={{ color: Colors.heavenlyGold, fontWeight: '700' }}>snap_</Text> (e.g. <Text style={{ fontStyle: 'italic' }}>snap_leads, snap_lists</Text>). It will never touch, modify, or read any other app data in your Supabase project.
+            </Text>
+          </View>
+
+          {/* Credentials Inputs */}
+          <Text style={[styles.inputLabel, { marginTop: 14 }]}>Supabase Project URL</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="https://yourprojectid.supabase.co"
+            placeholderTextColor="#64748B"
+            value={supabaseUrl}
+            onChangeText={setSupabaseUrl}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          <Text style={[styles.inputLabel, { marginTop: 10 }]}>Supabase Anon / Public API Key</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            placeholderTextColor="#64748B"
+            value={supabaseAnonKey}
+            onChangeText={setSupabaseAnonKey}
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry
+          />
+
+          {/* Connection Status Badge */}
+          {connectionStatus && (
+            <View style={[styles.cloudStatusBanner, connectionStatus.connected ? styles.cloudStatusSuccess : styles.cloudStatusError]}>
+              {connectionStatus.connected ? <CheckCircle2 size={16} color="#34D399" /> : <AlertCircle size={16} color="#EF4444" />}
+              <Text style={[styles.cloudStatusText, { color: connectionStatus.connected ? '#D1FAE5' : '#FEE2E2' }]}>
+                {connectionStatus.message}
+              </Text>
+            </View>
+          )}
+
+          {lastSyncTime && (
+            <Text style={styles.lastSyncText}>
+              ☁️ Last Cloud Sync: {new Date(lastSyncTime).toLocaleTimeString()} ({new Date(lastSyncTime).toLocaleDateString()})
+            </Text>
+          )}
+
+          {/* Action Buttons */}
+          <View style={[styles.buttonGroup, { marginTop: 14 }]}>
+            <TouchableOpacity
+              style={[styles.actionButtonGold, isTestingConnection && { opacity: 0.7 }]}
+              onPress={handleTestSupabaseConnection}
+              disabled={isTestingConnection}
+            >
+              {isTestingConnection ? <ActivityIndicator size="small" color={Colors.sacredGreenDeep} /> : <Check size={17} color={Colors.sacredGreenDeep} />}
+              <Text style={[styles.actionButtonText, { color: Colors.sacredGreenDeep, fontWeight: '800' }]}>
+                {isTestingConnection ? 'Testing Connection...' : 'Test & Save Connection'}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+              <TouchableOpacity
+                style={[styles.actionButtonPrimary, { flex: 1 }, isSyncingCloud && { opacity: 0.7 }]}
+                onPress={handlePushToSupabase}
+                disabled={isSyncingCloud}
+              >
+                {isSyncingCloud ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Cloud size={16} color="#FFFFFF" />}
+                <Text style={styles.actionButtonText}>
+                  {isSyncingCloud ? 'Syncing...' : 'Sync to Cloud'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionButtonSecondary, { flex: 1 }, isPullingCloud && { opacity: 0.7 }]}
+                onPress={handlePullFromSupabase}
+                disabled={isPullingCloud}
+              >
+                {isPullingCloud ? <ActivityIndicator size="small" color="#38BDF8" /> : <Download size={16} color="#38BDF8" />}
+                <Text style={[styles.actionButtonText, { color: '#38BDF8' }]}>
+                  {isPullingCloud ? 'Downloading...' : 'Restore from Cloud'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.actionButtonDark, { marginTop: 8 }]}
+              onPress={handleCopySqlScript}
+            >
+              {sqlCopied ? <Check size={16} color="#34D399" /> : <Copy size={16} color={Colors.heavenlyGold} />}
+              <Text style={[styles.actionButtonText, { color: sqlCopied ? '#34D399' : Colors.heavenlyGold }]}>
+                {sqlCopied ? '✓ SQL Setup Copied!' : '📋 Copy Supabase SQL Setup Script'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Cloud & Drive Backup & Recovery */}
-        <Text style={[styles.sectionHeader, { marginTop: 24 }]}>DATABASE BACKUP & RECOVERY (CLOUD / FILES)</Text>
+        <Text style={[styles.sectionHeader, { marginTop: 24 }]}>DATABASE BACKUP & RECOVERY (FILES)</Text>
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
             <Cloud size={18} color="#38BDF8" />
@@ -712,6 +923,14 @@ const styles = StyleSheet.create({
     color: Colors.heavenlyGold,
     fontWeight: '600',
   },
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.heavenlyGold,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
   input: {
     backgroundColor: Colors.bgInput,
     color: Colors.livingWhite,
@@ -892,5 +1111,70 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: Colors.heavenlyGold,
+  },
+  isolationNoticeBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: 'rgba(52, 211, 153, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.25)',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 10,
+  },
+  isolationNoticeText: {
+    color: '#D1FAE5',
+    fontSize: 11,
+    lineHeight: 16,
+    flex: 1,
+  },
+  cloudStatusBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
+    borderRadius: 8,
+    marginTop: 10,
+    borderWidth: 1,
+  },
+  cloudStatusSuccess: {
+    backgroundColor: 'rgba(52, 211, 153, 0.12)',
+    borderColor: 'rgba(52, 211, 153, 0.3)',
+  },
+  cloudStatusError: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  cloudStatusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+  },
+  lastSyncText: {
+    fontSize: 11,
+    color: Colors.heavenlyGold,
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+  actionButtonGold: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.heavenlyGold,
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 8,
+  },
+  actionButtonDark: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.bgDark,
+    borderWidth: 1,
+    borderColor: Colors.borderGold,
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 8,
   },
 });
