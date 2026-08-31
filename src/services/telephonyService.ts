@@ -21,21 +21,10 @@ export class TelephonyService {
 
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       try {
-        const link = document.createElement('a');
-        link.href = url;
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-        setTimeout(() => {
-          if (document.body.contains(link)) {
-            document.body.removeChild(link);
-          }
-        }, 100);
-        return true;
-      } catch (e) {
-        console.warn('Web tel navigation error, fallback to location.href:', e);
         window.location.href = url;
         return true;
+      } catch (e) {
+        console.warn('Web tel navigation error:', e);
       }
     }
 
@@ -61,10 +50,12 @@ export class TelephonyService {
     const cleanNumber = this.sanitizePhoneNumber(phone);
     if (!cleanNumber) return false;
 
-    // Detect iOS on native and on Web (Safari / PWA)
+    // Detect iOS on native and on Web (Safari / PWA / iPad / iPhone)
     const isIOS =
       Platform.OS === 'ios' ||
-      (typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent));
+      (typeof navigator !== 'undefined' &&
+        (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)));
 
     const separator = isIOS ? '&' : '?';
     const encodedBody = encodeURIComponent(messageBody);
@@ -72,21 +63,10 @@ export class TelephonyService {
 
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       try {
-        const link = document.createElement('a');
-        link.href = url;
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-        setTimeout(() => {
-          if (document.body.contains(link)) {
-            document.body.removeChild(link);
-          }
-        }, 100);
-        return true;
-      } catch (e) {
-        console.warn('Web SMS navigation error, fallback to location.href:', e);
         window.location.href = url;
         return true;
+      } catch (e) {
+        console.warn('Web SMS location.href error:', e);
       }
     }
 
