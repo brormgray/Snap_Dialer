@@ -125,17 +125,39 @@ export default function LeadDetailScreen({ route, navigation }: any) {
   const handleSaveEdit = async () => {
     if (!lead) return;
     await HapticsService.success();
-    const db = await import('../db/database').then((m) => m.getDatabase());
-    await db.runAsync(
-      `UPDATE leads 
-       SET name = ?, phone = ?, school = ?, email = ?, planning_period = ?, years_in_frs = ?, notes = ?, priority_tier = ?, list_id = ?, updated_at = ? 
-       WHERE id = ?`,
-      [name, phone, school, email.trim() || null, planningPeriod, yearsInFrs, notes, priorityTier, listIdVal, new Date().toISOString(), lead.id]
+    await LeadsRepository.updateLeadDetails({
+      id: lead.id,
+      name,
+      phone,
+      school,
+      email,
+      planning_period: planningPeriod,
+      years_in_frs: yearsInFrs,
+      notes,
+      priority_tier: priorityTier,
+      list_id: listIdVal,
+    });
+
+    setLead((prev) =>
+      prev
+        ? {
+            ...prev,
+            name,
+            phone,
+            school,
+            email: email.trim() || null,
+            planning_period: planningPeriod,
+            years_in_frs: yearsInFrs,
+            notes,
+            priority_tier: priorityTier,
+            list_id: listIdVal,
+          }
+        : null
     );
 
     setIsEditing(false);
-    loadLeadData();
-    Alert.alert('Saved', 'Educator details updated.');
+    await loadLeadData();
+    showToast('✓ Educator details saved successfully.');
   };
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);

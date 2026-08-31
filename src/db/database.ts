@@ -444,7 +444,16 @@ class WebDatabase implements IDatabase {
           lead.name = params[0];
           lead.phone = params[1];
           lead.school = params[2];
-          if (s.includes('email = ?')) {
+          if (s.includes('room_number = ?')) {
+            lead.email = params[3] || null;
+            lead.room_number = params[4] || null;
+            lead.planning_period = params[5] || null;
+            lead.years_in_frs = params[6] || null;
+            if (params[7] !== undefined && params[7] !== null) lead.notes = params[7];
+            if (params[8] !== undefined) lead.priority_tier = Number(params[8]);
+            if (params[9]) lead.list_id = params[9];
+            lead.updated_at = params[10] || new Date().toISOString();
+          } else if (s.includes('email = ?')) {
             lead.email = params[3] || null;
             lead.planning_period = params[4] || null;
             lead.years_in_frs = params[5] || null;

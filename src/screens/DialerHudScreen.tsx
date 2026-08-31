@@ -112,6 +112,22 @@ export default function DialerHudScreen({ route, navigation }: any) {
   // Original Card Image / Proof of Contact Modal
   const [imageModalVisible, setImageModalVisible] = useState<boolean>(false);
 
+  // Edit Lead Modal State
+  const [editLeadModalVisible, setEditLeadModalVisible] = useState<boolean>(false);
+  const [editName, setEditName] = useState<string>('');
+  const [editPhone, setEditPhone] = useState<string>('');
+  const [editSchool, setEditSchool] = useState<string>('');
+  const [editEmail, setEditEmail] = useState<string>('');
+  const [editRoomNumber, setEditRoomNumber] = useState<string>('');
+  const [editPlanningPeriod, setEditPlanningPeriod] = useState<string>('');
+  const [editYearsInFrs, setEditYearsInFrs] = useState<string>('');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
   // Session stats
   const [sessionDials, setSessionDials] = useState<number>(0);
   const [sessionAppointments, setSessionAppointments] = useState<number>(0);
@@ -153,11 +169,92 @@ export default function DialerHudScreen({ route, navigation }: any) {
 
   useEffect(() => {
     loadQueue();
+    const unsubscribe = navigation.addListener('focus', async () => {
+      // Re-hydrate queue in case a lead was edited on LeadDetailScreen
+      if (queue.length > 0 && queue[currentIndex]) {
+        const fresh = await LeadsRepository.getLeadById(queue[currentIndex].id);
+        if (fresh) {
+          setQueue((prev) => {
+            const next = [...prev];
+            if (next[currentIndex]) next[currentIndex] = { ...fresh };
+            return next;
+          });
+        }
+      }
+    });
     return () => {
+      unsubscribe();
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       if (callTimerRef.current) clearInterval(callTimerRef.current);
     };
-  }, [listId, schoolName]);
+  }, [listId, schoolName, currentIndex]);
+
+  const openEditLeadModal = () => {
+    if (!currentLead) return;
+    HapticsService.tick();
+    setEditName(currentLead.name || '');
+    setEditPhone(currentLead.phone || '');
+    setEditSchool(currentLead.school || '');
+    setEditEmail(currentLead.email || '');
+    setEditRoomNumber(currentLead.room_number || '');
+    setEditPlanningPeriod(currentLead.planning_period || '');
+    setEditYearsInFrs(currentLead.years_in_frs || '');
+    setEditLeadModalVisible(true);
+  };
+
+  const handleSaveEditedLead = async () => {
+    if (!currentLead) return;
+    await HapticsService.success();
+    const updatedName = editName.trim();
+    const updatedPhone = editPhone.trim();
+    const updatedSchool = editSchool.trim() || 'VOL';
+    const updatedEmail = editEmail.trim() || null;
+    const updatedRoom = editRoomNumber.trim() || null;
+    const updatedPlanning = editPlanningPeriod.trim() || null;
+    const updatedYears = editYearsInFrs.trim() || null;
+
+    await LeadsRepository.updateLeadDetails({
+      id: currentLead.id,
+      name: updatedName,
+      phone: updatedPhone,
+      school: updatedSchool,
+      email: updatedEmail,
+      room_number: updatedRoom,
+      planning_period: updatedPlanning,
+      years_in_frs: updatedYears,
+      notes: currentLead.notes,
+      priority_tier: currentLead.priority_tier,
+      list_id: currentLead.list_id,
+    });
+
+    currentLead.name = updatedName;
+    currentLead.phone = updatedPhone;
+    currentLead.school = updatedSchool;
+    currentLead.email = updatedEmail || undefined;
+    currentLead.room_number = updatedRoom || undefined;
+    currentLead.planning_period = updatedPlanning || undefined;
+    currentLead.years_in_frs = updatedYears || undefined;
+
+    setQueue((prev) => {
+      const next = [...prev];
+      if (next[currentIndex]) {
+        next[currentIndex] = {
+          ...next[currentIndex],
+          name: updatedName,
+          phone: updatedPhone,
+          school: updatedSchool,
+          email: updatedEmail || undefined,
+          room_number: updatedRoom || undefined,
+          planning_period: updatedPlanning || undefined,
+          years_in_frs: updatedYears || undefined,
+        };
+      }
+      return next;
+    });
+
+    setEditLeadModalVisible(false);
+    showToast('✓ Educator card details saved & updated!');
+  };
 
   const currentLead: Lead | undefined = queue[currentIndex];
   const timeInfo: ProspectTimeInfo | null = currentLead
@@ -758,6 +855,13 @@ export default function DialerHudScreen({ route, navigation }: any) {
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <TouchableOpacity
+            onPress={openEditLeadModal}
+            style={styles.hudEditHeaderBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Edit3 size={17} color={Colors.heavenlyGold} />
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => {
               HapticsService.tick();
               setObjectionsModalVisible(true);
@@ -776,6 +880,13 @@ export default function DialerHudScreen({ route, navigation }: any) {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Toast Notification Banner */}
+      {toastMessage && (
+        <View style={styles.toastBanner}>
+          <Text style={styles.toastBannerText}>{toastMessage}</Text>
+        </View>
+      )}
 
       {/* Auto Advance Countdown Banner */}
       {autoAdvanceCountdown !== null && (
@@ -830,8 +941,24 @@ export default function DialerHudScreen({ route, navigation }: any) {
               <GraduationCap size={24} color={Colors.heavenlyGold} />
             </View>
             <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.contactName}>{currentLead.name}</Text>
-              <Text style={styles.contactPhone}>{currentLead.phone}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={styles.contactName}>{currentLead.name}</Text>
+                <TouchableOpacity
+                  onPress={openEditLeadModal}
+                  style={styles.hudEditLeadBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Edit3 size={13} color={Colors.heavenlyGold} />
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity
+                onPress={openEditLeadModal}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.contactPhone}>{currentLead.phone}</Text>
+                <Text style={{ fontSize: 11, color: Colors.textMuted }}>✏️</Text>
+              </TouchableOpacity>
               {currentLead.email ? (
                 <Text style={styles.contactEmail}>{currentLead.email}</Text>
               ) : null}
@@ -1534,6 +1661,110 @@ export default function DialerHudScreen({ route, navigation }: any) {
                   </TouchableOpacity>
                 </>
               )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Educator Details Modal */}
+      <Modal visible={editLeadModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '90%', width: '92%' }]}>
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                <Edit3 size={18} color={Colors.heavenlyGold} />
+                <Text style={styles.modalTitle} numberOfLines={1}>Edit Educator Profile</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setEditLeadModalVisible(false)}
+              >
+                <X size={18} color={Colors.livingWhite} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 380, marginVertical: 8 }} keyboardShouldPersistTaps="handled">
+              <Text style={styles.editFieldLabel}>Educator Name</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editName}
+                onChangeText={setEditName}
+                placeholder="Full Name"
+                placeholderTextColor={Colors.textMuted}
+              />
+
+              <Text style={[styles.editFieldLabel, { marginTop: 10 }]}>Phone Number (Tap to correct OCR)</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editPhone}
+                onChangeText={setEditPhone}
+                keyboardType="phone-pad"
+                placeholder="(386) 555-1234"
+                placeholderTextColor={Colors.textMuted}
+              />
+
+              <Text style={[styles.editFieldLabel, { marginTop: 10 }]}>School / District</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editSchool}
+                onChangeText={setEditSchool}
+                placeholder="e.g. Deltona High"
+                placeholderTextColor={Colors.textMuted}
+              />
+
+              <Text style={[styles.editFieldLabel, { marginTop: 10 }]}>Room Number</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editRoomNumber}
+                onChangeText={setEditRoomNumber}
+                placeholder="e.g. 4-102"
+                placeholderTextColor={Colors.textMuted}
+              />
+
+              <Text style={[styles.editFieldLabel, { marginTop: 10 }]}>Planning Period</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editPlanningPeriod}
+                onChangeText={setEditPlanningPeriod}
+                placeholder="e.g. 3rd Period (10:15 - 11:05 AM)"
+                placeholderTextColor={Colors.textMuted}
+              />
+
+              <Text style={[styles.editFieldLabel, { marginTop: 10 }]}>Email Address</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editEmail}
+                onChangeText={setEditEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                placeholder="e.g. teacher@volusia.k12.fl.us"
+                placeholderTextColor={Colors.textMuted}
+              />
+
+              <Text style={[styles.editFieldLabel, { marginTop: 10 }]}>Years in FRS</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editYearsInFrs}
+                onChangeText={setEditYearsInFrs}
+                placeholder="e.g. 12"
+                placeholderTextColor={Colors.textMuted}
+              />
+            </ScrollView>
+
+            <View style={[styles.modalButtons, { marginTop: 8 }]}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setEditLeadModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSaveButton, (!editName.trim() || !editPhone.trim()) && { opacity: 0.5 }]}
+                onPress={handleSaveEditedLead}
+                disabled={!editName.trim() || !editPhone.trim()}
+              >
+                <Text style={styles.modalSaveText}>Save Changes</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -2417,5 +2648,49 @@ const styles = StyleSheet.create<any>({
     color: Colors.textSecondary,
     fontSize: 11,
     fontWeight: '600',
+  },
+  hudEditHeaderBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(212, 175, 55, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.3)',
+  },
+  hudEditLeadBtn: {
+    padding: 4,
+    borderRadius: 6,
+    backgroundColor: 'rgba(212, 175, 55, 0.15)',
+  },
+  toastBanner: {
+    backgroundColor: '#065F46',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#10B981',
+  },
+  toastBannerText: {
+    color: '#D1FAE5',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  editFieldLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.heavenlyGold,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  editInput: {
+    backgroundColor: Colors.bgCardElevated,
+    borderWidth: 1,
+    borderColor: Colors.borderGold,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: Colors.livingWhite,
   },
 });

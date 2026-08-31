@@ -393,6 +393,42 @@ export class LeadsRepository {
     );
   }
 
+  static async updateLeadDetails(leadData: {
+    id: string;
+    name: string;
+    phone: string;
+    school?: string | null;
+    email?: string | null;
+    room_number?: string | null;
+    planning_period?: string | null;
+    years_in_frs?: string | null;
+    notes?: string | null;
+    priority_tier?: number;
+    list_id?: string;
+  }): Promise<void> {
+    const db = await getDatabase();
+    const now = new Date().toISOString();
+    await db.runAsync(
+      `UPDATE leads 
+       SET name = ?, phone = ?, school = ?, email = ?, room_number = ?, planning_period = ?, years_in_frs = ?, notes = ?, priority_tier = ?, list_id = ?, updated_at = ? 
+       WHERE id = ?`,
+      [
+        leadData.name.trim(),
+        leadData.phone.trim(),
+        leadData.school?.trim() || 'VOL',
+        leadData.email?.trim() || null,
+        leadData.room_number?.trim() || null,
+        leadData.planning_period?.trim() || null,
+        leadData.years_in_frs?.trim() || null,
+        leadData.notes || null,
+        leadData.priority_tier !== undefined ? Number(leadData.priority_tier) : 1,
+        leadData.list_id || 'master_queue',
+        now,
+        leadData.id,
+      ]
+    );
+  }
+
   static async saveLeadCardPhoto(leadId: string, photoUri: string): Promise<void> {
     try {
       const { dexieDb } = await import('./dexieDb');
