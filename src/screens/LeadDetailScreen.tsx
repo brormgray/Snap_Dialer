@@ -79,6 +79,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
   const [phone, setPhone] = useState<string>('');
   const [school, setSchool] = useState<string>('');
   const [email, setEmail] = useState<string>('');
+  const [roomNumber, setRoomNumber] = useState<string>('');
   const [planningPeriod, setPlanningPeriod] = useState<string>('');
   const [yearsInFrs, setYearsInFrs] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
@@ -101,6 +102,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       setPhone(l.phone);
       setSchool(l.school || '');
       setEmail(l.email || '');
+      setRoomNumber(l.room_number || '');
       setPlanningPeriod(l.planning_period || '');
       setYearsInFrs(l.years_in_frs || '');
       setNotes(l.notes || '');
@@ -131,6 +133,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       phone,
       school,
       email,
+      room_number: roomNumber,
       planning_period: planningPeriod,
       years_in_frs: yearsInFrs,
       notes,
@@ -146,6 +149,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
             phone,
             school,
             email: email.trim() || null,
+            room_number: roomNumber.trim() || null,
             planning_period: planningPeriod,
             years_in_frs: yearsInFrs,
             notes,
@@ -767,10 +771,13 @@ export default function LeadDetailScreen({ route, navigation }: any) {
               />
 
               <Text style={[styles.fieldLabel, { marginTop: 10 }]}>School / District</Text>
-              <TextInput style={styles.input} value={school} onChangeText={setSchool} />
+              <TextInput style={styles.input} value={school} onChangeText={setSchool} placeholder="e.g. Deltona High" placeholderTextColor={Colors.textMuted} />
 
-              <Text style={[styles.fieldLabel, { marginTop: 10 }]}>Planning Period / Room</Text>
-              <TextInput style={styles.input} value={planningPeriod} onChangeText={setPlanningPeriod} />
+              <Text style={[styles.fieldLabel, { marginTop: 10 }]}>Room Number</Text>
+              <TextInput style={styles.input} value={roomNumber} onChangeText={setRoomNumber} placeholder="e.g. 4-102" placeholderTextColor={Colors.textMuted} />
+
+              <Text style={[styles.fieldLabel, { marginTop: 10 }]}>Planning Period</Text>
+              <TextInput style={styles.input} value={planningPeriod} onChangeText={setPlanningPeriod} placeholder="e.g. 3rd Period (10:15 - 11:05 AM)" placeholderTextColor={Colors.textMuted} />
 
               <Text style={[styles.fieldLabel, { marginTop: 10 }]}>Years in FRS</Text>
               <TextInput style={styles.input} value={yearsInFrs} onChangeText={setYearsInFrs} />

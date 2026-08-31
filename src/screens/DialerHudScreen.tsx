@@ -146,6 +146,20 @@ export default function DialerHudScreen({ route, navigation }: any) {
     extrapolate: 'clamp',
   });
 
+  const resumeQueuePosition = (leads: Lead[]): number => {
+    try {
+      const storageKey = `snap_dialer_last_lead_${listId || 'master_queue'}_${schoolName || 'all'}`;
+      const savedLeadId = typeof window !== 'undefined' && window.localStorage ? localStorage.getItem(storageKey) : null;
+      if (savedLeadId && leads.length > 0) {
+        const foundIndex = leads.findIndex((l) => l.id === savedLeadId);
+        if (foundIndex >= 0 && foundIndex < leads.length) {
+          return foundIndex;
+        }
+      }
+    } catch {}
+    return 0;
+  };
+
   const loadQueue = async () => {
     setLoading(true);
     try {
@@ -158,7 +172,8 @@ export default function DialerHudScreen({ route, navigation }: any) {
         ? await LeadsRepository.getDialingQueueForSchool(schoolName, listId)
         : await LeadsRepository.getDialingQueueForList(listId);
       setQueue(leads);
-      setCurrentIndex(0);
+      const targetIndex = resumeQueuePosition(leads);
+      setCurrentIndex(targetIndex);
     } catch (e) {
       console.error(e);
       Alert.alert('Error', 'Failed to load dialing queue.');
@@ -166,6 +181,17 @@ export default function DialerHudScreen({ route, navigation }: any) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (queue.length > 0 && queue[currentIndex]) {
+      try {
+        const storageKey = `snap_dialer_last_lead_${listId || 'master_queue'}_${schoolName || 'all'}`;
+        if (typeof window !== 'undefined' && window.localStorage) {
+          localStorage.setItem(storageKey, queue[currentIndex].id);
+        }
+      } catch {}
+    }
+  }, [currentIndex, queue, listId, schoolName]);
 
   useEffect(() => {
     loadQueue();
@@ -187,7 +213,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       if (callTimerRef.current) clearInterval(callTimerRef.current);
     };
-  }, [listId, schoolName, currentIndex]);
+  }, [listId, schoolName]);
 
   const openEditLeadModal = () => {
     if (!currentLead) return;

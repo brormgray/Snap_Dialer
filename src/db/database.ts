@@ -25,61 +25,52 @@ class WebDatabase implements IDatabase {
   async init(): Promise<void> {
     if (this.isInitialized) return;
     try {
-      await dexieDb.initialize();
-      const [leads, lists, logs, settings, rules, templates] = await Promise.all([
-        dexieDb.leads.toArray(),
-        dexieDb.lists.toArray(),
-        dexieDb.call_logs.toArray(),
-        dexieDb.settings.toArray(),
-        dexieDb.cadence_rules.toArray(),
-        dexieDb.sms_templates.toArray(),
-      ]);
+      // 1. Primary atomic load from IndexedDbStorage
+      const state = await IndexedDbStorage.loadState();
+      this.lists = state.lists || [];
+      this.leads = state.leads || [];
+      this.call_logs = state.call_logs || [];
+      this.cadence_rules = state.cadence_rules || [];
+      this.sms_templates = state.sms_templates || [];
+      this.settings = state.settings || [];
 
-      this.leads = leads;
-      this.lists = lists;
-      this.call_logs = logs;
-      this.settings = settings;
-      this.cadence_rules = rules;
-      this.sms_templates = templates;
+      // 2. Secondary check against Dexie if IndexedDb was completely blank
+      if (this.leads.length === 0) {
+        try {
+          await dexieDb.initialize();
+          const [leads, lists, logs, settings, rules, templates] = await Promise.all([
+            dexieDb.leads.toArray(),
+            dexieDb.lists.toArray(),
+            dexieDb.call_logs.toArray(),
+            dexieDb.settings.toArray(),
+            dexieDb.cadence_rules.toArray(),
+            dexieDb.sms_templates.toArray(),
+          ]);
+          if (leads.length > 0) this.leads = leads;
+          if (lists.length > 0) this.lists = lists;
+          if (logs.length > 0) this.call_logs = logs;
+          if (settings.length > 0) this.settings = settings;
+          if (rules.length > 0) this.cadence_rules = rules;
+          if (templates.length > 0) this.sms_templates = templates;
+        } catch (dexErr) {
+          console.warn('Dexie secondary init note:', dexErr);
+        }
+      }
       this.isInitialized = true;
     } catch (e) {
-      console.warn('WebDatabase Dexie init error, fallback to legacy snapshot:', e);
+      console.warn('WebDatabase init fallback:', e);
       const state = await IndexedDbStorage.loadState();
-      this.lists = state.lists;
-      this.leads = state.leads;
-      this.call_logs = state.call_logs;
-      this.cadence_rules = state.cadence_rules;
-      this.sms_templates = state.sms_templates;
-      this.settings = state.settings;
+      this.lists = state.lists || [];
+      this.leads = state.leads || [];
+      this.call_logs = state.call_logs || [];
+      this.cadence_rules = state.cadence_rules || [];
+      this.sms_templates = state.sms_templates || [];
+      this.settings = state.settings || [];
       this.isInitialized = true;
     }
   }
 
   private async saveToStorage(): Promise<void> {
-    try {
-      await dexieDb.transaction(
-        'rw',
-        [dexieDb.leads, dexieDb.lists, dexieDb.call_logs, dexieDb.settings, dexieDb.sms_templates, dexieDb.cadence_rules],
-        async () => {
-          await dexieDb.leads.clear();
-          await dexieDb.leads.bulkPut(this.leads);
-          await dexieDb.lists.clear();
-          await dexieDb.lists.bulkPut(this.lists);
-          await dexieDb.call_logs.clear();
-          await dexieDb.call_logs.bulkPut(this.call_logs);
-          await dexieDb.settings.clear();
-          await dexieDb.settings.bulkPut(this.settings);
-          await dexieDb.sms_templates.clear();
-          await dexieDb.sms_templates.bulkPut(this.sms_templates);
-          await dexieDb.cadence_rules.clear();
-          await dexieDb.cadence_rules.bulkPut(this.cadence_rules);
-        }
-      );
-    } catch (e) {
-      console.warn('Dexie saveToStorage error:', e);
-    }
-
-    // Keep redundant safety snapshot
     const state: DatabaseState = {
       lists: this.lists,
       leads: this.leads,
@@ -88,7 +79,25 @@ class WebDatabase implements IDatabase {
       sms_templates: this.sms_templates,
       settings: this.settings,
     };
-    IndexedDbStorage.saveState(state).catch(() => {});
+
+    // Await primary atomic persistence to IndexedDB and localStorage mirror
+    try {
+      await IndexedDbStorage.saveState(state);
+    } catch (err) {
+      console.error('IndexedDbStorage saveState error:', err);
+    }
+
+    // Secondary async sync to Dexie table stores (upsert without destructive table wipes)
+    try {
+      if (this.leads.length > 0) dexieDb.leads.bulkPut(this.leads).catch(() => {});
+      if (this.lists.length > 0) dexieDb.lists.bulkPut(this.lists).catch(() => {});
+      if (this.call_logs.length > 0) dexieDb.call_logs.bulkPut(this.call_logs).catch(() => {});
+      if (this.settings.length > 0) dexieDb.settings.bulkPut(this.settings).catch(() => {});
+      if (this.sms_templates.length > 0) dexieDb.sms_templates.bulkPut(this.sms_templates).catch(() => {});
+      if (this.cadence_rules.length > 0) dexieDb.cadence_rules.bulkPut(this.cadence_rules).catch(() => {});
+    } catch (e) {
+      // Non-fatal
+    }
   }
 
   async execAsync(sql: string): Promise<void> {}
