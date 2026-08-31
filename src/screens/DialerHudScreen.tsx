@@ -357,7 +357,35 @@ export default function DialerHudScreen({ route, navigation }: any) {
     if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
     setAutoAdvanceCountdown(null);
 
-    // 1. Build and append timestamped structured note for this outreach attempt
+    // 1. Immediate SMS Dispatch for No Answer / Voicemail (Preserves iOS Safari Gesture Token)
+    let smsDispatched = false;
+    let interpolatedSms = '';
+    if ((disposition === 'no_answer' || disposition === 'voicemail') && currentLead.text_ok !== false) {
+      // Find template synchronously from memory state to avoid async gesture expiration
+      const matchingTemplate =
+        templates.find((t) => t.id === 'tpl_just_called') ||
+        templates[0] || {
+          id: 'tpl_just_called',
+          title: 'No Answer - Just Called Follow-up',
+          body: 'Hi {{name}}, this is {{my_name}} with ValuTeachers! I just tried giving you a quick call regarding your FRS Report Card from {{school}}. Feel free to call me back, or text me a good time during your planning period to connect!',
+        };
+
+      interpolatedSms = TelephonyService.interpolateTemplate(
+        matchingTemplate,
+        currentLead,
+        appSettings?.user_name || 'Alex'
+      );
+
+      setSelectedTemplate(matchingTemplate);
+      setCustomSmsBody(interpolatedSms);
+      setSmsModalVisible(true);
+
+      // Trigger native SMS app IMMEDIATELY without waiting for DB promises
+      TelephonyService.sendSMS(currentLead.phone, interpolatedSms);
+      smsDispatched = true;
+    }
+
+    // 2. Build and append timestamped structured note for this outreach attempt
     const attemptNum = (currentLead.attempts_count || 0) + 1;
     const defaultNote =
       disposition === 'no_answer'
@@ -380,40 +408,28 @@ export default function DialerHudScreen({ route, navigation }: any) {
         }
         return next;
       });
-      await LeadsRepository.updateLeadNotes(currentLead.id, updatedNotes);
     }
 
-    // 2. Evaluate cadence rule for SMS trigger
-    const cadenceResult = await CadenceEngine.evaluateCadence(currentLead, disposition);
+    // 3. Save to Database
+    try {
+      if (noteToRecord) {
+        await LeadsRepository.updateLeadNotes(currentLead.id, updatedNotes || null);
+      }
+      await LeadsRepository.updateLeadDisposition(currentLead.id, disposition, updatedNotes || undefined);
+      await CallLogsRepository.logCall({
+        leadId: currentLead.id,
+        listId: currentLead.list_id,
+        durationSeconds: callDuration,
+        disposition,
+        note: noteToRecord,
+        smsSent: smsDispatched,
+        smsBody: smsDispatched ? interpolatedSms : undefined,
+      });
+    } catch (e) {
+      console.warn('Disposition DB save error:', e);
+    }
 
-    // 3. Save disposition to database
-    await LeadsRepository.updateLeadDisposition(currentLead.id, disposition, updatedNotes || undefined);
-    await CallLogsRepository.logCall({
-      leadId: currentLead.id,
-      listId: currentLead.list_id,
-      durationSeconds: callDuration,
-      disposition,
-      note: noteToRecord,
-      smsSent: !!(cadenceResult.shouldPromptSMS && currentLead.text_ok !== false),
-    });
-
-    // 4. Check if we should prompt/dispatch SMS
-    if (cadenceResult.shouldPromptSMS && cadenceResult.template && currentLead.text_ok !== false) {
-      const template = cadenceResult.template;
-      setSelectedTemplate(template);
-      const interpolated = TelephonyService.interpolateTemplate(
-        template,
-        currentLead,
-        appSettings?.user_name || 'Alex'
-      );
-      setCustomSmsBody(interpolated);
-
-      // Immediately launch native SMS app pre-filled with the message
-      await TelephonyService.sendSMS(currentLead.phone, interpolated);
-
-      // Open HUD SMS modal so user can view/re-draft or advance
-      setSmsModalVisible(true);
-    } else {
+    if (!smsDispatched) {
       startAutoAdvanceTimer();
     }
   };
@@ -633,6 +649,13 @@ export default function DialerHudScreen({ route, navigation }: any) {
     // Clear active call state and timers when advancing/skipping
     setIsOnCall(false);
     setCallDuration(0);
+    pan.setValue({ x: 0, y: 0 });
+    setSwipeActionText(null);
+    setSmsModalVisible(false);
+    setNoteModalVisible(false);
+    setFollowUpModalVisible(false);
+    setNotesModalVisible(false);
+
     if (callTimerRef.current) {
       clearInterval(callTimerRef.current);
       callTimerRef.current = null;

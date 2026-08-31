@@ -21,10 +21,21 @@ export class TelephonyService {
 
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       try {
-        window.location.href = url;
+        const link = document.createElement('a');
+        link.href = url;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+          if (document.body.contains(link)) {
+            document.body.removeChild(link);
+          }
+        }, 100);
         return true;
       } catch (e) {
-        console.warn('Web tel navigation error:', e);
+        console.warn('Web tel navigation error, fallback to location.href:', e);
+        window.location.href = url;
+        return true;
       }
     }
 
@@ -50,17 +61,32 @@ export class TelephonyService {
     const cleanNumber = this.sanitizePhoneNumber(phone);
     if (!cleanNumber) return false;
 
-    // iOS and Android SMS URL separator
-    const separator = Platform.OS === 'ios' ? '&' : '?';
+    // Detect iOS on native and on Web (Safari / PWA)
+    const isIOS =
+      Platform.OS === 'ios' ||
+      (typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent));
+
+    const separator = isIOS ? '&' : '?';
     const encodedBody = encodeURIComponent(messageBody);
     const url = `sms:${cleanNumber}${separator}body=${encodedBody}`;
 
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       try {
-        window.location.href = url;
+        const link = document.createElement('a');
+        link.href = url;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+          if (document.body.contains(link)) {
+            document.body.removeChild(link);
+          }
+        }, 100);
         return true;
       } catch (e) {
-        console.warn('Web SMS navigation error:', e);
+        console.warn('Web SMS navigation error, fallback to location.href:', e);
+        window.location.href = url;
+        return true;
       }
     }
 
