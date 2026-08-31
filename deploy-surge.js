@@ -63,10 +63,13 @@ try {
       console.log('[PWA] Copied manifest.json to dist/manifest.json');
     }
 
-    // 2. Patch index.html with iOS Safari PWA tags & early ServiceWorker registration
+    // 2. Patch index.html with iOS Safari PWA tags & active ServiceWorker update detector
     const indexHtmlPath = path.join(distDir, 'index.html');
     if (fs.existsSync(indexHtmlPath)) {
       let indexHtml = fs.readFileSync(indexHtmlPath, 'utf8');
+
+      // Strip any previous injected script block
+      indexHtml = indexHtml.replace(/<script id="snapdialer-pwa-sw">[\s\S]*?<\/script>/gi, '');
 
       const pwaMetaTags = `
     <link rel="manifest" href="/manifest.json" />
@@ -74,26 +77,37 @@ try {
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="SnapDialer" />
     <meta name="theme-color" content="#14291B" />
-    <script>
+    <script id="snapdialer-pwa-sw">
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function() {
           navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(function(reg) {
-            console.log('[PWA] ServiceWorker registered:', reg.scope);
+            console.log('[PWA] ServiceWorker registered with scope:', reg.scope);
+            reg.update();
+            reg.addEventListener('updatefound', function() {
+              var newWorker = reg.installing;
+              if (newWorker) {
+                newWorker.addEventListener('statechange', function() {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    console.log('[PWA] New version ready. Reloading for latest updates...');
+                    window.location.reload();
+                  }
+                });
+              }
+            });
           }).catch(function(err) {
             console.warn('[PWA] ServiceWorker registration note:', err);
           });
         });
-        if (document.readyState === 'complete' || document.readyState === 'interactive') {
-          navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function(e) {});
-        }
       }
     </script>`;
 
       if (!indexHtml.includes('rel="manifest"')) {
         indexHtml = indexHtml.replace('</head>', `${pwaMetaTags}\n  </head>`);
-        fs.writeFileSync(indexHtmlPath, indexHtml, 'utf8');
-        console.log('[PWA] Injected iOS PWA meta tags & inline Service Worker registration into dist/index.html');
+      } else {
+        indexHtml = indexHtml.replace('</head>', `${pwaMetaTags}\n  </head>`);
       }
+      fs.writeFileSync(indexHtmlPath, indexHtml, 'utf8');
+      console.log('[PWA] Injected updated iOS PWA tags & auto-update script into dist/index.html');
     }
 
     // 3. Scan dist and build offline pre-cache manifest in dist/sw.js
@@ -107,7 +121,7 @@ try {
         relativeUrls.unshift('/');
       }
 
-      const cacheVersion = `snapdialer-pwa-v1.0.2-${Date.now()}`;
+      const cacheVersion = `snapdialer-pwa-v1.1.0-${Date.now()}`;
       let swContent = fs.readFileSync(swSrc, 'utf8');
       swContent = swContent.replace(/const CACHE_NAME = ['"][^'"]+['"];/, `const CACHE_NAME = '${cacheVersion}';`);
       swContent = swContent.replace(/const ASSETS_TO_CACHE = \[[^\]]*\];/s, `const ASSETS_TO_CACHE = ${JSON.stringify(relativeUrls, null, 2)};`);

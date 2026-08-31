@@ -508,6 +508,34 @@ export default function SettingsScreen({ navigation }: any) {
           </View>
         </View>
 
+        {/* PWA Version & Cache Controller */}
+        <View style={styles.versionFooter}>
+          <Text style={styles.versionText}>SnapDialer v1.1.0 • ValuTeachers Special Edition</Text>
+          <TouchableOpacity
+            style={styles.forceReloadBtn}
+            onPress={async () => {
+              await HapticsService.medium();
+              if (typeof window !== 'undefined') {
+                if ('caches' in window) {
+                  try {
+                    const keys = await caches.keys();
+                    await Promise.all(keys.map((k) => caches.delete(k)));
+                  } catch {}
+                }
+                if ('serviceWorker' in navigator) {
+                  try {
+                    const regs = await navigator.serviceWorker.getRegistrations();
+                    await Promise.all(regs.map((r) => r.unregister()));
+                  } catch {}
+                }
+                window.location.reload();
+              }
+            }}
+          >
+            <Text style={styles.forceReloadText}>🔄 Force Check & Reload Latest PWA Update</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Data Management */}
         <Text style={[styles.sectionHeader, { marginTop: 24 }]}>DATA MANAGEMENT</Text>
         <TouchableOpacity style={styles.wipeButton} onPress={handleClearAllData}>
@@ -836,5 +864,33 @@ const styles = StyleSheet.create({
     color: Colors.sacredGreenDeep,
     fontWeight: '800',
     fontSize: 13,
+  },
+  versionFooter: {
+    marginTop: 24,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: 'rgba(212, 175, 55, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.25)',
+    alignItems: 'center',
+  },
+  versionText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.heavenlyGold,
+    marginBottom: 10,
+  },
+  forceReloadBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    backgroundColor: Colors.sacredGreenLight,
+    borderWidth: 1,
+    borderColor: Colors.borderGold,
+  },
+  forceReloadText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.heavenlyGold,
   },
 });
