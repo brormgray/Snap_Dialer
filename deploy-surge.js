@@ -47,32 +47,77 @@ function getAllFiles(dirPath, arrayOfFiles = []) {
   return arrayOfFiles;
 }
 
-// Generate Offline-First Service Worker Manifest from compiled ./dist
+// Prepare dist for iOS Safari & Android PWA Offline Caching
 try {
   const distDir = path.join(__dirname, 'dist');
-  const swSrc = path.join(__dirname, 'web', 'sw.js');
+  const webDir = path.join(__dirname, 'web');
+  const swSrc = path.join(webDir, 'sw.js');
   const swDest = path.join(distDir, 'sw.js');
 
-  if (fs.existsSync(distDir) && fs.existsSync(swSrc)) {
-    const allFiles = getAllFiles(distDir);
-    const relativeUrls = allFiles
-      .map((f) => '/' + path.relative(distDir, f).replace(/\\/g, '/'))
-      .filter((url) => !url.endsWith('/sw.js') && !url.endsWith('/CNAME'));
-
-    if (!relativeUrls.includes('/')) {
-      relativeUrls.unshift('/');
+  if (fs.existsSync(distDir)) {
+    // 1. Copy manifest.json to dist
+    const manifestSrc = path.join(webDir, 'manifest.json');
+    const manifestDest = path.join(distDir, 'manifest.json');
+    if (fs.existsSync(manifestSrc)) {
+      fs.copyFileSync(manifestSrc, manifestDest);
+      console.log('[PWA] Copied manifest.json to dist/manifest.json');
     }
 
-    const cacheVersion = `snapdialer-pwa-v1.0.1-${Date.now()}`;
-    let swContent = fs.readFileSync(swSrc, 'utf8');
-    swContent = swContent.replace(/const CACHE_NAME = ['"][^'"]+['"];/, `const CACHE_NAME = '${cacheVersion}';`);
-    swContent = swContent.replace(/const ASSETS_TO_CACHE = \[[^\]]*\];/s, `const ASSETS_TO_CACHE = ${JSON.stringify(relativeUrls, null, 2)};`);
+    // 2. Patch index.html with iOS Safari PWA tags & early ServiceWorker registration
+    const indexHtmlPath = path.join(distDir, 'index.html');
+    if (fs.existsSync(indexHtmlPath)) {
+      let indexHtml = fs.readFileSync(indexHtmlPath, 'utf8');
 
-    fs.writeFileSync(swDest, swContent, 'utf8');
-    console.log(`[PWA Offline Engine] Generated dist/sw.js with ${relativeUrls.length} pre-cached assets (Cache: ${cacheVersion})`);
+      const pwaMetaTags = `
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="SnapDialer" />
+    <meta name="theme-color" content="#14291B" />
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(function(reg) {
+            console.log('[PWA] ServiceWorker registered:', reg.scope);
+          }).catch(function(err) {
+            console.warn('[PWA] ServiceWorker registration note:', err);
+          });
+        });
+        if (document.readyState === 'complete' || document.readyState === 'interactive') {
+          navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function(e) {});
+        }
+      }
+    </script>`;
+
+      if (!indexHtml.includes('rel="manifest"')) {
+        indexHtml = indexHtml.replace('</head>', `${pwaMetaTags}\n  </head>`);
+        fs.writeFileSync(indexHtmlPath, indexHtml, 'utf8');
+        console.log('[PWA] Injected iOS PWA meta tags & inline Service Worker registration into dist/index.html');
+      }
+    }
+
+    // 3. Scan dist and build offline pre-cache manifest in dist/sw.js
+    if (fs.existsSync(swSrc)) {
+      const allFiles = getAllFiles(distDir);
+      const relativeUrls = allFiles
+        .map((f) => '/' + path.relative(distDir, f).replace(/\\/g, '/'))
+        .filter((url) => !url.endsWith('/sw.js') && !url.endsWith('/CNAME'));
+
+      if (!relativeUrls.includes('/')) {
+        relativeUrls.unshift('/');
+      }
+
+      const cacheVersion = `snapdialer-pwa-v1.0.2-${Date.now()}`;
+      let swContent = fs.readFileSync(swSrc, 'utf8');
+      swContent = swContent.replace(/const CACHE_NAME = ['"][^'"]+['"];/, `const CACHE_NAME = '${cacheVersion}';`);
+      swContent = swContent.replace(/const ASSETS_TO_CACHE = \[[^\]]*\];/s, `const ASSETS_TO_CACHE = ${JSON.stringify(relativeUrls, null, 2)};`);
+
+      fs.writeFileSync(swDest, swContent, 'utf8');
+      console.log(`[PWA Offline Engine] Generated dist/sw.js with ${relativeUrls.length} pre-cached assets (Cache: ${cacheVersion})`);
+    }
   }
 } catch (e) {
-  console.warn('Service worker manifest generator note:', e);
+  console.warn('PWA build preparation note:', e);
 }
 
 const surge = require('C:/Users/brorm/AppData/Local/npm-cache/_npx/23158936acd5c32d/node_modules/surge')({

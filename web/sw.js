@@ -1,9 +1,8 @@
-const CACHE_NAME = 'snapdialer-pwa-v1.0.1';
+const CACHE_NAME = 'snapdialer-pwa-v1.0.2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
-  '/manifest.json',
-  '/favicon.png'
+  '/manifest.json'
 ];
 
 // Install Event: Pre-cache core shell & assets
@@ -44,11 +43,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation requests (HTML Pages) -> Stale-While-Revalidate with immediate Cache Fallback
+  // Navigation requests (HTML Pages / PWA Launch) -> Cache-First with Background Revalidation
   if (event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html')) {
     event.respondWith(
       caches.match('/index.html').then((cachedHtml) => {
-        const fetchPromise = fetch(event.request)
+        const networkFetch = fetch(event.request)
           .then((networkResponse) => {
             if (networkResponse && networkResponse.status === 200) {
               const responseClone = networkResponse.clone();
@@ -60,8 +59,8 @@ self.addEventListener('fetch', (event) => {
           })
           .catch(() => cachedHtml);
 
-        // If we have cached HTML, return it immediately for instant sub-second boot
-        return cachedHtml || fetchPromise;
+        // On iOS / standalone mode, return the cached HTML shell immediately for instant offline boot
+        return cachedHtml || networkFetch;
       })
     );
     return;
@@ -71,16 +70,6 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Return from cache immediately, optionally revalidate in background
-        fetch(event.request)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
-              caches.open(CACHE_NAME).then((cache) => {
-                cache.put(event.request, networkResponse.clone());
-              });
-            }
-          })
-          .catch(() => {});
         return cachedResponse;
       }
 
