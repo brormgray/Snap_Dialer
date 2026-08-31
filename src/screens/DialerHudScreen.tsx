@@ -357,23 +357,62 @@ export default function DialerHudScreen({ route, navigation }: any) {
     if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
     setAutoAdvanceCountdown(null);
 
-    // Evaluate cadence rule for SMS trigger
+    // 1. Build and append timestamped structured note for this outreach attempt
+    const attemptNum = (currentLead.attempts_count || 0) + 1;
+    const defaultNote =
+      disposition === 'no_answer'
+        ? `Call attempt #${attemptNum}: No Answer / Voicemail. Sent follow-up SMS.`
+        : disposition === 'spoke' || disposition === 'connected'
+        ? `Call attempt #${attemptNum}: Connected / Spoke on phone.`
+        : disposition === 'appointment_set'
+        ? `Call attempt #${attemptNum}: Appointment Set.`
+        : undefined;
+
+    const noteToRecord = note || defaultNote;
+    let updatedNotes = currentLead.notes;
+    if (noteToRecord) {
+      updatedNotes = NotesService.addNote(currentLead.notes, noteToRecord);
+      currentLead.notes = updatedNotes;
+      setQueue((prev) => {
+        const next = [...prev];
+        if (next[currentIndex]) {
+          next[currentIndex] = { ...next[currentIndex], notes: updatedNotes };
+        }
+        return next;
+      });
+      await LeadsRepository.updateLeadNotes(currentLead.id, updatedNotes);
+    }
+
+    // 2. Evaluate cadence rule for SMS trigger
     const cadenceResult = await CadenceEngine.evaluateCadence(currentLead, disposition);
 
-    // Save disposition to SQLite
-    await LeadsRepository.updateLeadDisposition(currentLead.id, disposition, note);
+    // 3. Save disposition to database
+    await LeadsRepository.updateLeadDisposition(currentLead.id, disposition, updatedNotes || undefined);
     await CallLogsRepository.logCall({
       leadId: currentLead.id,
       listId: currentLead.list_id,
       durationSeconds: callDuration,
       disposition,
-      note,
-      smsSent: false,
+      note: noteToRecord,
+      smsSent: !!(cadenceResult.shouldPromptSMS && currentLead.text_ok !== false),
     });
 
-    // Check if we should prompt SMS
-    if (cadenceResult.shouldPromptSMS && cadenceResult.template) {
-      promptCadenceSMS(currentLead, cadenceResult.template);
+    // 4. Check if we should prompt/dispatch SMS
+    if (cadenceResult.shouldPromptSMS && cadenceResult.template && currentLead.text_ok !== false) {
+      const template = cadenceResult.template;
+      setSelectedTemplate(template);
+      const interpolated = TelephonyService.interpolateTemplate(
+        template,
+        currentLead,
+        appSettings?.user_name || 'Alex'
+      );
+      setCustomSmsBody(interpolated);
+
+      // Immediately launch native SMS app pre-filled with the message
+      await TelephonyService.sendSMS(currentLead.phone, interpolated);
+
+      // Open HUD SMS modal so user can view/re-draft or advance
+      setSmsModalVisible(true);
     } else {
       startAutoAdvanceTimer();
     }
@@ -1329,16 +1368,16 @@ export default function DialerHudScreen({ route, navigation }: any) {
                 style={styles.modalCancelButton}
                 onPress={() => {
                   setSmsModalVisible(false);
-                  startAutoAdvanceTimer();
+                  advanceNextLead();
                 }}
               >
-                <Text style={styles.modalCancelText}>Cancel</Text>
+                <Text style={styles.modalCancelText}>Done & Advance ⏭️</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.modalSaveButton}
                 onPress={handleSendCustomSms}
               >
-                <Text style={styles.modalSaveText}>Open in SMS App</Text>
+                <Text style={styles.modalSaveText}>Re-Open SMS App</Text>
               </TouchableOpacity>
             </View>
           </View>

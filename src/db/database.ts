@@ -540,6 +540,11 @@ async function initWebDefaults(db: WebDatabase) {
   const templates = await db.getAllAsync('SELECT * FROM sms_templates');
   if (templates.length === 0) {
     await db.runAsync('INSERT INTO sms_templates', [
+      'tpl_just_called',
+      'No Answer - Just Called Follow-up',
+      'Hi {{name}}, this is {{my_name}} with ValuTeachers! I just tried giving you a quick call regarding your FRS Report Card from {{school}}. Feel free to call me back, or text me a good time during your planning period to connect!',
+    ]);
+    await db.runAsync('INSERT INTO sms_templates', [
       'tpl_frs_meeting',
       'Planning Period Sit-Down Confirmation',
       'Hi {{name}}, this is {{my_name}} with ValuTeachers. I have your FRS Report Card from {{school}} and will be on campus this week. Does {{meeting_pref}} still work for a sit-down during your planning period in your room to review your FRS & 403(b) options?',
@@ -555,9 +560,27 @@ async function initWebDefaults(db: WebDatabase) {
       'Hi {{name}}, this is {{my_name}} with ValuTeachers. Regarding your {{years_in_frs}} years in FRS and your report card request, when this week can we do a sit-down during your planning period to review your DROP timeline and bonus options?',
     ]);
 
-    await db.runAsync('INSERT INTO cadence_rules', ['cad_1', 1, 'no_answer', 'call_only', null, 2]);
+    await db.runAsync('INSERT INTO cadence_rules', ['cad_1', 1, 'no_answer', 'call_and_sms', 'tpl_just_called', 2]);
     await db.runAsync('INSERT INTO cadence_rules', ['cad_2', 2, 'no_answer', 'call_and_sms', 'tpl_frs_meeting', 24]);
     await db.runAsync('INSERT INTO cadence_rules', ['cad_3', 3, 'no_answer', 'call_and_sms', 'tpl_frs_planning', 48]);
+  } else {
+    // Ensure tpl_just_called exists and cad_1 is enabled for call_and_sms
+    const hasJustCalled = templates.some((t: any) => t.id === 'tpl_just_called');
+    if (!hasJustCalled) {
+      await db.runAsync('INSERT INTO sms_templates', [
+        'tpl_just_called',
+        'No Answer - Just Called Follow-up',
+        'Hi {{name}}, this is {{my_name}} with ValuTeachers! I just tried giving you a quick call regarding your FRS Report Card from {{school}}. Feel free to call me back, or text me a good time during your planning period to connect!',
+      ]);
+    }
+    const cad1 = await db.getFirstAsync<any>('SELECT * FROM cadence_rules WHERE id = ?', ['cad_1']);
+    if (cad1 && (cad1.action_type === 'call_only' || !cad1.sms_template_id)) {
+      await db.runAsync('UPDATE cadence_rules SET action_type = ?, sms_template_id = ? WHERE id = ?', [
+        'call_and_sms',
+        'tpl_just_called',
+        'cad_1',
+      ]);
+    }
   }
 }
 
@@ -659,6 +682,7 @@ async function initNativeDatabase(db: any): Promise<void> {
   if (!templateCount || templateCount.count === 0) {
     await db.runAsync(
       `INSERT INTO sms_templates (id, title, body) VALUES 
+       ('tpl_just_called', 'No Answer - Just Called Follow-up', 'Hi {{name}}, this is {{my_name}} with ValuTeachers! I just tried giving you a quick call regarding your FRS Report Card from {{school}}. Feel free to call me back, or text me a good time during your planning period to connect!'),
        ('tpl_frs_meeting', 'Planning Period Sit-Down Confirmation', 'Hi {{name}}, this is {{my_name}} with ValuTeachers. I have your FRS Report Card from {{school}} and will be on campus this week. Does {{meeting_pref}} still work for a sit-down during your planning period in your room to review your FRS & 403(b) options?'),
        ('tpl_frs_planning', 'Planning Period Follow-up', 'Hi {{name}}, {{my_name}} with ValuTeachers! Tried catching you regarding your FRS analysis. I will be visiting {{school}} this week—would doing a sit-down during your planning period work for you?'),
        ('tpl_frs_drop', 'D.R.O.P. & Pension Sit-Down', 'Hi {{name}}, this is {{my_name}} with ValuTeachers. Regarding your {{years_in_frs}} years in FRS and your report card request, when this week can we do a sit-down during your planning period to review your DROP timeline and bonus options?')`
@@ -666,9 +690,21 @@ async function initNativeDatabase(db: any): Promise<void> {
 
     await db.runAsync(
       `INSERT INTO cadence_rules (id, step_number, condition_disposition, action_type, sms_template_id, delay_hours) VALUES
-       ('cad_1', 1, 'no_answer', 'call_only', NULL, 2),
+       ('cad_1', 1, 'no_answer', 'call_and_sms', 'tpl_just_called', 2),
        ('cad_2', 2, 'no_answer', 'call_and_sms', 'tpl_frs_meeting', 24),
        ('cad_3', 3, 'no_answer', 'call_and_sms', 'tpl_frs_planning', 48)`
     );
+  } else {
+    try {
+      await db.runAsync(
+        `INSERT OR IGNORE INTO sms_templates (id, title, body) VALUES 
+         ('tpl_just_called', 'No Answer - Just Called Follow-up', 'Hi {{name}}, this is {{my_name}} with ValuTeachers! I just tried giving you a quick call regarding your FRS Report Card from {{school}}. Feel free to call me back, or text me a good time during your planning period to connect!')`
+      );
+      await db.runAsync(
+        `UPDATE cadence_rules SET action_type = 'call_and_sms', sms_template_id = 'tpl_just_called' WHERE id = 'cad_1' AND (action_type = 'call_only' OR sms_template_id IS NULL)`
+      );
+    } catch (e) {
+      // Ignore if table not ready
+    }
   }
 }
