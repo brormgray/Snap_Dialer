@@ -1330,47 +1330,66 @@ export default function DialerHudScreen({ route, navigation }: any) {
             />
 
             {/* 1-Tap Calendar Sync Buttons for Confirmed Appointments */}
-            {isSettingAppt && (
-              <View style={{ marginTop: 10, marginBottom: 6 }}>
-                <Text style={{ color: Colors.heavenlyGold, fontSize: 11, fontWeight: '700', marginBottom: 6 }}>
-                  📅 1-TAP CALENDAR SYNC (PRE-FILLED 15-MIN PRE-ALARM)
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-                  <TouchableOpacity
-                    style={styles.calSyncBtn}
-                    onPress={() => {
-                      HapticsService.medium();
-                      const event = CalendarService.buildEducatorEvent(currentLead, new Date(), 20, callNote);
-                      CalendarService.downloadIcsFile(event);
-                    }}
-                  >
-                    <Text style={styles.calSyncBtnText}>🍏 Apple / iCal (.ics)</Text>
-                  </TouchableOpacity>
+            {isSettingAppt && (() => {
+              const scheduledDate = CalendarService.calculateNextPlanningDate(
+                currentLead.planning_period,
+                currentLead.school
+              );
+              const dateStr = scheduledDate.toLocaleDateString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+              });
+              const timeStr = scheduledDate.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+              });
 
-                  <TouchableOpacity
-                    style={[styles.calSyncBtn, { borderColor: '#38BDF8' }]}
-                    onPress={() => {
-                      HapticsService.medium();
-                      const event = CalendarService.buildEducatorEvent(currentLead, new Date(), 20, callNote);
-                      CalendarService.openGoogleCalendar(event);
-                    }}
-                  >
-                    <Text style={[styles.calSyncBtnText, { color: '#38BDF8' }]}>🌐 Google Calendar</Text>
-                  </TouchableOpacity>
+              return (
+                <View style={{ marginTop: 10, marginBottom: 6 }}>
+                  <Text style={{ color: Colors.heavenlyGold, fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+                    📅 1-TAP CALENDAR SYNC ({dateStr} @ {timeStr})
+                  </Text>
+                  <Text style={{ color: Colors.textMuted, fontSize: 11, marginBottom: 8 }}>
+                    Pre-fills Room {currentLead.room_number || 'Classroom'}, phone, FRS topics & 15-min sound alarm:
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                    <TouchableOpacity
+                      style={styles.calSyncBtn}
+                      onPress={() => {
+                        HapticsService.medium();
+                        const event = CalendarService.buildEducatorEvent(currentLead, scheduledDate, 25, callNote);
+                        CalendarService.downloadIcsFile(event);
+                      }}
+                    >
+                      <Text style={styles.calSyncBtnText}>🍏 Apple / iCal (.ics)</Text>
+                    </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={[styles.calSyncBtn, { borderColor: '#A78BFA' }]}
-                    onPress={() => {
-                      HapticsService.medium();
-                      const event = CalendarService.buildEducatorEvent(currentLead, new Date(), 20, callNote);
-                      CalendarService.openOutlookCalendar(event);
-                    }}
-                  >
-                    <Text style={[styles.calSyncBtnText, { color: '#A78BFA' }]}>📧 Outlook Web</Text>
-                  </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.calSyncBtn, { borderColor: '#38BDF8' }]}
+                      onPress={() => {
+                        HapticsService.medium();
+                        const event = CalendarService.buildEducatorEvent(currentLead, scheduledDate, 25, callNote);
+                        CalendarService.openGoogleCalendar(event);
+                      }}
+                    >
+                      <Text style={[styles.calSyncBtnText, { color: '#38BDF8' }]}>🌐 Google Calendar</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.calSyncBtn, { borderColor: '#A78BFA' }]}
+                      onPress={() => {
+                        HapticsService.medium();
+                        const event = CalendarService.buildEducatorEvent(currentLead, scheduledDate, 25, callNote);
+                        CalendarService.openOutlookCalendar(event);
+                      }}
+                    >
+                      <Text style={[styles.calSyncBtnText, { color: '#A78BFA' }]}>📧 Outlook Web</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            )}
+              );
+            })()}
 
             <View style={styles.modalButtons}>
               <TouchableOpacity

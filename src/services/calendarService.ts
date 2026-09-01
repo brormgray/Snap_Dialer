@@ -1,5 +1,6 @@
 import { Platform, Linking } from 'react-native';
 import { Lead } from '../types';
+import { getScheduleForSchool, matchPeriodId } from '../data/bellSchedules';
 
 export interface CalendarEventPayload {
   title: string;
@@ -180,5 +181,34 @@ export class CalendarService {
       contactName: lead.name,
       contactPhone: lead.phone,
     };
+  }
+
+  /**
+   * Calculates the next school-day occurrence of an educator's planning period.
+   * If today is a weekday and the planning period hasn't ended yet, schedules for today.
+   * Otherwise, schedules for the next school day (skipping weekends).
+   */
+  static calculateNextPlanningDate(
+    planningPeriod?: string | null,
+    schoolName?: string | null
+  ): Date {
+    const now = new Date();
+    const schedule = getScheduleForSchool(schoolName);
+    const periodId = matchPeriodId(planningPeriod);
+    const period = schedule.find((p) => p.id === periodId) || schedule[2]; // Default to Period 3 if unknown
+
+    const targetDate = new Date(now);
+    const [startHour, startMinute] = (period.startTime || '09:00').split(':').map(Number);
+    targetDate.setHours(startHour || 9, startMinute || 0, 0, 0);
+
+    const dayOfWeek = targetDate.getDay(); // 0 = Sun, 6 = Sat
+    if (targetDate.getTime() <= now.getTime() || dayOfWeek === 0 || dayOfWeek === 6) {
+      targetDate.setDate(targetDate.getDate() + 1);
+      while (targetDate.getDay() === 0 || targetDate.getDay() === 6) {
+        targetDate.setDate(targetDate.getDate() + 1);
+      }
+    }
+
+    return targetDate;
   }
 }

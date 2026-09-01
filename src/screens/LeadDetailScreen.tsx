@@ -605,6 +605,98 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                 </View>
               )}
 
+              {/* Confirmed Sit-Down 1-Tap Calendar Card */}
+              {lead.last_disposition === 'appointment_set' && (() => {
+                const scheduledDate = CalendarService.calculateNextPlanningDate(
+                  lead.planning_period,
+                  lead.school
+                );
+                const dateStr = scheduledDate.toLocaleDateString('en-US', {
+                  weekday: 'short',
+                  month: 'short',
+                  day: 'numeric',
+                });
+                const timeStr = scheduledDate.toLocaleTimeString('en-US', {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                });
+
+                return (
+                  <View
+                    style={{
+                      backgroundColor: 'rgba(212, 160, 23, 0.12)',
+                      borderColor: Colors.borderGold,
+                      borderWidth: 1.5,
+                      borderRadius: 14,
+                      padding: 14,
+                      marginVertical: 10,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <Calendar size={16} color={Colors.heavenlyGold} />
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: Colors.heavenlyGold, letterSpacing: 0.5 }}>
+                        CONFIRMED SIT-DOWN • 1-TAP CALENDAR SYNC
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 12, color: Colors.livingWhite, marginBottom: 10, lineHeight: 17 }}>
+                      Target Window: <Text style={{ fontWeight: '800' }}>{dateStr} @ {timeStr}</Text> ({lead.planning_period || 'Planning Period'}) in Room {lead.room_number || 'Classroom'}.
+                    </Text>
+
+                    <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                      <TouchableOpacity
+                        style={{
+                          flex: 1,
+                          minWidth: 130,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: Colors.bgDark,
+                          borderColor: Colors.borderGold,
+                          borderWidth: 1,
+                          paddingVertical: 10,
+                          borderRadius: 10,
+                          gap: 6,
+                        }}
+                        onPress={() => {
+                          HapticsService.medium();
+                          const event = CalendarService.buildEducatorEvent(lead, scheduledDate, 25, lead.notes);
+                          CalendarService.downloadIcsFile(event);
+                        }}
+                      >
+                        <Text style={{ color: Colors.heavenlyGold, fontSize: 12, fontWeight: '700' }}>
+                          🍏 Apple / iCal (.ics)
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={{
+                          flex: 1,
+                          minWidth: 130,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: Colors.bgDark,
+                          borderColor: '#38BDF8',
+                          borderWidth: 1,
+                          paddingVertical: 10,
+                          borderRadius: 10,
+                          gap: 6,
+                        }}
+                        onPress={() => {
+                          HapticsService.medium();
+                          const event = CalendarService.buildEducatorEvent(lead, scheduledDate, 25, lead.notes);
+                          CalendarService.openGoogleCalendar(event);
+                        }}
+                      >
+                        <Text style={{ color: '#38BDF8', fontSize: 12, fontWeight: '700' }}>
+                          🌐 Google Calendar
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })()}
+
               {/* Proof of Contact / View Scanned Sheet Button */}
               <TouchableOpacity
                 style={styles.proofButton}

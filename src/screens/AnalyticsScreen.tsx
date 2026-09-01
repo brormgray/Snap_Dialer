@@ -9,64 +9,92 @@ import {
   TouchableOpacity,
   Share,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
-import { ArrowLeft, BarChart3, Download, PhoneCall, CheckCircle2, PhoneOff, MessageSquare, XCircle } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  BarChart3,
+  Download,
+  PhoneCall,
+  CheckCircle2,
+  PhoneOff,
+  MessageSquare,
+  XCircle,
+  TrendingUp,
+  Target,
+  Clock,
+  Flame,
+  Users,
+  Calendar,
+  Sparkles,
+  HelpCircle,
+  GraduationCap,
+} from 'lucide-react-native';
 import { CallLogsRepository } from '../db/callLogsRepository';
 import { LeadsRepository } from '../db/leadsRepository';
 import { Colors } from '../theme/colors';
 
 export default function AnalyticsScreen({ navigation }: any) {
-  const [stats, setStats] = useState({
-    totalDials: 0,
-    appointmentCount: 0,
-    connectedCount: 0,
-    noAnswerCount: 0,
-    voicemailCount: 0,
-    badNumberCount: 0,
-    smsSentCount: 0,
-  });
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
     loadStats();
   }, []);
 
   const loadStats = async () => {
-    const summary = await CallLogsRepository.getAnalyticsSummary();
-    setStats(summary);
+    try {
+      const res = await CallLogsRepository.getComprehensiveAnalytics();
+      setData(res);
+    } catch (e) {
+      console.error('Error loading comprehensive analytics:', e);
+    } finally {
+      setLoading(false);
+    }
   };
-
-  const apptSetRate =
-    stats.totalDials > 0
-      ? Math.round((stats.appointmentCount / stats.totalDials) * 100)
-      : 0;
-
-  const connectedRate =
-    stats.totalDials > 0
-      ? Math.round((stats.connectedCount / stats.totalDials) * 100)
-      : 0;
-
-  const unansweredRate =
-    stats.totalDials > 0
-      ? Math.round(((stats.noAnswerCount + stats.voicemailCount) / stats.totalDials) * 100)
-      : 0;
-
-  const badNumberRate =
-    stats.totalDials > 0
-      ? Math.round((stats.badNumberCount / stats.totalDials) * 100)
-      : 0;
 
   const handleExportData = async () => {
     try {
       const lists = await LeadsRepository.getAllLists();
-      const exportJson = JSON.stringify({ lists, stats, exportedAt: new Date().toISOString() }, null, 2);
+      const exportJson = JSON.stringify({ lists, analytics: data, exportedAt: new Date().toISOString() }, null, 2);
       await Share.share({
-        title: 'SnapDialer_Export.json',
+        title: 'SnapDialer_Agency_Analytics.json',
         message: exportJson,
       });
     } catch (e) {
-      Alert.alert('Export Error', 'Could not export lead records.');
+      Alert.alert('Export Error', 'Could not export analytics records.');
     }
   };
+
+  if (loading || !data) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={Colors.sacredGreenDeep} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.heavenlyGold} />
+          <Text style={styles.loadingText}>Computing Agency Velocity Analytics...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const { summary, ratios, weekly, hourlyStats } = data;
+
+  // Find peak hour
+  const hoursWithCalls = hourlyStats.filter((h: any) => h.dials > 0);
+  const peakHour = hoursWithCalls.length > 0
+    ? [...hoursWithCalls].sort((a: any, b: any) => b.contactRate - a.contactRate)[0]
+    : null;
+
+  const unansweredRate =
+    summary.totalDials > 0
+      ? Math.round(((summary.noAnswerCount + summary.voicemailCount) / summary.totalDials) * 100)
+      : 0;
+
+  const badNumberRate =
+    summary.totalDials > 0
+      ? Math.round((summary.badNumberCount / summary.totalDials) * 100)
+      : 0;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -77,92 +105,207 @@ export default function AnalyticsScreen({ navigation }: any) {
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <ArrowLeft size={22} color={Colors.livingWhite} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Calling & Appointment KPIs</Text>
+        <Text style={styles.headerTitle}>Agency Operations & Ratios</Text>
         <TouchableOpacity style={styles.exportButton} onPress={handleExportData}>
           <Download size={20} color={Colors.heavenlyGold} />
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 40 }}>
-        {/* Main Appointment Set Rate Card */}
+      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 50 }}>
+        {/* Main Sit-Down Conversion Ratio Card */}
         <View style={styles.heroCard}>
-          <Text style={styles.heroLabel}>APPOINTMENT CONVERSION ACCURACY</Text>
-          <Text style={styles.heroValue}>{apptSetRate}%</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <Target size={18} color={Colors.heavenlyGold} />
+            <Text style={styles.heroLabel}>SIT-DOWN CONVERSION ACCURACY</Text>
+          </View>
+          <Text style={styles.heroValue}>{ratios.dialToApptRate}%</Text>
           <Text style={styles.heroSubtext}>
-            {stats.appointmentCount} confirmed appointment{stats.appointmentCount !== 1 ? 's' : ''} booked from {stats.totalDials} total voice outreach dials
+            {summary.appointmentCount} confirmed appointment{summary.appointmentCount !== 1 ? 's' : ''} booked across {summary.totalDials} total outreach dials
           </Text>
+
+          {/* Velocity Triad */}
+          <View style={styles.velocityTriad}>
+            <View style={styles.triadItem}>
+              <Text style={styles.triadValue}>{ratios.dialsPerSitDown || '—'}</Text>
+              <Text style={styles.triadLabel}>Dials / Sit-Down</Text>
+            </View>
+            <View style={[styles.triadItem, { borderLeftWidth: 1, borderRightWidth: 1, borderColor: 'rgba(255, 255, 255, 0.1)' }]}>
+              <Text style={styles.triadValue}>{ratios.contactRate}%</Text>
+              <Text style={styles.triadLabel}>Connection Rate</Text>
+            </View>
+            <View style={styles.triadItem}>
+              <Text style={styles.triadValue}>{ratios.convToApptRate}%</Text>
+              <Text style={styles.triadLabel}>Close-to-Appt Rate</Text>
+            </View>
+          </View>
         </View>
 
-        {/* Visual Outcome Distribution Chart */}
-        <Text style={styles.sectionHeader}>OUTCOME DISTRIBUTION & PIPELINE CURVE</Text>
-        <View style={styles.chartCard}>
-          {/* Multi-segment distribution bar */}
-          <View style={styles.multiBar}>
-            {apptSetRate > 0 && <View style={[styles.barSegment, { flex: apptSetRate, backgroundColor: Colors.heavenlyGold }]} />}
-            {connectedRate > 0 && <View style={[styles.barSegment, { flex: connectedRate, backgroundColor: Colors.statusSitDownText }]} />}
-            {unansweredRate > 0 && <View style={[styles.barSegment, { flex: unansweredRate, backgroundColor: Colors.textMuted }]} />}
-            {badNumberRate > 0 && <View style={[styles.barSegment, { flex: badNumberRate, backgroundColor: Colors.statusDangerText }]} />}
-            {stats.totalDials === 0 && <View style={[styles.barSegment, { flex: 1, backgroundColor: Colors.borderSubtle }]} />}
+        {/* Weekly Cohort Velocity Comparison */}
+        <Text style={styles.sectionHeader}>WEEKLY MOMENTUM & VELOCITY (COHORT COMPARISON)</Text>
+        <View style={styles.weeklyCard}>
+          <View style={styles.weeklyRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.weeklyLabel}>OUTREACH DIALS</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
+                <Text style={styles.weeklyValueCurrent}>{weekly.dialsThisWeek}</Text>
+                <Text style={styles.weeklyValuePrior}>vs {weekly.dialsLastWeek} prior wk</Text>
+              </View>
+            </View>
+            <View style={[styles.trendBadge, weekly.dialsThisWeek >= weekly.dialsLastWeek ? styles.trendUp : styles.trendNeutral]}>
+              <TrendingUp size={14} color={weekly.dialsThisWeek >= weekly.dialsLastWeek ? '#4ADE80' : Colors.textMuted} />
+              <Text style={[styles.trendText, weekly.dialsThisWeek >= weekly.dialsLastWeek && { color: '#4ADE80' }]}>
+                {weekly.dialsThisWeek >= weekly.dialsLastWeek ? 'Pacing Up' : 'Active'}
+              </Text>
+            </View>
           </View>
 
-          {/* Breakdown progress rows */}
-          <View style={styles.chartRows}>
-            <View style={styles.chartRow}>
-              <View style={styles.chartRowHeader}>
-                <View style={[styles.dotIndicator, { backgroundColor: Colors.heavenlyGold }]} />
-                <Text style={styles.chartRowLabel}>Appointments Set</Text>
-                <Text style={styles.chartRowValue}>{stats.appointmentCount} ({apptSetRate}%)</Text>
-              </View>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressBar, { width: `${apptSetRate}%`, backgroundColor: Colors.heavenlyGold }]} />
+          <View style={styles.weeklyDivider} />
+
+          <View style={styles.weeklyRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.weeklyLabel}>SIT-DOWNS BOOKED</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
+                <Text style={[styles.weeklyValueCurrent, { color: Colors.heavenlyGold }]}>{weekly.apptsThisWeek}</Text>
+                <Text style={styles.weeklyValuePrior}>vs {weekly.apptsLastWeek} prior wk</Text>
               </View>
             </View>
+            <View style={[styles.trendBadge, weekly.apptsThisWeek >= weekly.apptsLastWeek ? styles.trendUp : styles.trendNeutral]}>
+              <CheckCircle2 size={14} color={weekly.apptsThisWeek >= weekly.apptsLastWeek ? '#4ADE80' : Colors.textMuted} />
+              <Text style={[styles.trendText, weekly.apptsThisWeek >= weekly.apptsLastWeek && { color: '#4ADE80' }]}>
+                {weekly.apptsThisWeek} Booked
+              </Text>
+            </View>
+          </View>
+        </View>
 
-            <View style={styles.chartRow}>
-              <View style={styles.chartRowHeader}>
-                <View style={[styles.dotIndicator, { backgroundColor: Colors.statusSitDownText }]} />
-                <Text style={styles.chartRowLabel}>Spoke / Connected</Text>
-                <Text style={styles.chartRowValue}>{stats.connectedCount} ({connectedRate}%)</Text>
+        {/* Agency Funnel Velocity */}
+        <Text style={[styles.sectionHeader, { marginTop: 24 }]}>AGENCY CONVERSION FUNNEL VELOCITY</Text>
+        <View style={styles.funnelCard}>
+          <View style={styles.funnelStep}>
+            <View style={styles.funnelIconCol}>
+              <View style={[styles.funnelIconBox, { backgroundColor: 'rgba(56, 189, 248, 0.15)' }]}>
+                <PhoneCall size={18} color="#38BDF8" />
               </View>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressBar, { width: `${connectedRate}%`, backgroundColor: Colors.statusSitDownText }]} />
+              <View style={styles.funnelLine} />
+            </View>
+            <View style={styles.funnelContent}>
+              <View style={styles.funnelRow}>
+                <Text style={styles.funnelTitle}>Outreach Dials</Text>
+                <Text style={styles.funnelCount}>{summary.totalDials}</Text>
+              </View>
+              <Text style={styles.funnelSub}>Total teacher attempts across campaign lists</Text>
+            </View>
+          </View>
+
+          <View style={styles.funnelStep}>
+            <View style={styles.funnelIconCol}>
+              <View style={[styles.funnelIconBox, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
+                <Users size={18} color="#10B981" />
+              </View>
+              <View style={styles.funnelLine} />
+            </View>
+            <View style={styles.funnelContent}>
+              <View style={styles.funnelRow}>
+                <Text style={styles.funnelTitle}>Spoke / Connected</Text>
+                <Text style={[styles.funnelCount, { color: '#10B981' }]}>
+                  {summary.connectedCount + summary.appointmentCount} ({ratios.contactRate}%)
+                </Text>
+              </View>
+              <Text style={styles.funnelSub}>Live two-way conversations with teachers</Text>
+            </View>
+          </View>
+
+          <View style={styles.funnelStep}>
+            <View style={styles.funnelIconCol}>
+              <View style={[styles.funnelIconBox, { backgroundColor: Colors.heavenlyGoldMuted }]}>
+                <Target size={18} color={Colors.heavenlyGold} />
+              </View>
+              <View style={styles.funnelLine} />
+            </View>
+            <View style={styles.funnelContent}>
+              <View style={styles.funnelRow}>
+                <Text style={styles.funnelTitle}>Sit-Downs Confirmed</Text>
+                <Text style={[styles.funnelCount, { color: Colors.heavenlyGold }]}>
+                  {summary.appointmentCount} ({ratios.dialToApptRate}%)
+                </Text>
+              </View>
+              <Text style={styles.funnelSub}>Scheduled in classroom or during planning</Text>
+            </View>
+          </View>
+
+          <View style={[styles.funnelStep, { marginBottom: 0 }]}>
+            <View style={styles.funnelIconCol}>
+              <View style={[styles.funnelIconBox, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+                <GraduationCap size={18} color="#F59E0B" />
               </View>
             </View>
-
-            <View style={styles.chartRow}>
-              <View style={styles.chartRowHeader}>
-                <View style={[styles.dotIndicator, { backgroundColor: Colors.textMuted }]} />
-                <Text style={styles.chartRowLabel}>No Answer / Voicemail</Text>
-                <Text style={styles.chartRowValue}>{stats.noAnswerCount + stats.voicemailCount} ({unansweredRate}%)</Text>
+            <View style={styles.funnelContent}>
+              <View style={styles.funnelRow}>
+                <Text style={styles.funnelTitle}>FRS & DROP Review Inquiries</Text>
+                <Text style={[styles.funnelCount, { color: '#F59E0B' }]}>
+                  {summary.dropInquiriesCount}
+                </Text>
               </View>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressBar, { width: `${unansweredRate}%`, backgroundColor: Colors.textMuted }]} />
-              </View>
+              <Text style={styles.funnelSub}>Teachers with 20+ yrs FRS or DROP questions on file</Text>
             </View>
+          </View>
+        </View>
 
-            {stats.badNumberCount > 0 && (
-              <View style={styles.chartRow}>
-                <View style={styles.chartRowHeader}>
-                  <View style={[styles.dotIndicator, { backgroundColor: Colors.statusDangerText }]} />
-                  <Text style={styles.chartRowLabel}>Bad / Disconnected Numbers</Text>
-                  <Text style={styles.chartRowValue}>{stats.badNumberCount} ({badNumberRate}%)</Text>
+        {/* Best Time to Call Heatmap */}
+        <Text style={[styles.sectionHeader, { marginTop: 24 }]}>BEST TIME TO CALL (HOURLY CONTACT HEATMAP)</Text>
+        <View style={styles.card}>
+          {peakHour && peakHour.contactRate > 0 ? (
+            <View style={styles.peakBanner}>
+              <Clock size={16} color="#4ADE80" />
+              <Text style={styles.peakText}>
+                ⚡ Peak Response Window: <Text style={{ fontWeight: '800' }}>{peakHour.label}</Text> ({peakHour.contactRate}% contact rate)
+              </Text>
+            </View>
+          ) : (
+            <Text style={{ fontSize: 13, color: Colors.textMuted, marginBottom: 12 }}>
+              Calling activity will automatically identify the highest-response windows across Volusia schools.
+            </Text>
+          )}
+
+          <View style={styles.hourlyContainer}>
+            {hourlyStats.map((item: any) => {
+              const hasData = item.dials > 0;
+              return (
+                <View key={item.hour} style={styles.hourlyRow}>
+                  <Text style={styles.hourlyHourLabel}>{item.label}</Text>
+                  <View style={styles.hourlyTrack}>
+                    <View
+                      style={[
+                        styles.hourlyBar,
+                        {
+                          width: `${Math.max(item.contactRate, hasData ? 6 : 0)}%`,
+                          backgroundColor:
+                            peakHour && peakHour.hour === item.hour && peakHour.contactRate > 0
+                              ? '#22C55E'
+                              : hasData
+                              ? Colors.heavenlyGold
+                              : 'rgba(255, 255, 255, 0.08)',
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.hourlyRateText}>
+                    {hasData ? `${item.contactRate}% (${item.dials}d)` : '—'}
+                  </Text>
                 </View>
-                <View style={styles.progressTrack}>
-                  <View style={[styles.progressBar, { width: `${badNumberRate}%`, backgroundColor: Colors.statusDangerText }]} />
-                </View>
-              </View>
-            )}
+              );
+            })}
           </View>
         </View>
 
         {/* Breakdown Metric Grid */}
-        <Text style={styles.sectionHeader}>CALL OUTCOME BREAKDOWN</Text>
+        <Text style={[styles.sectionHeader, { marginTop: 24 }]}>CALL OUTCOME BREAKDOWN</Text>
         <View style={styles.grid}>
           <View style={styles.statCard}>
             <View style={[styles.statIconBox, { backgroundColor: Colors.heavenlyGoldMuted }]}>
               <PhoneCall size={20} color={Colors.heavenlyGold} />
             </View>
-            <Text style={styles.statNumber}>{stats.totalDials}</Text>
+            <Text style={styles.statNumber}>{summary.totalDials}</Text>
             <Text style={styles.statTitle}>Total Dials</Text>
           </View>
 
@@ -171,7 +314,7 @@ export default function AnalyticsScreen({ navigation }: any) {
               <CheckCircle2 size={20} color={Colors.heavenlyGold} />
             </View>
             <Text style={[styles.statNumber, { color: Colors.heavenlyGold }]}>
-              {stats.appointmentCount}
+              {summary.appointmentCount}
             </Text>
             <Text style={[styles.statTitle, { color: Colors.heavenlyGold, fontWeight: '800' }]}>Appts. Set</Text>
           </View>
@@ -181,7 +324,7 @@ export default function AnalyticsScreen({ navigation }: any) {
               <CheckCircle2 size={20} color={Colors.statusSitDownText} />
             </View>
             <Text style={[styles.statNumber, { color: Colors.statusSitDownText }]}>
-              {stats.connectedCount}
+              {summary.connectedCount}
             </Text>
             <Text style={styles.statTitle}>Spoke / Connected</Text>
           </View>
@@ -190,7 +333,7 @@ export default function AnalyticsScreen({ navigation }: any) {
             <View style={[styles.statIconBox, { backgroundColor: Colors.bgDark }]}>
               <PhoneOff size={20} color={Colors.textMuted} />
             </View>
-            <Text style={styles.statNumber}>{stats.noAnswerCount + stats.voicemailCount}</Text>
+            <Text style={styles.statNumber}>{summary.noAnswerCount + summary.voicemailCount}</Text>
             <Text style={styles.statTitle}>No Answer / VM</Text>
           </View>
         </View>
@@ -201,7 +344,7 @@ export default function AnalyticsScreen({ navigation }: any) {
             <MessageSquare size={22} color={Colors.deepSkyBlueLight} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.smsBannerTitle}>{stats.smsSentCount} Follow-Up Texts Sent</Text>
+            <Text style={styles.smsBannerTitle}>{summary.smsSentCount} Follow-Up Texts Sent</Text>
             <Text style={styles.smsBannerSub}>AI personalized & cadence messages delivered</Text>
           </View>
         </View>
@@ -214,6 +357,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.sacredGreenDeep,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  loadingText: {
+    color: Colors.textMuted,
+    fontSize: 14,
+    marginTop: 12,
   },
   header: {
     flexDirection: 'row',
@@ -242,36 +396,220 @@ const styles = StyleSheet.create({
   heroCard: {
     backgroundColor: Colors.bgCard,
     borderRadius: 20,
-    padding: 24,
+    padding: 20,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   heroLabel: {
     color: Colors.heavenlyGold,
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '800',
     letterSpacing: 1,
   },
   heroValue: {
     fontSize: 48,
     fontWeight: '900',
     color: Colors.statusSitDownText,
-    marginTop: 6,
+    marginTop: 4,
   },
   heroSubtext: {
     color: Colors.textSecondary,
     fontSize: 13,
-    marginTop: 6,
+    marginTop: 4,
     textAlign: 'center',
+  },
+  velocityTriad: {
+    flexDirection: 'row',
+    width: '100%',
+    marginTop: 18,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  triadItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  triadValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.livingWhite,
+  },
+  triadLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  weeklyCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  weeklyRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  weeklyLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    letterSpacing: 0.8,
+  },
+  weeklyValueCurrent: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: Colors.livingWhite,
+  },
+  weeklyValuePrior: {
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+  weeklyDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    marginVertical: 12,
+  },
+  trendBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  trendUp: {
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+  },
+  trendNeutral: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  trendText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
   },
   sectionHeader: {
     color: Colors.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '800',
     letterSpacing: 1,
-    marginBottom: 12,
+    marginBottom: 10,
+  },
+  funnelCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  funnelStep: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  funnelIconCol: {
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  funnelIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  funnelLine: {
+    width: 2,
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    marginVertical: 4,
+  },
+  funnelContent: {
+    flex: 1,
+    paddingBottom: 14,
+  },
+  funnelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  funnelTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.livingWhite,
+  },
+  funnelCount: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.livingWhite,
+  },
+  funnelSub: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  card: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  peakBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+    borderWidth: 1,
+    borderColor: '#22C55E',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 14,
+  },
+  peakText: {
+    fontSize: 12,
+    color: '#4ADE80',
+    fontWeight: '600',
+  },
+  hourlyContainer: {
+    gap: 8,
+  },
+  hourlyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  hourlyHourLabel: {
+    width: 52,
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  hourlyTrack: {
+    flex: 1,
+    height: 8,
+    backgroundColor: Colors.bgDark,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  hourlyBar: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  hourlyRateText: {
+    width: 68,
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.livingWhite,
+    textAlign: 'right',
   },
   grid: {
     flexDirection: 'row',
@@ -323,62 +661,5 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontSize: 12,
     marginTop: 2,
-  },
-  chartCard: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: 16,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: Colors.borderSubtle,
-    marginBottom: 24,
-  },
-  multiBar: {
-    flexDirection: 'row',
-    height: 12,
-    borderRadius: 6,
-    overflow: 'hidden',
-    marginBottom: 16,
-    backgroundColor: Colors.bgDark,
-  },
-  barSegment: {
-    height: '100%',
-  },
-  chartRows: {
-    gap: 12,
-  },
-  chartRow: {
-    gap: 4,
-  },
-  chartRowHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  dotIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
-  },
-  chartRowLabel: {
-    fontSize: 12,
-    color: Colors.livingWhite,
-    flex: 1,
-  },
-  chartRowValue: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.textSecondary,
-  },
-  progressTrack: {
-    height: 6,
-    backgroundColor: Colors.bgDark,
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginTop: 2,
-  },
-  progressBar: {
-    height: '100%',
-    borderRadius: 3,
   },
 });
