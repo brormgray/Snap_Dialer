@@ -117,6 +117,15 @@ export class LeadsRepository {
       ]
     );
 
+    if (imageUri && imageUri.length > 50) {
+      try {
+        const { dexieDb } = await import('./dexieDb');
+        await dexieDb.saveLeadPhoto(leadId, imageUri);
+      } catch (e) {
+        // Non-fatal, image remains safely referenced
+      }
+    }
+
     const created = await this.getLeadById(leadId);
     return (
       created || {

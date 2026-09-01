@@ -41,6 +41,7 @@ import { Colors } from '../theme/colors';
 export default function ScanSheetScreen({ navigation }: any) {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [processingStatusText, setProcessingStatusText] = useState<string>('Analyzing Report Card with Gemini AI...');
   const [extractedLeads, setExtractedLeads] = useState<ExtractedLeadItem[]>([]);
   const [apiKey, setApiKey] = useState<string>('');
   const [hasScanned, setHasScanned] = useState<boolean>(false);
@@ -74,6 +75,7 @@ export default function ScanSheetScreen({ navigation }: any) {
       if (scannedUri) {
         setImageUri(scannedUri);
         setIsProcessing(true);
+        setProcessingStatusText('Analyzing Report Card with Gemini AI...');
         handleImageCaptured(scannedUri);
       }
     } catch (e: any) {
@@ -93,19 +95,66 @@ export default function ScanSheetScreen({ navigation }: any) {
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
+        allowsMultipleSelection: true,
         quality: 0.85,
       });
 
-      if (!result.canceled && result.assets[0]) {
-        setImageUri(result.assets[0].uri);
-        setIsProcessing(true);
-        const optimizedUri = await DocumentScannerService.downsampleAndCompress(result.assets[0].uri);
-        handleImageCaptured(optimizedUri);
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        if (result.assets.length === 1) {
+          setImageUri(result.assets[0].uri);
+          setIsProcessing(true);
+          setProcessingStatusText('Analyzing Report Card with Gemini AI...');
+          const optimizedUri = await DocumentScannerService.downsampleAndCompress(result.assets[0].uri);
+          handleImageCaptured(optimizedUri);
+        } else {
+          await handleBatchImagesCaptured(result.assets.map((a) => a.uri));
+        }
       }
     } catch (e: any) {
       setIsProcessing(false);
       Alert.alert('Image Error', e?.message || 'Failed to select image.');
+    }
+  };
+
+  const handleBatchImagesCaptured = async (rawUris: string[]) => {
+    setIsProcessing(true);
+    setHasScanned(false);
+    const aggregatedLeads: ExtractedLeadItem[] = [];
+    let firstOptimizedUri: string | null = null;
+
+    try {
+      for (let i = 0; i < rawUris.length; i++) {
+        setProcessingStatusText(`Analyzing card ${i + 1} of ${rawUris.length} with Gemini AI...`);
+        try {
+          const optUri = await DocumentScannerService.downsampleAndCompress(rawUris[i]);
+          if (!firstOptimizedUri) {
+            firstOptimizedUri = optUri;
+            setImageUri(optUri);
+          }
+          const cardLeads = await VisionService.extractLeadsFromImage(optUri, apiKey);
+          for (const lead of cardLeads) {
+            aggregatedLeads.push({
+              ...lead,
+              source_image_uri: optUri,
+            });
+          }
+        } catch (cardErr: any) {
+          console.warn(`Card ${i + 1} extraction skipped:`, cardErr);
+        }
+      }
+
+      if (aggregatedLeads.length > 0) {
+        await HapticsService.success();
+        setExtractedLeads(aggregatedLeads);
+        setHasScanned(true);
+      } else {
+        throw new Error('No educator details could be extracted from the selected cards.');
+      }
+    } catch (e: any) {
+      Alert.alert('Batch Ingestion Notice', e?.message || 'Could not parse batch images.');
+    } finally {
+      setIsProcessing(false);
+      setProcessingStatusText('Analyzing Report Card with Gemini AI...');
     }
   };
 
@@ -186,9 +235,12 @@ export default function ScanSheetScreen({ navigation }: any) {
         priority_tier: priorityTier,
         list_id: targetListId,
       };
-      const savedLead = await LeadsRepository.addSingleLead(primaryLead, imageUri);
+      const savedLead = await LeadsRepository.addSingleLead(
+        primaryLead,
+        primaryLead.source_image_uri || imageUri
+      );
 
-      // If multiple leads were on the sheet, save the rest too
+      // If multiple leads were on the sheet or from batch intake, save the rest too
       for (let i = 1; i < validLeads.length; i++) {
         await LeadsRepository.addSingleLead(
           {
@@ -196,7 +248,7 @@ export default function ScanSheetScreen({ navigation }: any) {
             priority_tier: priorityTier,
             list_id: targetListId,
           },
-          imageUri
+          validLeads[i].source_image_uri || imageUri
         );
       }
 
@@ -239,7 +291,7 @@ export default function ScanSheetScreen({ navigation }: any) {
               </View>
             )}
             <ActivityIndicator size="large" color={Colors.heavenlyGold} style={{ marginTop: 18 }} />
-            <Text style={styles.loadingTitle}>Analyzing Report Card with Gemini AI...</Text>
+            <Text style={styles.loadingTitle}>{processingStatusText}</Text>
             <Text style={styles.loadingSubtitle}>
               Extracting educator contact info, planning period, and written notes.
             </Text>
@@ -279,7 +331,7 @@ export default function ScanSheetScreen({ navigation }: any) {
 
               <TouchableOpacity style={styles.secondaryCaptureButton} onPress={pickImage}>
                 <ImageIcon size={20} color={Colors.heavenlyGold} />
-                <Text style={styles.secondaryCaptureButtonText}>Pick from Photo Library</Text>
+                <Text style={styles.secondaryCaptureButtonText}>Import Card Photos (Single or Batch)</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
