@@ -127,41 +127,46 @@ export default function LeadDetailScreen({ route, navigation }: any) {
   const handleSaveEdit = async () => {
     if (!lead) return;
     await HapticsService.success();
-    await LeadsRepository.updateLeadDetails({
-      id: lead.id,
-      name,
-      phone,
-      school,
-      email,
-      room_number: roomNumber,
-      planning_period: planningPeriod,
-      years_in_frs: yearsInFrs,
-      notes,
-      priority_tier: priorityTier,
-      list_id: listIdVal,
-    });
+    try {
+      await LeadsRepository.updateLeadDetails({
+        id: lead.id,
+        name: name.trim(),
+        phone: phone.trim(),
+        school: school.trim() || 'VOL',
+        email: email.trim() || null,
+        room_number: roomNumber.trim() || null,
+        planning_period: planningPeriod.trim() || null,
+        years_in_frs: yearsInFrs.trim() || null,
+        notes: notes || null,
+        priority_tier: priorityTier,
+        list_id: listIdVal,
+      });
 
-    setLead((prev) =>
-      prev
-        ? {
-            ...prev,
-            name,
-            phone,
-            school,
-            email: email.trim() || null,
-            room_number: roomNumber.trim() || null,
-            planning_period: planningPeriod,
-            years_in_frs: yearsInFrs,
-            notes,
-            priority_tier: priorityTier,
-            list_id: listIdVal,
-          }
-        : null
-    );
+      setLead((prev) =>
+        prev
+          ? {
+              ...prev,
+              name: name.trim(),
+              phone: phone.trim(),
+              school: school.trim() || 'VOL',
+              email: email.trim() || null,
+              room_number: roomNumber.trim() || null,
+              planning_period: planningPeriod.trim() || null,
+              years_in_frs: yearsInFrs.trim() || null,
+              notes: notes || null,
+              priority_tier: priorityTier,
+              list_id: listIdVal,
+            }
+          : null
+      );
 
-    setIsEditing(false);
-    await loadLeadData();
-    showToast('✓ Educator details saved successfully.');
+      setIsEditing(false);
+      await loadLeadData();
+      showToast('✓ Educator details saved successfully.');
+    } catch (err: any) {
+      console.error('Failed to save educator details:', err);
+      Alert.alert('Save Failed', err?.message || 'Could not update educator details.');
+    }
   };
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);

@@ -152,7 +152,7 @@ class WebDatabase implements IDatabase {
   }
 
   async getAllAsync<T>(sql: string, params: any[] = []): Promise<T[]> {
-    const s = sql.toLowerCase();
+    const s = sql.toLowerCase().replace(/\s+/g, ' ').trim();
     if (s.includes('from settings')) {
       return [...this.settings] as any;
     }
@@ -220,7 +220,7 @@ class WebDatabase implements IDatabase {
   }
 
   async getFirstAsync<T>(sql: string, params: any[] = []): Promise<T | null> {
-    const s = sql.toLowerCase();
+    const s = sql.toLowerCase().replace(/\s+/g, ' ').trim();
     if (s.includes('from sms_templates')) {
       if (s.includes('count(*)')) {
         return { count: this.sms_templates.length } as any;
@@ -312,7 +312,7 @@ class WebDatabase implements IDatabase {
   }
 
   async runAsync(sql: string, params: any[] = []): Promise<any> {
-    const s = sql.toLowerCase();
+    const s = sql.toLowerCase().replace(/\s+/g, ' ').trim();
     if (s.includes('insert into lists')) {
       let listId = params[0];
       let title = params[1] || 'Campaign List';
@@ -466,9 +466,9 @@ class WebDatabase implements IDatabase {
         rule.action_type = params[0];
         rule.sms_template_id = params[1];
       }
-    } else if (s.includes('update leads set')) {
+    } else if (s.includes('update leads set') || (s.includes('update leads') && s.includes('set'))) {
       const leadId = params[params.length - 1];
-      const lead = this.leads.find((l) => l.id === leadId);
+      const lead = this.leads.find((l) => String(l.id).trim() === String(leadId).trim());
       if (lead) {
         if (s.includes('follow_up_at = ?')) {
           lead.follow_up_at = params[0];
@@ -522,10 +522,12 @@ class WebDatabase implements IDatabase {
           if (params[4] !== undefined && params[4] !== null) lead.notes = params[4];
           lead.updated_at = params[5] || new Date().toISOString();
         }
+      } else {
+        console.warn(`[WebDatabase] update leads set: leadId '${leadId}' not found in active in-memory leads array (${this.leads.length} total)`);
       }
-    } else if (s.includes('update lists set')) {
+    } else if (s.includes('update lists set') || (s.includes('update lists') && s.includes('set'))) {
       const listId = params[params.length - 1];
-      const list = this.lists.find((l) => l.id === listId);
+      const list = this.lists.find((l) => String(l.id).trim() === String(listId).trim());
       if (list) {
         list.completed_leads = params[0];
         list.connected_leads = params[1];
@@ -561,6 +563,7 @@ class WebDatabase implements IDatabase {
 }
 
 let dbInstance: IDatabase | null = null;
+let dbInitPromise: Promise<IDatabase> | null = null;
 
 /**
  * Clears the in-memory singleton so the next call to getDatabase() will
@@ -568,27 +571,35 @@ let dbInstance: IDatabase | null = null;
  */
 export function resetDatabase(): void {
   dbInstance = null;
+  dbInitPromise = null;
 }
 
 export async function getDatabase(): Promise<IDatabase> {
   if (dbInstance) {
     return dbInstance;
   }
-
-  if (Platform.OS === 'web') {
-    const webDb = new WebDatabase();
-    await webDb.init();
-    await initWebDefaults(webDb);
-    dbInstance = webDb;
-    return dbInstance;
+  if (dbInitPromise) {
+    return dbInitPromise;
   }
 
-  // Native iOS and Android
-  const SQLite = await import('expo-sqlite');
-  const nativeDb = await SQLite.openDatabaseAsync('snap_dialer_valuteachers.db');
-  await initNativeDatabase(nativeDb);
-  dbInstance = nativeDb as unknown as IDatabase;
-  return dbInstance;
+  dbInitPromise = (async () => {
+    if (Platform.OS === 'web') {
+      const webDb = new WebDatabase();
+      await webDb.init();
+      await initWebDefaults(webDb);
+      dbInstance = webDb;
+      return dbInstance;
+    }
+
+    // Native iOS and Android
+    const SQLite = await import('expo-sqlite');
+    const nativeDb = await SQLite.openDatabaseAsync('snap_dialer_valuteachers.db');
+    await initNativeDatabase(nativeDb);
+    dbInstance = nativeDb as unknown as IDatabase;
+    return dbInstance;
+  })();
+
+  return dbInitPromise;
 }
 
 async function initWebDefaults(db: WebDatabase) {
@@ -727,10 +738,36 @@ async function initNativeDatabase(db: any): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_call_logs_lead ON call_logs(lead_id);
   `);
 
-  try {
-    await db.execAsync('ALTER TABLE leads ADD COLUMN priority_tier INTEGER DEFAULT 1;');
-  } catch (e) {
-    // Column already exists
+  const columnsToAdd = [
+    'priority_tier INTEGER DEFAULT 1',
+    'room_number TEXT',
+    'email TEXT',
+    'planning_period TEXT',
+    'years_in_frs TEXT',
+    'school TEXT',
+    'age TEXT',
+    'text_ok INTEGER DEFAULT 1',
+    'frs_knowledge TEXT',
+    'frs_interests TEXT',
+    'custom_questions TEXT',
+    'meeting_preferences TEXT',
+    'annual_salary TEXT',
+    'present_403b_contribution TEXT',
+    'source_image_uri TEXT',
+    'company TEXT',
+    'notes TEXT',
+    'cadence_step INTEGER DEFAULT 1',
+    'last_attempt_at TEXT',
+    'last_disposition TEXT DEFAULT "pending"',
+    'follow_up_at TEXT',
+    'attempts_count INTEGER DEFAULT 0',
+  ];
+  for (const col of columnsToAdd) {
+    try {
+      await db.execAsync(`ALTER TABLE leads ADD COLUMN ${col};`);
+    } catch (e) {
+      // Column already exists
+    }
   }
 
   const templateCount = await db.getFirstAsync('SELECT COUNT(*) as count FROM sms_templates');

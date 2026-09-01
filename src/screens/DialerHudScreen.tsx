@@ -149,11 +149,21 @@ export default function DialerHudScreen({ route, navigation }: any) {
   const resumeQueuePosition = (leads: Lead[]): number => {
     try {
       const storageKey = `snap_dialer_last_lead_${listId || 'master_queue'}_${schoolName || 'all'}`;
+      const indexKey = `snap_dialer_last_index_${listId || 'master_queue'}_${schoolName || 'all'}`;
       const savedLeadId = typeof window !== 'undefined' && window.localStorage ? localStorage.getItem(storageKey) : null;
+      const savedIndexStr = typeof window !== 'undefined' && window.localStorage ? localStorage.getItem(indexKey) : null;
+
       if (savedLeadId && leads.length > 0) {
         const foundIndex = leads.findIndex((l) => l.id === savedLeadId);
         if (foundIndex >= 0 && foundIndex < leads.length) {
           return foundIndex;
+        }
+      }
+      // If the last lead was dispositioned & removed from callable queue, resume at the saved index
+      if (savedIndexStr && leads.length > 0) {
+        const parsed = parseInt(savedIndexStr, 10);
+        if (!isNaN(parsed) && parsed >= 0) {
+          return Math.min(parsed, leads.length - 1);
         }
       }
     } catch {}
@@ -186,8 +196,10 @@ export default function DialerHudScreen({ route, navigation }: any) {
     if (queue.length > 0 && queue[currentIndex]) {
       try {
         const storageKey = `snap_dialer_last_lead_${listId || 'master_queue'}_${schoolName || 'all'}`;
+        const indexKey = `snap_dialer_last_index_${listId || 'master_queue'}_${schoolName || 'all'}`;
         if (typeof window !== 'undefined' && window.localStorage) {
           localStorage.setItem(storageKey, queue[currentIndex].id);
+          localStorage.setItem(indexKey, String(currentIndex));
         }
       } catch {}
     }
@@ -231,55 +243,60 @@ export default function DialerHudScreen({ route, navigation }: any) {
   const handleSaveEditedLead = async () => {
     if (!currentLead) return;
     await HapticsService.success();
-    const updatedName = editName.trim();
-    const updatedPhone = editPhone.trim();
-    const updatedSchool = editSchool.trim() || 'VOL';
-    const updatedEmail = editEmail.trim() || null;
-    const updatedRoom = editRoomNumber.trim() || null;
-    const updatedPlanning = editPlanningPeriod.trim() || null;
-    const updatedYears = editYearsInFrs.trim() || null;
+    try {
+      const updatedName = editName.trim();
+      const updatedPhone = editPhone.trim();
+      const updatedSchool = editSchool.trim() || 'VOL';
+      const updatedEmail = editEmail.trim() || null;
+      const updatedRoom = editRoomNumber.trim() || null;
+      const updatedPlanning = editPlanningPeriod.trim() || null;
+      const updatedYears = editYearsInFrs.trim() || null;
 
-    await LeadsRepository.updateLeadDetails({
-      id: currentLead.id,
-      name: updatedName,
-      phone: updatedPhone,
-      school: updatedSchool,
-      email: updatedEmail,
-      room_number: updatedRoom,
-      planning_period: updatedPlanning,
-      years_in_frs: updatedYears,
-      notes: currentLead.notes,
-      priority_tier: currentLead.priority_tier,
-      list_id: currentLead.list_id,
-    });
+      await LeadsRepository.updateLeadDetails({
+        id: currentLead.id,
+        name: updatedName,
+        phone: updatedPhone,
+        school: updatedSchool,
+        email: updatedEmail,
+        room_number: updatedRoom,
+        planning_period: updatedPlanning,
+        years_in_frs: updatedYears,
+        notes: currentLead.notes,
+        priority_tier: currentLead.priority_tier,
+        list_id: currentLead.list_id,
+      });
 
-    currentLead.name = updatedName;
-    currentLead.phone = updatedPhone;
-    currentLead.school = updatedSchool;
-    currentLead.email = updatedEmail || undefined;
-    currentLead.room_number = updatedRoom || undefined;
-    currentLead.planning_period = updatedPlanning || undefined;
-    currentLead.years_in_frs = updatedYears || undefined;
+      currentLead.name = updatedName;
+      currentLead.phone = updatedPhone;
+      currentLead.school = updatedSchool;
+      currentLead.email = updatedEmail || undefined;
+      currentLead.room_number = updatedRoom || undefined;
+      currentLead.planning_period = updatedPlanning || undefined;
+      currentLead.years_in_frs = updatedYears || undefined;
 
-    setQueue((prev) => {
-      const next = [...prev];
-      if (next[currentIndex]) {
-        next[currentIndex] = {
-          ...next[currentIndex],
-          name: updatedName,
-          phone: updatedPhone,
-          school: updatedSchool,
-          email: updatedEmail || undefined,
-          room_number: updatedRoom || undefined,
-          planning_period: updatedPlanning || undefined,
-          years_in_frs: updatedYears || undefined,
-        };
-      }
-      return next;
-    });
+      setQueue((prev) => {
+        const next = [...prev];
+        if (next[currentIndex]) {
+          next[currentIndex] = {
+            ...next[currentIndex],
+            name: updatedName,
+            phone: updatedPhone,
+            school: updatedSchool,
+            email: updatedEmail || undefined,
+            room_number: updatedRoom || undefined,
+            planning_period: updatedPlanning || undefined,
+            years_in_frs: updatedYears || undefined,
+          };
+        }
+        return next;
+      });
 
-    setEditLeadModalVisible(false);
-    showToast('✓ Educator card details saved & updated!');
+      setEditLeadModalVisible(false);
+      showToast('✓ Educator card details saved & updated!');
+    } catch (err: any) {
+      console.error('Failed to save edited lead in HUD:', err);
+      Alert.alert('Save Failed', err?.message || 'Could not update educator details.');
+    }
   };
 
   const currentLead: Lead | undefined = queue[currentIndex];
