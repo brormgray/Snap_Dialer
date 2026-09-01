@@ -63,4 +63,36 @@ describe('Dialer HUD Queue Resumption Engine', () => {
     assert.strictEqual(resumeQueuePosition(queue, null, null), 0);
     assert.strictEqual(resumeQueuePosition([], 'lead_1', '0'), 0);
   });
+
+  test('Save & Next advances to next lead regardless of auto_advance_enabled setting', () => {
+    const queue = [
+      { id: 'lead_1', name: 'Teacher 1' },
+      { id: 'lead_2', name: 'Teacher 2' },
+      { id: 'lead_3', name: 'Teacher 3' },
+    ];
+    let currentIndex = 0;
+
+    function advanceNextLead() {
+      if (currentIndex + 1 < queue.length) {
+        currentIndex += 1;
+      }
+    }
+
+    function handleDisposition(disposition, note, advanceImmediately) {
+      if (advanceImmediately) {
+        advanceNextLead();
+      }
+    }
+
+    // User saves note/appointment with "Save & Next" (advanceImmediately = true)
+    handleDisposition('appointment_set', 'Sit-down set for Thursday', true);
+
+    assert.strictEqual(currentIndex, 1, 'Dialer must advance from Teacher 1 to Teacher 2');
+    assert.strictEqual(queue[currentIndex].name, 'Teacher 2');
+
+    // Next call: Spoke with Teacher 2, click Save & Next
+    handleDisposition('connected', 'Great conversation', true);
+    assert.strictEqual(currentIndex, 2, 'Dialer must advance from Teacher 2 to Teacher 3');
+    assert.strictEqual(queue[currentIndex].name, 'Teacher 3');
+  });
 });

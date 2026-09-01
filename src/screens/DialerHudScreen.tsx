@@ -474,7 +474,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
   };
 
   // Disposition Handlers
-  const handleDisposition = async (disposition: CallDisposition, note?: string) => {
+  const handleDisposition = async (disposition: CallDisposition, note?: string, advanceImmediately: boolean = false) => {
     if (!currentLead) return;
 
     if (disposition === 'appointment_set') {
@@ -570,8 +570,14 @@ export default function DialerHudScreen({ route, navigation }: any) {
       console.warn('Disposition DB save error:', e);
     }
 
-    if (!smsDispatched) {
-      startAutoAdvanceTimer();
+    if (advanceImmediately) {
+      advanceNextLead();
+    } else if (!smsDispatched) {
+      if (appSettings?.auto_advance_enabled && !isAutoPaused) {
+        startAutoAdvanceTimer();
+      } else {
+        advanceNextLead();
+      }
     }
   };
 
@@ -601,14 +607,15 @@ export default function DialerHudScreen({ route, navigation }: any) {
       note: `Follow-up set for ${followUpDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
     });
 
+    setFollowUpNote('');
     Alert.alert('Follow-Up Saved', `Callback scheduled for ${followUpDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
-    startAutoAdvanceTimer();
+    advanceNextLead();
   };
 
   const handleMarkDNC = async () => {
     if (!currentLead) return;
     await HapticsService.heavy();
-    await handleDisposition('do_not_call', 'Educator requested Do Not Call');
+    await handleDisposition('do_not_call', 'Educator requested Do Not Call', true);
   };
 
   const handleSaveNote = async () => {
@@ -617,7 +624,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
     setNoteModalVisible(false);
 
     const disposition: CallDisposition = isSettingAppt ? 'appointment_set' : 'connected';
-    await handleDisposition(disposition, callNote);
+    await handleDisposition(disposition, callNote, true);
     setCallNote('');
     setIsSettingAppt(false);
   };
@@ -758,7 +765,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
       smsSent: true,
       smsBody: customSmsBody,
     });
-    startAutoAdvanceTimer();
+    advanceNextLead();
   };
 
 
@@ -1400,10 +1407,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.modalSaveButton}
-                onPress={() => {
-                  setNoteModalVisible(false);
-                  handleDisposition(isSettingAppt ? 'appointment_set' : 'connected', callNote);
-                }}
+                onPress={handleSaveNote}
               >
                 <Text style={styles.modalSaveText}>
                   {isSettingAppt ? 'Save Appt & Next' : 'Save & Next'}
