@@ -562,6 +562,14 @@ class WebDatabase implements IDatabase {
 
 let dbInstance: IDatabase | null = null;
 
+/**
+ * Clears the in-memory singleton so the next call to getDatabase() will
+ * rebuild from the freshly-written IndexedDB state (used after cloud restore).
+ */
+export function resetDatabase(): void {
+  dbInstance = null;
+}
+
 export async function getDatabase(): Promise<IDatabase> {
   if (dbInstance) {
     return dbInstance;

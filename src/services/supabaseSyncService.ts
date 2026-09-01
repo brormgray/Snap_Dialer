@@ -1,5 +1,5 @@
-import { getSupabaseClient, setSupabaseCredentials } from './supabaseClient';
-import { getDatabase } from '../db/database';
+﻿import { getSupabaseClient, setSupabaseCredentials } from './supabaseClient';
+import { getDatabase, resetDatabase } from '../db/database';
 import { IndexedDbStorage, DatabaseState } from '../db/indexedDbStorage';
 
 export interface SyncResult {
@@ -114,108 +114,158 @@ DROP POLICY IF EXISTS "Anon Full Access snap_sms_templates" ON snap_sms_template
 CREATE POLICY "Anon Full Access snap_sms_templates" ON snap_sms_templates FOR ALL USING (true) WITH CHECK (true);
 `;
 
+/**
+ * Maps a full local lead object to ONLY the columns that exist in snap_leads.
+ * Local-only columns like text_ok, frs_interests, company, meeting_preferences
+ * are intentionally excluded to prevent Supabase 400 "column not found" errors.
+ */
+function mapLeadToSnapSchema(lead: any): object {
+  return {
+    id: lead.id,
+    list_id: lead.list_id || null,
+    name: lead.name || '',
+    phone: lead.phone || '',
+    school: lead.school || null,
+    email: lead.email || null,
+    room_number: lead.room_number || null,
+    planning_period: lead.planning_period || null,
+    years_in_frs: lead.years_in_frs || null,
+    priority_tier: lead.priority_tier !== undefined ? Number(lead.priority_tier) : 1,
+    notes: lead.notes || null,
+    source_image_uri:
+      lead.source_image_uri && lead.source_image_uri.length < 500
+        ? lead.source_image_uri
+        : null,
+    attempts_count: lead.attempts_count || 0,
+    cadence_step: lead.cadence_step || 1,
+    last_disposition: lead.last_disposition || 'pending',
+    last_attempt_at: lead.last_attempt_at || null,
+    follow_up_at: lead.follow_up_at || null,
+    created_at: lead.created_at || new Date().toISOString(),
+    updated_at: lead.updated_at || new Date().toISOString(),
+  };
+}
+
+function mapListToSnapSchema(list: any): object {
+  return {
+    id: list.id,
+    title: list.title || 'Campaign List',
+    description: list.description || null,
+    total_leads: list.total_leads || 0,
+    completed_leads: list.completed_leads || 0,
+    connected_leads: list.connected_leads || 0,
+    created_at: list.created_at || new Date().toISOString(),
+    updated_at: list.updated_at || new Date().toISOString(),
+  };
+}
+
+function mapLogToSnapSchema(log: any): object {
+  return {
+    id: log.id,
+    lead_id: log.lead_id || null,
+    list_id: log.list_id || null,
+    duration_seconds: log.duration_seconds || 0,
+    disposition: log.disposition || null,
+    note: log.note || null,
+    timestamp: log.timestamp || new Date().toISOString(),
+    sms_sent: log.sms_sent === true || log.sms_sent === 1,
+    sms_body: log.sms_body || null,
+  };
+}
+
 export class SupabaseSyncService {
   private static isSyncing: boolean = false;
   private static debounceTimer: any = null;
 
-  /**
-   * Tests Supabase connectivity and validates if the snap_ tables exist
-   */
-  static async testConnection(url: string, anonKey: string): Promise<{ success: boolean; message: string }> {
+  static async testConnection(
+    url: string,
+    anonKey: string
+  ): Promise<{ success: boolean; message: string }> {
     try {
       const client = getSupabaseClient(url, anonKey);
       if (!client) {
         return { success: false, message: 'Invalid URL or Anon Key format.' };
       }
-
-      // Try selecting 1 record from snap_leads
-      const { data, error } = await client.from(`${TABLE_PREFIX}leads`).select('id').limit(1);
-
+      const { error } = await client.from(`${TABLE_PREFIX}leads`).select('id').limit(1);
       if (error) {
-        if (error.message.includes('relation "snap_leads" does not exist') || error.code === '42P01') {
+        if (
+          error.message.includes('relation "snap_leads" does not exist') ||
+          error.code === '42P01'
+        ) {
           return {
             success: false,
-            message: 'Connected to Supabase, but the "snap_leads" table is not created yet. Run the SQL setup script below.',
+            message:
+              'Connected to Supabase, but the "snap_leads" table is not created yet. Run the SQL setup script below.',
           };
         }
         return { success: false, message: `Supabase error: ${error.message}` };
       }
-
-      // Save valid credentials
       setSupabaseCredentials(url, anonKey);
-      return { success: true, message: '✓ Connected successfully to Supabase! All snap_ tables verified.' };
+      return { success: true, message: 'Connected successfully to Supabase! All snap_ tables verified.' };
     } catch (err: any) {
       return { success: false, message: `Connection failed: ${err?.message || 'Network error'}` };
     }
   }
 
   /**
-   * Push local device database to Supabase cloud
+   * Push local device database to Supabase cloud.
+   * Reads from the live in-memory WebDatabase (not IndexedDB snapshot) for latest data.
+   * Maps rows to exact snap_ column schemas to prevent 400 errors.
    */
   static async pushLocalToCloud(): Promise<SyncResult> {
     const client = getSupabaseClient();
     if (!client) {
-      return { success: false, error: 'Supabase is not configured. Please add your credentials in Settings.' };
+      return {
+        success: false,
+        error: 'Supabase is not configured. Please enter your credentials in Settings and tap "Test & Save Connection" first.',
+      };
     }
-
     if (this.isSyncing) {
       return { success: false, error: 'A sync operation is already in progress.' };
     }
-
     this.isSyncing = true;
     try {
-      const state = await IndexedDbStorage.loadState();
-      const leads = state.leads || [];
-      const lists = state.lists || [];
-      const logs = state.call_logs || [];
-      const rules = state.cadence_rules || [];
-      const templates = state.sms_templates || [];
+      const db = await getDatabase();
+      const [rawLeads, rawLists, rawLogs] = await Promise.all([
+        db.getAllAsync<any>('SELECT * FROM leads'),
+        db.getAllAsync<any>('SELECT * FROM lists'),
+        db.getAllAsync<any>('SELECT * FROM call_logs'),
+      ]);
 
-      // 1. Sync Lists
+      const leads = rawLeads.map(mapLeadToSnapSchema);
+      const lists = rawLists.map(mapListToSnapSchema);
+      const logs = rawLogs.map(mapLogToSnapSchema);
+
       if (lists.length > 0) {
-        const { error: listErr } = await client.from(`${TABLE_PREFIX}lists`).upsert(lists, { onConflict: 'id' });
-        if (listErr) throw listErr;
+        const { error } = await client.from(`${TABLE_PREFIX}lists`).upsert(lists, { onConflict: 'id' });
+        if (error) throw new Error(`Lists sync failed: ${error.message}`);
       }
 
-      // 2. Sync Leads (in chunks of 100 for network efficiency)
       if (leads.length > 0) {
-        const CHUNK_SIZE = 100;
-        for (let i = 0; i < leads.length; i += CHUNK_SIZE) {
-          const chunk = leads.slice(i, i + CHUNK_SIZE);
-          const { error: leadErr } = await client.from(`${TABLE_PREFIX}leads`).upsert(chunk, { onConflict: 'id' });
-          if (leadErr) throw leadErr;
+        const CHUNK = 100;
+        for (let i = 0; i < leads.length; i += CHUNK) {
+          const { error } = await client
+            .from(`${TABLE_PREFIX}leads`)
+            .upsert(leads.slice(i, i + CHUNK), { onConflict: 'id' });
+          if (error) throw new Error(`Leads sync failed: ${error.message}`);
         }
       }
 
-      // 3. Sync Call Logs
       if (logs.length > 0) {
-        const CHUNK_SIZE = 100;
-        for (let i = 0; i < logs.length; i += CHUNK_SIZE) {
-          const chunk = logs.slice(i, i + CHUNK_SIZE);
-          const { error: logErr } = await client.from(`${TABLE_PREFIX}call_logs`).upsert(chunk, { onConflict: 'id' });
-          if (logErr) throw logErr;
+        const CHUNK = 100;
+        for (let i = 0; i < logs.length; i += CHUNK) {
+          const { error } = await client
+            .from(`${TABLE_PREFIX}call_logs`)
+            .upsert(logs.slice(i, i + CHUNK), { onConflict: 'id' });
+          if (error) throw new Error(`Call logs sync failed: ${error.message}`);
         }
       }
 
-      // 4. Sync Cadence Rules & Templates
-      if (rules.length > 0) {
-        await client.from(`${TABLE_PREFIX}cadence_rules`).upsert(rules, { onConflict: 'step_number' });
-      }
-      if (templates.length > 0) {
-        await client.from(`${TABLE_PREFIX}sms_templates`).upsert(templates, { onConflict: 'id' });
-      }
-
-      const now = new Date().toISOString();
       if (typeof window !== 'undefined' && window.localStorage) {
-        localStorage.setItem('snap_last_sync_time', now);
+        localStorage.setItem('snap_last_sync_time', new Date().toISOString());
       }
 
-      return {
-        success: true,
-        syncedLeads: leads.length,
-        syncedLists: lists.length,
-        syncedLogs: logs.length,
-      };
+      return { success: true, syncedLeads: leads.length, syncedLists: lists.length, syncedLogs: logs.length };
     } catch (err: any) {
       console.error('Supabase push failed:', err);
       return { success: false, error: err?.message || 'Failed to push data to Supabase.' };
@@ -225,21 +275,22 @@ export class SupabaseSyncService {
   }
 
   /**
-   * Pull all data from Supabase and restore to local device database
+   * Pull all data from Supabase and restore to local device database.
+   * After writing to IndexedDB, calls resetDatabase() so the next getDatabase()
+   * call re-initializes from the freshly-restored state.
    */
   static async pullCloudToLocal(): Promise<RestoreResult> {
     const client = getSupabaseClient();
     if (!client) {
       return { success: false, error: 'Supabase is not configured. Please add your credentials in Settings.' };
     }
-
     try {
       const [
         { data: lists, error: listErr },
         { data: leads, error: leadErr },
         { data: logs, error: logErr },
-        { data: rules, error: ruleErr },
-        { data: templates, error: tmplErr },
+        { data: rules },
+        { data: templates },
       ] = await Promise.all([
         client.from(`${TABLE_PREFIX}lists`).select('*'),
         client.from(`${TABLE_PREFIX}leads`).select('*'),
@@ -248,9 +299,9 @@ export class SupabaseSyncService {
         client.from(`${TABLE_PREFIX}sms_templates`).select('*'),
       ]);
 
-      if (listErr) throw listErr;
-      if (leadErr) throw leadErr;
-      if (logErr) throw logErr;
+      if (listErr) throw new Error(`Lists restore failed: ${listErr.message}`);
+      if (leadErr) throw new Error(`Leads restore failed: ${leadErr.message}`);
+      if (logErr) throw new Error(`Call logs restore failed: ${logErr.message}`);
 
       const restoredState: DatabaseState = {
         lists: lists || [],
@@ -261,16 +312,13 @@ export class SupabaseSyncService {
         settings: [],
       };
 
-      // Save to local IndexedDB & localStorage mirror
       await IndexedDbStorage.saveState(restoredState);
 
-      // Force database re-initialization
-      const db = await getDatabase();
-      await db.execAsync(''); // Triggers reload
+      // Reset the in-memory singleton so next getDatabase() re-initializes from IndexedDB
+      resetDatabase();
 
-      const now = new Date().toISOString();
       if (typeof window !== 'undefined' && window.localStorage) {
-        localStorage.setItem('snap_last_sync_time', now);
+        localStorage.setItem('snap_last_sync_time', new Date().toISOString());
       }
 
       return {
@@ -285,25 +333,15 @@ export class SupabaseSyncService {
     }
   }
 
-  /**
-   * Triggers a debounced, non-blocking silent background sync
-   */
   static triggerAutoSync(): void {
     const client = getSupabaseClient();
     if (!client) return;
-
-    if (this.debounceTimer) {
-      clearTimeout(this.debounceTimer);
-    }
-
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => {
       this.pushLocalToCloud().catch(() => {});
     }, 4000);
   }
 
-  /**
-   * Retrieves the last successful sync timestamp
-   */
   static getLastSyncTime(): string | null {
     if (typeof window !== 'undefined' && window.localStorage) {
       return localStorage.getItem('snap_last_sync_time');

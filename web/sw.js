@@ -1,4 +1,4 @@
-const CACHE_NAME = 'snapdialer-pwa-v1.1.0';
+const CACHE_NAME = 'snapdialer-pwa-v1.2.0';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -46,8 +46,13 @@ self.addEventListener('fetch', (event) => {
   // Ignore non-http/https schemes (like chrome-extension://, tel:, sms:)
   if (!url.protocol.startsWith('http')) return;
 
-  // External APIs (e.g. Gemini AI API) should not be intercepted
-  if (url.hostname.includes('googleapis.com') || url.hostname.includes('google.com')) {
+  // External APIs (Gemini AI, Supabase) should NEVER be intercepted
+  if (
+    url.hostname.includes('googleapis.com') ||
+    url.hostname.includes('google.com') ||
+    url.hostname.includes('supabase.co') ||
+    url.hostname.includes('supabase.io')
+  ) {
     return;
   }
 
@@ -92,18 +97,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. Static Assets (JS Bundles, CSS, Images, Icons, Fonts) -> CACHE-FIRST with NETWORK FALLBACK
+  // 2. Static Assets (JS Bundles, CSS, Images, Icons, Fonts)
+  // Network-First: JS bundles are content-hashed by Expo so network is always authoritative.
+  // Falls back to cache when offline.
   event.respondWith(
     (async () => {
-      // Check cache first (ignore query params/hashes)
-      const cached = (await caches.match(event.request, { ignoreSearch: true })) ||
-                     (await caches.match(url.pathname, { ignoreSearch: true }));
-
-      if (cached) {
-        return cached;
-      }
-
-      // Fetch from network if not in cache
       try {
         const networkRes = await fetch(event.request);
         if (networkRes && networkRes.status === 200) {
@@ -113,13 +111,12 @@ self.addEventListener('fetch', (event) => {
         }
         return networkRes;
       } catch (err) {
-        // Fallback lookup by pathname
-        const pathnameCached = await caches.match(url.pathname, { ignoreSearch: true });
-        if (pathnameCached) {
-          return pathnameCached;
+        // Network failed (offline) — fall back to cached version
+        const cached = (await caches.match(event.request, { ignoreSearch: true })) ||
+                       (await caches.match(url.pathname, { ignoreSearch: true }));
+        if (cached) {
+          return cached;
         }
-
-        // Return a valid response to prevent "Returned response is null"
         return new Response('', { status: 408, statusText: 'Offline Asset Unavailable' });
       }
     })()
