@@ -169,7 +169,9 @@ class WebDatabase implements IDatabase {
         const listId = params[0];
         filtered = filtered.filter((l) => l.list_id === listId);
       }
-      if (s.includes("in ('pending', 'no_answer', 'voicemail')") || s.includes('last_disposition is null')) {
+      if (s.includes("last_disposition != 'do_not_call'") || s.includes("last_disposition <> 'do_not_call'")) {
+        filtered = filtered.filter((l) => l.last_disposition !== 'do_not_call');
+      } else if (s.includes("in ('pending', 'no_answer', 'voicemail')")) {
         filtered = filtered.filter(
           (l) => !l.last_disposition || ['pending', 'no_answer', 'voicemail'].includes(l.last_disposition)
         );
@@ -178,7 +180,14 @@ class WebDatabase implements IDatabase {
         filtered = filtered.filter((l) => !!l.follow_up_at);
       }
       if (s.includes('order by')) {
-        if (s.includes('priority_tier') || s.includes('attempts_count')) {
+        if (s.includes('priority_tier asc, created_at asc')) {
+          filtered.sort((a, b) => {
+            const tierA = a.priority_tier !== undefined ? Number(a.priority_tier) : 1;
+            const tierB = b.priority_tier !== undefined ? Number(b.priority_tier) : 1;
+            if (tierA !== tierB) return tierA - tierB;
+            return (a.created_at || '').localeCompare(b.created_at || '');
+          });
+        } else if (s.includes('priority_tier') || s.includes('attempts_count')) {
           filtered.sort((a, b) => {
             const tierA = a.priority_tier !== undefined ? Number(a.priority_tier) : 1;
             const tierB = b.priority_tier !== undefined ? Number(b.priority_tier) : 1;

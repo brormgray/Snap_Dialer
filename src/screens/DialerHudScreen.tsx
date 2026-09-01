@@ -75,6 +75,10 @@ export default function DialerHudScreen({ route, navigation }: any) {
 
   const [queue, setQueue] = useState<Lead[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
+  const currentIndexRef = useRef<number>(0);
+  currentIndexRef.current = currentIndex;
+  const queueRef = useRef<Lead[]>([]);
+  queueRef.current = queue;
   const [loading, setLoading] = useState<boolean>(true);
   const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState<number | null>(null);
   const [isAutoPaused, setIsAutoPaused] = useState<boolean>(false);
@@ -161,12 +165,18 @@ export default function DialerHudScreen({ route, navigation }: any) {
           return foundIndex;
         }
       }
-      // If the last lead was dispositioned & removed from callable queue, resume at the saved index
       if (savedIndexStr && leads.length > 0) {
         const parsed = parseInt(savedIndexStr, 10);
-        if (!isNaN(parsed) && parsed >= 0) {
-          return Math.min(parsed, leads.length - 1);
+        if (!isNaN(parsed) && parsed >= 0 && parsed < leads.length) {
+          return parsed;
         }
+      }
+      // If no saved position, automatically find the first uncontacted/callable lead
+      const firstCallableIndex = leads.findIndex(
+        (l) => !l.last_disposition || ['pending', 'no_answer', 'voicemail'].includes(l.last_disposition)
+      );
+      if (firstCallableIndex >= 0) {
+        return firstCallableIndex;
       }
     } catch {}
     return 0;
@@ -414,9 +424,10 @@ export default function DialerHudScreen({ route, navigation }: any) {
       },
       onPanResponderMove: (_, gestureState) => {
         pan.setValue({ x: gestureState.dx, y: 0 });
-        if (gestureState.dx > 50) {
-          setSwipeActionText(currentIndex > 0 ? '⏮️ RELEASE FOR PREVIOUS' : '🚫 FIRST LEAD');
-        } else if (gestureState.dx < -50) {
+        const cur = currentIndexRef.current;
+        if (gestureState.dx > 40) {
+          setSwipeActionText(cur > 0 ? '⏮️ RELEASE FOR PREVIOUS' : '🚫 FIRST LEAD');
+        } else if (gestureState.dx < -40) {
           setSwipeActionText('⏭️ RELEASE FOR NEXT LEAD');
         } else {
           setSwipeActionText(null);
@@ -428,20 +439,19 @@ export default function DialerHudScreen({ route, navigation }: any) {
         setSwipeActionText(null);
       },
       onPanResponderRelease: (_, gestureState) => {
-        const isSwipeRight = gestureState.dx > 50 || gestureState.vx > 0.35;
-        const isSwipeLeft = gestureState.dx < -50 || gestureState.vx < -0.35;
+        const isSwipeRight = gestureState.dx > 40 || gestureState.vx > 0.25;
+        const isSwipeLeft = gestureState.dx < -40 || gestureState.vx < -0.25;
+        const cur = currentIndexRef.current;
 
         if (isSwipeRight) {
-          if (currentIndex > 0) {
+          if (cur > 0) {
             HapticsService.medium();
-            goToPreviousLead();
             Animated.timing(pan, {
-              toValue: { x: 350, y: 0 },
-              duration: 160,
+              toValue: { x: 380, y: 0 },
+              duration: 140,
               useNativeDriver: false,
             }).start(() => {
-              pan.setValue({ x: 0, y: 0 });
-              setSwipeActionText(null);
+              goToPreviousLead();
             });
           } else {
             HapticsService.tick();
@@ -450,19 +460,18 @@ export default function DialerHudScreen({ route, navigation }: any) {
               friction: 6,
               tension: 50,
               useNativeDriver: false,
-            }).start();
-            setSwipeActionText(null);
+            }).start(() => {
+              setSwipeActionText(null);
+            });
           }
         } else if (isSwipeLeft) {
           HapticsService.tick();
-          advanceNextLead();
           Animated.timing(pan, {
-            toValue: { x: -350, y: 0 },
-            duration: 160,
+            toValue: { x: -380, y: 0 },
+            duration: 140,
             useNativeDriver: false,
           }).start(() => {
-            pan.setValue({ x: 0, y: 0 });
-            setSwipeActionText(null);
+            advanceNextLead();
           });
         } else {
           Animated.spring(pan, {
@@ -470,8 +479,9 @@ export default function DialerHudScreen({ route, navigation }: any) {
             friction: 6,
             tension: 50,
             useNativeDriver: false,
-          }).start();
-          setSwipeActionText(null);
+          }).start(() => {
+            setSwipeActionText(null);
+          });
         }
       },
     })
@@ -837,8 +847,10 @@ export default function DialerHudScreen({ route, navigation }: any) {
       setAutoAdvanceCountdown(null);
     }
 
-    if (currentIndex + 1 < queue.length) {
-      setCurrentIndex((prev) => prev + 1);
+    const cur = currentIndexRef.current;
+    const q = queueRef.current;
+    if (cur + 1 < q.length) {
+      setCurrentIndex(cur + 1);
     } else {
       loadQueue();
     }
@@ -865,8 +877,9 @@ export default function DialerHudScreen({ route, navigation }: any) {
       setAutoAdvanceCountdown(null);
     }
 
-    if (currentIndex > 0) {
-      setCurrentIndex((prev) => prev - 1);
+    const cur = currentIndexRef.current;
+    if (cur > 0) {
+      setCurrentIndex(cur - 1);
     } else {
       HapticsService.tick();
     }
@@ -1078,11 +1091,33 @@ export default function DialerHudScreen({ route, navigation }: any) {
                   <Text style={styles.hudFreshBadgeText}>FRESH PRIORITY</Text>
                 </View>
               )}
-              <View style={styles.attemptBadge}>
-                <Text style={styles.attemptText}>
-                  Call #{currentLead.attempts_count + 1}
-                </Text>
-              </View>
+              {currentLead.last_disposition && currentLead.last_disposition !== 'pending' ? (
+                <View style={[
+                  styles.attemptBadge,
+                  currentLead.last_disposition === 'appointment_set' && { backgroundColor: Colors.sacredGreenDeep, borderColor: Colors.borderGold, borderWidth: 1 },
+                  currentLead.last_disposition === 'connected' && { backgroundColor: 'rgba(16, 185, 129, 0.2)' },
+                  currentLead.last_disposition === 'callback_requested' && { backgroundColor: 'rgba(139, 92, 246, 0.2)' },
+                ]}>
+                  <Text style={[
+                    styles.attemptText,
+                    currentLead.last_disposition === 'appointment_set' && { color: Colors.heavenlyGold, fontWeight: '700' },
+                    currentLead.last_disposition === 'connected' && { color: '#34D399', fontWeight: '700' },
+                    currentLead.last_disposition === 'callback_requested' && { color: '#A78BFA', fontWeight: '700' },
+                  ]}>
+                    {currentLead.last_disposition === 'appointment_set' ? '🎯 APPT SET' :
+                     currentLead.last_disposition === 'connected' ? '💬 SPOKE' :
+                     currentLead.last_disposition === 'callback_requested' ? '📆 CALLBACK' :
+                     currentLead.last_disposition === 'voicemail' ? 'VOICEMAIL' :
+                     currentLead.last_disposition === 'no_answer' ? 'NO ANSWER' : 'CONTACTED'}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.attemptBadge}>
+                  <Text style={styles.attemptText}>
+                    Call #{(currentLead.attempts_count || 0) + 1}
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
 

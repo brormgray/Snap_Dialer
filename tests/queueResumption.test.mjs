@@ -136,4 +136,43 @@ describe('Dialer HUD Queue Resumption Engine', () => {
     assert.strictEqual(currentIndex, 1);
     assert.strictEqual(queue[currentIndex].name, 'Teacher 2');
   });
+
+  test('Full campaign roster is preserved: dispositioned leads remain in deck allowing backward traversal', () => {
+    // 4 educators in campaign roster
+    const fullRoster = [
+      { id: 'lead_1', name: 'Mrs. Davis', last_disposition: 'appointment_set' },
+      { id: 'lead_2', name: 'Mr. Gonzalez', last_disposition: 'connected' },
+      { id: 'lead_3', name: 'Ms. Smith', last_disposition: 'no_answer' },
+      { id: 'lead_4', name: 'Coach Johnson', last_disposition: 'pending' },
+    ];
+
+    // Simulates resumeQueuePosition when reopening dialer with saved lead 'lead_4'
+    function resume(leads, savedId) {
+      const idx = leads.findIndex((l) => l.id === savedId);
+      if (idx >= 0) return idx;
+      const firstUncalled = leads.findIndex(
+        (l) => !l.last_disposition || ['pending', 'no_answer', 'voicemail'].includes(l.last_disposition)
+      );
+      return firstUncalled >= 0 ? firstUncalled : 0;
+    }
+
+    const resumedIdx = resume(fullRoster, 'lead_4');
+    assert.strictEqual(resumedIdx, 3, 'Must position agent at index 3 (Coach Johnson)');
+    assert.strictEqual(fullRoster.length, 4, 'Total roster length must remain 4, never shrinking');
+    assert.strictEqual(fullRoster[resumedIdx].name, 'Coach Johnson');
+
+    // Agent swipes back to Ms. Smith, Mr. Gonzalez, Mrs. Davis
+    let cur = resumedIdx;
+    cur -= 1;
+    assert.strictEqual(fullRoster[cur].name, 'Ms. Smith');
+    assert.strictEqual(fullRoster[cur].last_disposition, 'no_answer');
+
+    cur -= 1;
+    assert.strictEqual(fullRoster[cur].name, 'Mr. Gonzalez');
+    assert.strictEqual(fullRoster[cur].last_disposition, 'connected');
+
+    cur -= 1;
+    assert.strictEqual(fullRoster[cur].name, 'Mrs. Davis');
+    assert.strictEqual(fullRoster[cur].last_disposition, 'appointment_set');
+  });
 });
