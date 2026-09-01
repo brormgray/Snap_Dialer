@@ -1,4 +1,4 @@
-﻿import { getSupabaseClient, setSupabaseCredentials } from './supabaseClient';
+import { getSupabaseClient, setSupabaseCredentials } from './supabaseClient';
 import { getDatabase, resetDatabase } from '../db/database';
 import { IndexedDbStorage, DatabaseState } from '../db/indexedDbStorage';
 
@@ -330,6 +330,223 @@ export class SupabaseSyncService {
     } catch (err: any) {
       console.error('Supabase pull failed:', err);
       return { success: false, error: err?.message || 'Failed to download data from Supabase.' };
+    }
+  }
+
+  /**
+   * Two-Way Smart Delta Sync with Last-Write-Wins (LWW) Conflict Resolution.
+   * Compares local records and Supabase cloud records by ID and updated_at.
+   * - Records newer in cloud -> update local database.
+   * - Records newer locally -> push update to cloud.
+   * - Records only in cloud -> insert locally.
+   * - Records only locally -> push to cloud.
+   */
+  static async syncTwoWayDelta(): Promise<{
+    success: boolean;
+    localUpdated: number;
+    cloudUpdated: number;
+    localCreated: number;
+    cloudCreated: number;
+    error?: string;
+  }> {
+    const client = getSupabaseClient();
+    if (!client) {
+      return {
+        success: false,
+        localUpdated: 0,
+        cloudUpdated: 0,
+        localCreated: 0,
+        cloudCreated: 0,
+        error: 'Supabase is not configured. Please add your credentials in Settings.',
+      };
+    }
+    if (this.isSyncing) {
+      return {
+        success: false,
+        localUpdated: 0,
+        cloudUpdated: 0,
+        localCreated: 0,
+        cloudCreated: 0,
+        error: 'A sync operation is already in progress.',
+      };
+    }
+
+    this.isSyncing = true;
+    try {
+      const db = await getDatabase();
+      const [
+        localLeads,
+        localLists,
+        localLogs,
+        { data: cloudLists, error: listErr },
+        { data: cloudLeads, error: leadErr },
+        { data: cloudLogs, error: logErr },
+      ] = await Promise.all([
+        db.getAllAsync<any>('SELECT * FROM leads'),
+        db.getAllAsync<any>('SELECT * FROM lists'),
+        db.getAllAsync<any>('SELECT * FROM call_logs'),
+        client.from(`${TABLE_PREFIX}lists`).select('*'),
+        client.from(`${TABLE_PREFIX}leads`).select('*'),
+        client.from(`${TABLE_PREFIX}call_logs`).select('*'),
+      ]);
+
+      if (listErr) throw new Error(`Lists sync query failed: ${listErr.message}`);
+      if (leadErr) throw new Error(`Leads sync query failed: ${leadErr.message}`);
+      if (logErr) throw new Error(`Logs sync query failed: ${logErr.message}`);
+
+      let localUpdated = 0;
+      let cloudUpdated = 0;
+      let localCreated = 0;
+      let cloudCreated = 0;
+
+      // 1. RECONCILE LEADS
+      const localLeadsMap = new Map<string, any>(localLeads.map((l: any) => [String(l.id).trim(), l]));
+      const cloudLeadsMap = new Map<string, any>((cloudLeads || []).map((l: any) => [String(l.id).trim(), l]));
+      const leadsToPush: any[] = [];
+      let localLeadsMutated = false;
+
+      for (const [id, cLead] of cloudLeadsMap.entries()) {
+        const lLead = localLeadsMap.get(id);
+        if (!lLead) {
+          localLeads.push(cLead);
+          localCreated++;
+          localLeadsMutated = true;
+        } else {
+          const cTime = cLead.updated_at ? new Date(cLead.updated_at).getTime() : 0;
+          const lTime = lLead.updated_at ? new Date(lLead.updated_at).getTime() : 0;
+
+          if (cTime > lTime) {
+            Object.assign(lLead, cLead);
+            localUpdated++;
+            localLeadsMutated = true;
+          } else if (lTime > cTime) {
+            leadsToPush.push(mapLeadToSnapSchema(lLead));
+            cloudUpdated++;
+          }
+        }
+      }
+
+      for (const [id, lLead] of localLeadsMap.entries()) {
+        if (!cloudLeadsMap.has(id)) {
+          leadsToPush.push(mapLeadToSnapSchema(lLead));
+          cloudCreated++;
+        }
+      }
+
+      // 2. RECONCILE LISTS
+      const localListsMap = new Map<string, any>(localLists.map((l: any) => [String(l.id).trim(), l]));
+      const cloudListsMap = new Map<string, any>((cloudLists || []).map((l: any) => [String(l.id).trim(), l]));
+      const listsToPush: any[] = [];
+      let localListsMutated = false;
+
+      for (const [id, cList] of cloudListsMap.entries()) {
+        const lList = localListsMap.get(id);
+        if (!lList) {
+          localLists.push(cList);
+          localCreated++;
+          localListsMutated = true;
+        } else {
+          const cTime = cList.updated_at ? new Date(cList.updated_at).getTime() : 0;
+          const lTime = lList.updated_at ? new Date(lList.updated_at).getTime() : 0;
+          if (cTime > lTime) {
+            Object.assign(lList, cList);
+            localUpdated++;
+            localListsMutated = true;
+          } else if (lTime > cTime) {
+            listsToPush.push(mapListToSnapSchema(lList));
+            cloudUpdated++;
+          }
+        }
+      }
+
+      for (const [id, lList] of localListsMap.entries()) {
+        if (!cloudListsMap.has(id)) {
+          listsToPush.push(mapListToSnapSchema(lList));
+          cloudCreated++;
+        }
+      }
+
+      // 3. RECONCILE CALL LOGS
+      const localLogsMap = new Map<string, any>(localLogs.map((c: any) => [String(c.id).trim(), c]));
+      const cloudLogsMap = new Map<string, any>((cloudLogs || []).map((c: any) => [String(c.id).trim(), c]));
+      const logsToPush: any[] = [];
+      let localLogsMutated = false;
+
+      for (const [id, cLog] of cloudLogsMap.entries()) {
+        if (!localLogsMap.has(id)) {
+          localLogs.push(cLog);
+          localCreated++;
+          localLogsMutated = true;
+        }
+      }
+
+      for (const [id, lLog] of localLogsMap.entries()) {
+        if (!cloudLogsMap.has(id)) {
+          logsToPush.push(mapLogToSnapSchema(lLog));
+          cloudCreated++;
+        }
+      }
+
+      // 4. APPLY PUSHES TO CLOUD
+      if (listsToPush.length > 0) {
+        await client.from(`${TABLE_PREFIX}lists`).upsert(listsToPush, { onConflict: 'id' });
+      }
+      if (leadsToPush.length > 0) {
+        const CHUNK = 100;
+        for (let i = 0; i < leadsToPush.length; i += CHUNK) {
+          await client.from(`${TABLE_PREFIX}leads`).upsert(leadsToPush.slice(i, i + CHUNK), { onConflict: 'id' });
+        }
+      }
+      if (logsToPush.length > 0) {
+        const CHUNK = 100;
+        for (let i = 0; i < logsToPush.length; i += CHUNK) {
+          await client.from(`${TABLE_PREFIX}call_logs`).upsert(logsToPush.slice(i, i + CHUNK), { onConflict: 'id' });
+        }
+      }
+
+      // 5. APPLY LOCAL SAVES IF LOCAL WAS MUTATED
+      if (localLeadsMutated || localListsMutated || localLogsMutated) {
+        const rules = await db.getAllAsync<any>('SELECT * FROM cadence_rules');
+        const templates = await db.getAllAsync<any>('SELECT * FROM sms_templates');
+        const settings = await db.getAllAsync<any>('SELECT * FROM settings');
+
+        const updatedState: DatabaseState = {
+          lists: localLists,
+          leads: localLeads,
+          call_logs: localLogs,
+          cadence_rules: rules,
+          sms_templates: templates,
+          settings: settings,
+        };
+
+        await IndexedDbStorage.saveState(updatedState);
+        resetDatabase();
+      }
+
+      const now = new Date().toISOString();
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem('snap_last_sync_time', now);
+      }
+
+      return {
+        success: true,
+        localUpdated,
+        cloudUpdated,
+        localCreated,
+        cloudCreated,
+      };
+    } catch (err: any) {
+      console.error('Two-way delta sync failed:', err);
+      return {
+        success: false,
+        localUpdated: 0,
+        cloudUpdated: 0,
+        localCreated: 0,
+        cloudCreated: 0,
+        error: err?.message || 'Delta sync failed.',
+      };
+    } finally {
+      this.isSyncing = false;
     }
   }
 

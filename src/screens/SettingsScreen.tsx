@@ -34,6 +34,7 @@ import {
   Server,
   CheckCircle2,
   AlertCircle,
+  Lock,
 } from 'lucide-react-native';
 import { SettingsRepository } from '../db/settingsRepository';
 import { LeadsRepository } from '../db/leadsRepository';
@@ -41,6 +42,7 @@ import { BackupService, RestoreResult } from '../services/backupService';
 import { CsvService } from '../services/csvService';
 import { HapticsService } from '../services/hapticsService';
 import { SupabaseSyncService, SUPABASE_SQL_SETUP } from '../services/supabaseSyncService';
+import { SecurityService } from '../services/securityService';
 import { Colors } from '../theme/colors';
 
 export default function SettingsScreen({ navigation }: any) {
@@ -58,8 +60,14 @@ export default function SettingsScreen({ navigation }: any) {
   const [connectionStatus, setConnectionStatus] = useState<{ connected: boolean; message: string } | null>(null);
   const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
   const [isPullingCloud, setIsPullingCloud] = useState<boolean>(false);
+  const [isDeltaSyncing, setIsDeltaSyncing] = useState<boolean>(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [sqlCopied, setSqlCopied] = useState<boolean>(false);
+
+  // Field Privacy & PIN Lock State
+  const [pinEnabled, setPinEnabled] = useState<boolean>(() => SecurityService.isPinEnabled());
+  const [showPinSetupModal, setShowPinSetupModal] = useState<boolean>(false);
+  const [tempPin, setTempPin] = useState<string>('');
 
   // Status Banners
   const [savedBanner, setSavedBanner] = useState<string | null>(null);
@@ -364,6 +372,50 @@ export default function SettingsScreen({ navigation }: any) {
     }
   };
 
+  const handleTwoWayDeltaSync = async () => {
+    if (!supabaseUrl.trim() || !supabaseAnonKey.trim()) {
+      Alert.alert('Configure Supabase', 'Please connect your Supabase credentials first.');
+      return;
+    }
+    setIsDeltaSyncing(true);
+    await HapticsService.medium();
+    const res = await SupabaseSyncService.syncTwoWayDelta();
+    setIsDeltaSyncing(false);
+    if (res.success) {
+      await HapticsService.success();
+      setLastSyncTime(new Date().toISOString());
+      await loadSettings();
+      const msg = `Local Device: +${res.localCreated} new, ✎${res.localUpdated} updated.\nSupabase Cloud: +${res.cloudCreated} new, ✎${res.cloudUpdated} updated.`;
+      showBanner('✓ Two-way delta sync complete!');
+      Alert.alert('Two-Way Smart Sync Complete', `All changes reconciled with Last-Write-Wins:\n\n${msg}`);
+    } else {
+      Alert.alert('Delta Sync Failed', res.error || 'Could not perform delta sync.');
+    }
+  };
+
+  const handleTogglePin = (value: boolean) => {
+    if (value) {
+      setTempPin('');
+      setShowPinSetupModal(true);
+    } else {
+      SecurityService.disablePin();
+      setPinEnabled(false);
+      showBanner('✓ Field PIN protection disabled.');
+    }
+  };
+
+  const handleSavePin = () => {
+    if (tempPin.length !== 4 || !/^\d{4}$/.test(tempPin)) {
+      Alert.alert('Invalid PIN', 'Please enter a 4-digit numeric PIN.');
+      return;
+    }
+    SecurityService.setPin(tempPin);
+    setPinEnabled(true);
+    setShowPinSetupModal(false);
+    showBanner('✓ 4-Digit PIN protection enabled!');
+    Alert.alert('Field Privacy Active', 'Your educator pipeline is now locked. The app will prompt for PIN on launch or after 5 minutes of inactivity.');
+  };
+
   // 6. Wipe All Leads
   const handleClearAllData = async () => {
     const doClear = async () => {
@@ -630,6 +682,26 @@ export default function SettingsScreen({ navigation }: any) {
               </TouchableOpacity>
             </View>
 
+            {/* Two-Way Smart Delta Sync Button */}
+            <TouchableOpacity
+              style={[
+                styles.actionButtonPrimary,
+                { backgroundColor: '#0369A1', borderColor: '#38BDF8', borderWidth: 1, marginTop: 8 },
+                isDeltaSyncing && { opacity: 0.7 },
+              ]}
+              onPress={handleTwoWayDeltaSync}
+              disabled={isDeltaSyncing}
+            >
+              {isDeltaSyncing ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <RefreshCw size={16} color="#FFFFFF" />
+              )}
+              <Text style={styles.actionButtonText}>
+                {isDeltaSyncing ? 'Synchronizing Two-Way...' : '🔄 Two-Way Smart Delta Sync (LWW)'}
+              </Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={[styles.actionButtonDark, { marginTop: 8 }]}
               onPress={handleCopySqlScript}
@@ -640,6 +712,50 @@ export default function SettingsScreen({ navigation }: any) {
               </Text>
             </TouchableOpacity>
           </View>
+        </View>
+
+        {/* Field Privacy & Security Lock */}
+        <Text style={[styles.sectionHeader, { marginTop: 24 }]}>FIELD PRIVACY & PIN SECURITY</Text>
+        <View style={styles.card}>
+          <View style={styles.cardHeaderRow}>
+            <ShieldCheck size={18} color={Colors.heavenlyGold} />
+            <Text style={styles.cardTitle}>Campus Field Security Shield</Text>
+          </View>
+          <Text style={styles.cardDesc}>
+            Lock the app with a 4-digit PIN when leaving your device unattended on school desks. Protects educator salary, pension years, and phone numbers from unauthorized eyes.
+          </Text>
+
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: Colors.livingWhite }}>
+                {pinEnabled ? 'PIN Lock Active' : 'PIN Lock Disabled'}
+              </Text>
+              <Text style={{ fontSize: 12, color: Colors.textMuted, marginTop: 2 }}>
+                {pinEnabled ? 'Requires PIN on launch & after 5m idle' : 'Anyone can open app directly'}
+              </Text>
+            </View>
+            <Switch
+              value={pinEnabled}
+              onValueChange={handleTogglePin}
+              trackColor={{ false: '#334155', true: Colors.sacredGreenDeep }}
+              thumbColor={pinEnabled ? Colors.heavenlyGold : '#94A3B8'}
+            />
+          </View>
+
+          {pinEnabled && (
+            <TouchableOpacity
+              style={[styles.actionButtonSecondary, { marginTop: 12 }]}
+              onPress={() => {
+                setTempPin('');
+                setShowPinSetupModal(true);
+              }}
+            >
+              <Lock size={15} color={Colors.heavenlyGold} />
+              <Text style={[styles.actionButtonText, { color: Colors.heavenlyGold }]}>
+                Change 4-Digit PIN
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Cloud & Drive Backup & Recovery */}
@@ -837,6 +953,64 @@ export default function SettingsScreen({ navigation }: any) {
                 onPress={() => handleRestorePastedJson(true)}
               >
                 <Text style={styles.btnTextWhite}>Clean Overwrite</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+        </View>
+      </Modal>
+
+      {/* Set PIN Modal */}
+      <Modal visible={showPinSetupModal} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <SafeAreaView style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Lock size={20} color={Colors.heavenlyGold} />
+                <Text style={styles.modalTitle}>Set 4-Digit Field PIN</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowPinSetupModal(false)}>
+                <X size={20} color={Colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalDesc}>
+              Enter a 4-digit numeric passcode to lock educator records when away from your phone on campus.
+            </Text>
+
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  fontSize: 24,
+                  textAlign: 'center',
+                  letterSpacing: 8,
+                  marginVertical: 12,
+                  backgroundColor: '#0D2D20',
+                  borderColor: Colors.borderGold,
+                },
+              ]}
+              value={tempPin}
+              onChangeText={(t) => setTempPin(t.replace(/\D/g, '').slice(0, 4))}
+              placeholder="••••"
+              placeholderTextColor={Colors.textMuted}
+              keyboardType="numeric"
+              secureTextEntry
+              maxLength={4}
+              autoFocus
+            />
+
+            <View style={styles.modalActionsRow}>
+              <TouchableOpacity
+                style={[styles.actionButtonSecondary, { flex: 1 }]}
+                onPress={() => setShowPinSetupModal(false)}
+              >
+                <Text style={[styles.actionButtonText, { color: Colors.textMuted }]}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionButtonPrimary, { flex: 1, backgroundColor: Colors.heavenlyGold }]}
+                onPress={handleSavePin}
+              >
+                <Text style={[styles.actionButtonText, { color: Colors.sacredGreenDeep }]}>Save & Enable</Text>
               </TouchableOpacity>
             </View>
           </SafeAreaView>

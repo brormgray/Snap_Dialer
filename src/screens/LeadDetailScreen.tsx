@@ -49,6 +49,7 @@ import { TelephonyService } from '../services/telephonyService';
 import { HapticsService } from '../services/hapticsService';
 import { AiSmsService } from '../services/aiSmsService';
 import { CalendarService } from '../services/calendarService';
+import { isTeacherInPlanningNow } from '../data/bellSchedules';
 import { NotesService, NoteEntry, EDUCATOR_QUICK_TAGS } from '../services/notesService';
 import { Lead, CallLog, CallDisposition, LeadList } from '../types';
 import { Colors } from '../theme/colors';
@@ -533,6 +534,40 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                   </View>
                 ) : null}
               </View>
+
+              {/* Dynamic Bell Schedule Planning Period Badge */}
+              {lead.planning_period ? (() => {
+                const pInfo = isTeacherInPlanningNow(lead.planning_period, lead.school);
+                return (
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 8,
+                      backgroundColor: pInfo.inPlanning ? 'rgba(34, 197, 94, 0.18)' : 'rgba(212, 160, 23, 0.12)',
+                      borderWidth: 1,
+                      borderColor: pInfo.inPlanning ? '#22C55E' : Colors.borderGold,
+                      borderRadius: 10,
+                      paddingHorizontal: 12,
+                      paddingVertical: 9,
+                      marginTop: 10,
+                    }}
+                  >
+                    <Clock size={16} color={pInfo.inPlanning ? '#4ADE80' : Colors.heavenlyGold} />
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        color: pInfo.inPlanning ? '#4ADE80' : Colors.heavenlyGold,
+                        fontWeight: pInfo.inPlanning ? '700' : '600',
+                      }}
+                    >
+                      {pInfo.inPlanning
+                        ? `🟢 IN PLANNING PERIOD NOW (${pInfo.displayTime}) — Prime Calling Window!`
+                        : `Planning Window: ${lead.planning_period}${pInfo.displayTime ? ` (${pInfo.displayTime})` : ''}`}
+                    </Text>
+                  </View>
+                );
+              })() : null}
 
               {/* FRS Needs / Checkboxes */}
               {lead.frs_interests && lead.frs_interests.length > 0 && (

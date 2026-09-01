@@ -26,19 +26,9 @@ import { LeadsRepository } from '../db/leadsRepository';
 import { CalendarService } from '../services/calendarService';
 import { HapticsService } from '../services/hapticsService';
 import { TelephonyService } from '../services/telephonyService';
+import { getScheduleForSchool, matchPeriodId } from '../data/bellSchedules';
 import { Lead } from '../types';
 import { Colors } from '../theme/colors';
-
-const PERIODS = [
-  { id: 'p1', label: 'Period 1', time: '8:30 AM' },
-  { id: 'p2', label: 'Period 2', time: '9:25 AM' },
-  { id: 'p3', label: 'Period 3', time: '10:20 AM' },
-  { id: 'p4', label: 'Period 4', time: '11:15 AM' },
-  { id: 'p5', label: 'Period 5', time: '12:45 PM' },
-  { id: 'p6', label: 'Period 6', time: '1:40 PM' },
-  { id: 'p7', label: 'Period 7', time: '2:35 PM' },
-  { id: 'after', label: 'After School', time: '3:30 PM' },
-];
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
@@ -46,6 +36,7 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [selectedSchool, setSelectedSchool] = useState<string>('All');
 
   useEffect(() => {
     loadPlanningData();
@@ -62,21 +53,16 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
     }
   };
 
-  // Find educators matching a given planning period string
-  const getLeadsForPeriod = (periodLabel: string) => {
-    const pLower = periodLabel.toLowerCase();
+  const schoolOptions = ['All', ...Array.from(new Set(leads.map((l) => l.school || 'VOL').filter(Boolean)))];
+  const periods = getScheduleForSchool(selectedSchool === 'All' ? null : selectedSchool);
+
+  // Find educators matching a given planning period
+  const getLeadsForPeriod = (periodId: string) => {
     return leads.filter((l) => {
-      const p = (l.planning_period || '').toLowerCase();
-      if (!p) return false;
-      if (pLower.includes('period 1') && (/\b(period\s*1|1st(\s*period)?|p1|per\s*1)\b/i.test(p) && !/\b(1[0-9]|21st|31st)\b/i.test(p))) return true;
-      if (pLower.includes('period 2') && (/\b(period\s*2|2nd(\s*period)?|p2|per\s*2)\b/i.test(p) && !/\b(2[0-9]|12th)\b/i.test(p))) return true;
-      if (pLower.includes('period 3') && (/\b(period\s*3|3rd(\s*period)?|p3|per\s*3)\b/i.test(p) && !/\b(13th|23rd)\b/i.test(p))) return true;
-      if (pLower.includes('period 4') && (/\b(period\s*4|4th(\s*period)?|p4|per\s*4)\b/i.test(p) && !/\b(14th|24th)\b/i.test(p))) return true;
-      if (pLower.includes('period 5') && (/\b(period\s*5|5th(\s*period)?|p5|per\s*5)\b/i.test(p) && !/\b(15th|25th)\b/i.test(p))) return true;
-      if (pLower.includes('period 6') && (/\b(period\s*6|6th(\s*period)?|p6|per\s*6)\b/i.test(p) && !/\b(16th|26th)\b/i.test(p))) return true;
-      if (pLower.includes('period 7') && (/\b(period\s*7|7th(\s*period)?|p7|per\s*7)\b/i.test(p) && !/\b(17th|27th)\b/i.test(p))) return true;
-      if (pLower.includes('after') && (p.includes('after') || p.includes('dismissal') || /\b(3:[3-5]\d|[4-5]:\d\d|[4-5]\s*pm)\b/i.test(p))) return true;
-      return false;
+      if (selectedSchool !== 'All' && (l.school || 'VOL') !== selectedSchool) {
+        return false;
+      }
+      return matchPeriodId(l.planning_period) === periodId;
     });
   };
 
@@ -126,10 +112,38 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
         </View>
       ) : (
         <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 60 }}>
+          {/* School Preset Filter */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {schoolOptions.map((sch) => (
+                <TouchableOpacity
+                  key={sch}
+                  style={[
+                    styles.schoolFilterPill,
+                    selectedSchool === sch && styles.schoolFilterPillActive,
+                  ]}
+                  onPress={() => {
+                    HapticsService.tick();
+                    setSelectedSchool(sch);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.schoolFilterPillText,
+                      selectedSchool === sch && styles.schoolFilterPillTextActive,
+                    ]}
+                  >
+                    {sch === 'All' ? '🏫 All Campuses' : sch}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+
           <Text style={styles.sectionHeader}>SCHEDULE BY BELL SCHEDULE & PERIOD</Text>
 
-          {PERIODS.map((period) => {
-            const periodLeads = getLeadsForPeriod(period.label);
+          {periods.map((period) => {
+            const periodLeads = getLeadsForPeriod(period.id);
             const confirmedInPeriod = periodLeads.filter((l) => l.last_disposition === 'appointment_set');
 
             return (
@@ -137,8 +151,8 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
                 <View style={styles.periodHeader}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <Clock size={16} color={Colors.heavenlyGold} />
-                    <Text style={styles.periodTitle}>{period.label}</Text>
-                    <Text style={styles.periodTime}>({period.time})</Text>
+                    <Text style={styles.periodTitle}>{period.name}</Text>
+                    <Text style={styles.periodTime}>({period.displayTime})</Text>
                   </View>
                   <View style={[styles.countBadge, confirmedInPeriod.length > 0 && styles.countBadgeConfirmed]}>
                     <Text style={[styles.countBadgeText, confirmedInPeriod.length > 0 && { color: Colors.sacredGreenDeep }]}>
@@ -261,6 +275,27 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 16,
+  },
+  schoolFilterPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: '#0D2D20',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  schoolFilterPillActive: {
+    backgroundColor: Colors.heavenlyGold,
+    borderColor: Colors.heavenlyGold,
+  },
+  schoolFilterPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textMuted,
+  },
+  schoolFilterPillTextActive: {
+    color: Colors.sacredGreenDeep,
+    fontWeight: '800',
   },
   sectionHeader: {
     fontSize: 11,

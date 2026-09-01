@@ -33,9 +33,30 @@ class ErrorBoundary extends React.Component<
   }
 }
 
+import { SecurityService } from './src/services/securityService';
+import PinLockModal from './src/components/PinLockModal';
+
 export default function App() {
+  const [isLocked, setIsLocked] = React.useState<boolean>(() => SecurityService.isSessionLocked());
+
   useEffect(() => {
     getDatabase().catch((e) => console.warn('Database initialization note:', e));
+
+    const checkLockInterval = setInterval(() => {
+      if (SecurityService.isSessionLocked()) {
+        setIsLocked(true);
+      }
+    }, 15000); // Check every 15s for inactivity lockout
+
+    const handleUserActivity = () => {
+      SecurityService.recordActivity();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('touchstart', handleUserActivity, { passive: true });
+      window.addEventListener('mousedown', handleUserActivity, { passive: true });
+      window.addEventListener('keydown', handleUserActivity, { passive: true });
+    }
 
     // Register PWA Service Worker on Web for 100% Offline Resilience & Auto-Updates
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
@@ -44,7 +65,6 @@ export default function App() {
           .register('/sw.js')
           .then((reg) => {
             console.log('SnapDialer PWA Service Worker registered:', reg.scope);
-            // Detect background updates
             reg.onupdatefound = () => {
               const installingWorker = reg.installing;
               if (installingWorker) {
@@ -61,6 +81,15 @@ export default function App() {
           });
       });
     }
+
+    return () => {
+      clearInterval(checkLockInterval);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('touchstart', handleUserActivity);
+        window.removeEventListener('mousedown', handleUserActivity);
+        window.removeEventListener('keydown', handleUserActivity);
+      }
+    };
   }, []);
 
   return (
@@ -68,6 +97,7 @@ export default function App() {
       <SafeAreaProvider>
         <StatusBar barStyle="light-content" backgroundColor={Colors.sacredGreenDeep} />
         <AppNavigator />
+        <PinLockModal visible={isLocked} onUnlocked={() => setIsLocked(false)} />
       </SafeAreaProvider>
     </ErrorBoundary>
   );

@@ -62,6 +62,7 @@ import { AiSmsService } from '../services/aiSmsService';
 import { CalendarService } from '../services/calendarService';
 import { NotesService, NoteEntry, EDUCATOR_QUICK_TAGS } from '../services/notesService';
 import { FRS_OBJECTIONS, ObjectionCard } from '../data/objections';
+import { isTeacherInPlanningNow } from '../data/bellSchedules';
 import { Lead, CallDisposition, SMSTemplate, AppSettings } from '../types';
 import { Colors } from '../theme/colors';
 import ZoomableImageModal from '../components/ZoomableImageModal';
@@ -1036,11 +1037,33 @@ export default function DialerHudScreen({ route, navigation }: any) {
               </Text>
             </View>
             <View style={styles.ribbonRow}>
-              {currentLead.planning_period ? (
-                <View style={[styles.tagBadge, { backgroundColor: Colors.heavenlyGoldMuted, borderColor: Colors.borderGold }]}>
-                  <Text style={[styles.tagText, { color: Colors.heavenlyGold }]}>⏰ {currentLead.planning_period}</Text>
-                </View>
-              ) : null}
+              {currentLead.planning_period ? (() => {
+                const pInfo = isTeacherInPlanningNow(currentLead.planning_period, currentLead.school);
+                return (
+                  <View
+                    style={[
+                      styles.tagBadge,
+                      pInfo.inPlanning
+                        ? { backgroundColor: 'rgba(34, 197, 94, 0.22)', borderColor: '#22C55E' }
+                        : { backgroundColor: Colors.heavenlyGoldMuted, borderColor: Colors.borderGold },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.tagText,
+                        {
+                          color: pInfo.inPlanning ? '#4ADE80' : Colors.heavenlyGold,
+                          fontWeight: pInfo.inPlanning ? '700' : '500',
+                        },
+                      ]}
+                    >
+                      {pInfo.inPlanning
+                        ? `🟢 IN PLANNING NOW (${pInfo.displayTime})`
+                        : `⏰ ${currentLead.planning_period}${pInfo.displayTime ? ` (${pInfo.displayTime})` : ''}`}
+                    </Text>
+                  </View>
+                );
+              })() : null}
               {currentLead.years_in_frs ? (
                 <View style={styles.tagBadge}>
                   <Text style={styles.tagText}>🎓 {currentLead.years_in_frs} Yrs in FRS</Text>
