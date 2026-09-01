@@ -24,6 +24,7 @@ import {
   Pause,
   Play,
   SkipForward,
+  SkipBack,
   ArrowLeft,
   User,
   GraduationCap,
@@ -333,9 +334,9 @@ export default function DialerHudScreen({ route, navigation }: any) {
     if (isSwipingHorizontally.current) {
       pan.setValue({ x: dx, y: 0 });
       if (dx > 50) {
-        setSwipeActionText('📞 RELEASE TO DIAL');
+        setSwipeActionText(currentIndex > 0 ? '⏮️ RELEASE FOR PREVIOUS' : '🚫 FIRST LEAD');
       } else if (dx < -50) {
-        setSwipeActionText('⏭️ RELEASE TO SKIP');
+        setSwipeActionText('⏭️ RELEASE FOR NEXT LEAD');
       } else {
         setSwipeActionText(null);
       }
@@ -354,16 +355,27 @@ export default function DialerHudScreen({ route, navigation }: any) {
     const currentX = (pan.x as any)._value || 0;
 
     if (currentX > 50) {
-      HapticsService.medium();
-      handleDial();
-      Animated.timing(pan, {
-        toValue: { x: 350, y: 0 },
-        duration: 160,
-        useNativeDriver: false,
-      }).start(() => {
-        pan.setValue({ x: 0, y: 0 });
+      if (currentIndex > 0) {
+        HapticsService.medium();
+        goToPreviousLead();
+        Animated.timing(pan, {
+          toValue: { x: 350, y: 0 },
+          duration: 160,
+          useNativeDriver: false,
+        }).start(() => {
+          pan.setValue({ x: 0, y: 0 });
+          setSwipeActionText(null);
+        });
+      } else {
+        HapticsService.tick();
+        Animated.spring(pan, {
+          toValue: { x: 0, y: 0 },
+          friction: 6,
+          tension: 50,
+          useNativeDriver: false,
+        }).start();
         setSwipeActionText(null);
-      });
+      }
     } else if (currentX < -50) {
       HapticsService.tick();
       advanceNextLead();
@@ -403,9 +415,9 @@ export default function DialerHudScreen({ route, navigation }: any) {
       onPanResponderMove: (_, gestureState) => {
         pan.setValue({ x: gestureState.dx, y: 0 });
         if (gestureState.dx > 50) {
-          setSwipeActionText('📞 RELEASE TO DIAL');
+          setSwipeActionText(currentIndex > 0 ? '⏮️ RELEASE FOR PREVIOUS' : '🚫 FIRST LEAD');
         } else if (gestureState.dx < -50) {
-          setSwipeActionText('⏭️ RELEASE TO SKIP');
+          setSwipeActionText('⏭️ RELEASE FOR NEXT LEAD');
         } else {
           setSwipeActionText(null);
         }
@@ -420,16 +432,27 @@ export default function DialerHudScreen({ route, navigation }: any) {
         const isSwipeLeft = gestureState.dx < -50 || gestureState.vx < -0.35;
 
         if (isSwipeRight) {
-          HapticsService.medium();
-          handleDial();
-          Animated.timing(pan, {
-            toValue: { x: 350, y: 0 },
-            duration: 160,
-            useNativeDriver: false,
-          }).start(() => {
-            pan.setValue({ x: 0, y: 0 });
+          if (currentIndex > 0) {
+            HapticsService.medium();
+            goToPreviousLead();
+            Animated.timing(pan, {
+              toValue: { x: 350, y: 0 },
+              duration: 160,
+              useNativeDriver: false,
+            }).start(() => {
+              pan.setValue({ x: 0, y: 0 });
+              setSwipeActionText(null);
+            });
+          } else {
+            HapticsService.tick();
+            Animated.spring(pan, {
+              toValue: { x: 0, y: 0 },
+              friction: 6,
+              tension: 50,
+              useNativeDriver: false,
+            }).start();
             setSwipeActionText(null);
-          });
+          }
         } else if (isSwipeLeft) {
           HapticsService.tick();
           advanceNextLead();
@@ -821,6 +844,34 @@ export default function DialerHudScreen({ route, navigation }: any) {
     }
   };
 
+  const goToPreviousLead = () => {
+    // Clear active call state and timers when navigating back
+    setIsOnCall(false);
+    setCallDuration(0);
+    pan.setValue({ x: 0, y: 0 });
+    setSwipeActionText(null);
+    setSmsModalVisible(false);
+    setNoteModalVisible(false);
+    setFollowUpModalVisible(false);
+    setNotesModalVisible(false);
+
+    if (callTimerRef.current) {
+      clearInterval(callTimerRef.current);
+      callTimerRef.current = null;
+    }
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+      setAutoAdvanceCountdown(null);
+    }
+
+    if (currentIndex > 0) {
+      setCurrentIndex((prev) => prev - 1);
+    } else {
+      HapticsService.tick();
+    }
+  };
+
   const togglePause = async () => {
     await HapticsService.tick();
     if (countdownTimerRef.current) {
@@ -978,8 +1029,9 @@ export default function DialerHudScreen({ route, navigation }: any) {
             <View
               style={[
                 styles.swipeIndicator,
-                swipeActionText.includes('DIAL') && { backgroundColor: '#10B981' },
-                swipeActionText.includes('SKIP') && { backgroundColor: '#F59E0B' },
+                swipeActionText.includes('PREVIOUS') && { backgroundColor: '#3B82F6' },
+                swipeActionText.includes('NEXT') && { backgroundColor: '#F59E0B' },
+                swipeActionText.includes('FIRST') && { backgroundColor: '#64748B' },
               ]}
             >
               <Text style={styles.swipeIndicatorText}>{swipeActionText}</Text>
@@ -1206,7 +1258,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
           </TouchableOpacity>
 
           {/* Gesture Hint */}
-          <Text style={styles.gestureHint}>👉 Swipe card right to Dial • Swipe left to Skip 👈</Text>
+          <Text style={styles.gestureHint}>👉 Swipe right for Previous • Swipe left for Next 👈</Text>
         </Animated.View>
 
         {/* 1-Tap Disposition Controls Dock */}
@@ -1292,10 +1344,19 @@ export default function DialerHudScreen({ route, navigation }: any) {
               <Text style={styles.dncLinkText}>Block / DNC</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.skipButton} onPress={advanceNextLead}>
-              <SkipForward size={15} color={Colors.textMuted} />
-              <Text style={styles.skipButtonText}>Skip Educator</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+              {currentIndex > 0 && (
+                <TouchableOpacity style={styles.skipButton} onPress={goToPreviousLead}>
+                  <SkipBack size={15} color={Colors.textMuted} />
+                  <Text style={styles.skipButtonText}>Previous</Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity style={styles.skipButton} onPress={advanceNextLead}>
+                <SkipForward size={15} color={Colors.textMuted} />
+                <Text style={styles.skipButtonText}>Skip Educator</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </ScrollView>

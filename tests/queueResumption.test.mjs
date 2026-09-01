@@ -95,4 +95,45 @@ describe('Dialer HUD Queue Resumption Engine', () => {
     assert.strictEqual(currentIndex, 2, 'Dialer must advance from Teacher 2 to Teacher 3');
     assert.strictEqual(queue[currentIndex].name, 'Teacher 3');
   });
+
+  test('Two-way swipe navigation: swipe right goes to previous lead and stops safely at index 0', () => {
+    const queue = [
+      { id: 'lead_1', name: 'Teacher 1' },
+      { id: 'lead_2', name: 'Teacher 2' },
+      { id: 'lead_3', name: 'Teacher 3' },
+    ];
+    let currentIndex = 2; // At Teacher 3
+
+    function advanceNextLead() {
+      if (currentIndex + 1 < queue.length) {
+        currentIndex += 1;
+      }
+    }
+
+    function goToPreviousLead() {
+      if (currentIndex > 0) {
+        currentIndex -= 1;
+      }
+    }
+
+    // Swipe Right from Teacher 3 -> goes to Teacher 2
+    goToPreviousLead();
+    assert.strictEqual(currentIndex, 1);
+    assert.strictEqual(queue[currentIndex].name, 'Teacher 2');
+
+    // Swipe Right from Teacher 2 -> goes to Teacher 1
+    goToPreviousLead();
+    assert.strictEqual(currentIndex, 0);
+    assert.strictEqual(queue[currentIndex].name, 'Teacher 1');
+
+    // Swipe Right at boundary (Teacher 1) -> stays safely at Teacher 1
+    goToPreviousLead();
+    assert.strictEqual(currentIndex, 0, 'Cannot navigate prior to the first lead in queue');
+    assert.strictEqual(queue[currentIndex].name, 'Teacher 1');
+
+    // Swipe Left from Teacher 1 -> advances to Teacher 2
+    advanceNextLead();
+    assert.strictEqual(currentIndex, 1);
+    assert.strictEqual(queue[currentIndex].name, 'Teacher 2');
+  });
 });
