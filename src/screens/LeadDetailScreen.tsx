@@ -237,6 +237,26 @@ export default function LeadDetailScreen({ route, navigation }: any) {
   const openSmsModal = async () => {
     if (!lead) return;
     await HapticsService.tick();
+
+    if (lead.text_ok === false || lead.text_ok === (0 as any)) {
+      Alert.alert(
+        'SMS Consent Notice',
+        `"${lead.name}" has marked Text OK: NO on their card. Do you still wish to open the SMS composer?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Proceed to SMS',
+            style: 'destructive',
+            onPress: () => {
+              setSmsModalVisible(true);
+              handleGenerateAiSms();
+            },
+          },
+        ]
+      );
+      return;
+    }
+
     setSmsModalVisible(true);
     handleGenerateAiSms();
   };
@@ -657,10 +677,10 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                           borderRadius: 10,
                           gap: 6,
                         }}
-                        onPress={() => {
+                        onPress={async () => {
                           HapticsService.medium();
                           const event = CalendarService.buildEducatorEvent(lead, scheduledDate, 25, lead.notes);
-                          CalendarService.downloadIcsFile(event);
+                          await CalendarService.downloadIcsFile(event);
                         }}
                       >
                         <Text style={{ color: Colors.heavenlyGold, fontSize: 12, fontWeight: '700' }}>
@@ -804,10 +824,10 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                 <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                   <TouchableOpacity
                     style={styles.calDetailBtn}
-                    onPress={() => {
+                    onPress={async () => {
                       HapticsService.medium();
                       const event = CalendarService.buildEducatorEvent(lead, new Date(), 20, lead.notes);
-                      CalendarService.downloadIcsFile(event);
+                      await CalendarService.downloadIcsFile(event);
                     }}
                   >
                     <Text style={styles.calDetailBtnText}>🍏 Apple (.ics)</Text>

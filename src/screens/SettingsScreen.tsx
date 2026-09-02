@@ -268,7 +268,7 @@ export default function SettingsScreen({ navigation }: any) {
   const handleExportPipelineCsv = async () => {
     await HapticsService.medium();
     const leads = await LeadsRepository.getAllLeads();
-    const success = CsvService.downloadCsv(leads, 'ValuTeachers_Full_Pipeline');
+    const success = await CsvService.downloadCsv(leads, 'ValuTeachers_Full_Pipeline');
     if (success) {
       await HapticsService.success();
       showBanner('✓ Pipeline CSV exported successfully.');

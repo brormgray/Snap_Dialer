@@ -1,3 +1,4 @@
+import { Platform, Share } from 'react-native';
 import { Lead, ExtractedLeadItem } from '../types';
 
 export class CsvService {
@@ -60,15 +61,15 @@ export class CsvService {
   }
 
   /**
-   * Triggers client-side browser download of the CSV file
+   * Triggers client-side browser download or native mobile share of the CSV file
    */
-  static downloadCsv(leads: Lead[], filenamePrefix: string = 'ValuTeachers_Pipeline'): boolean {
+  static async downloadCsv(leads: Lead[], filenamePrefix: string = 'ValuTeachers_Pipeline'): Promise<boolean> {
     try {
       const csvString = this.generateCsv(leads);
       const dateStr = new Date().toISOString().slice(0, 10);
       const filename = `${filenamePrefix}_${dateStr}.csv`;
 
-      if (typeof window !== 'undefined') {
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
         const blob = new Blob(['\ufeff' + csvString], { type: 'text/csv;charset=utf-8;' }); // \ufeff for Excel UTF-8 BOM
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -80,7 +81,12 @@ export class CsvService {
         URL.revokeObjectURL(url);
         return true;
       }
-      return false;
+
+      await Share.share({
+        title: filename,
+        message: csvString,
+      });
+      return true;
     } catch (e) {
       console.error('Failed to export CSV:', e);
       return false;

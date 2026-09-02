@@ -181,9 +181,9 @@ export default function ListsScreen({ navigation }: any) {
     });
   };
 
-  const handleExportCsv = () => {
+  const handleExportCsv = async () => {
     HapticsService.medium();
-    const success = CsvService.downloadCsv(filteredLeads, 'ValuTeachers_Pipeline');
+    const success = await CsvService.downloadCsv(filteredLeads, 'ValuTeachers_Pipeline');
     if (success) {
       HapticsService.success();
     }

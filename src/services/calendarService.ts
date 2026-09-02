@@ -1,4 +1,4 @@
-import { Platform, Linking } from 'react-native';
+import { Platform, Linking, Share } from 'react-native';
 import { Lead } from '../types';
 import { getScheduleForSchool, matchPeriodId } from '../data/bellSchedules';
 
@@ -59,12 +59,12 @@ export class CalendarService {
   /**
    * Triggers download or direct opening of the .ics file (Apple Calendar / Outlook on iOS/Mac/PC)
    */
-  static downloadIcsFile(event: CalendarEventPayload): boolean {
+  static async downloadIcsFile(event: CalendarEventPayload): Promise<boolean> {
     try {
       const icsData = this.generateIcsString(event);
       const filename = `FRS_SitDown_${(event.contactName || 'Educator').replace(/\s+/g, '_')}.ics`;
 
-      if (typeof window !== 'undefined') {
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
         const blob = new Blob([icsData], { type: 'text/calendar;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -76,7 +76,12 @@ export class CalendarService {
         URL.revokeObjectURL(url);
         return true;
       }
-      return false;
+
+      await Share.share({
+        title: filename,
+        message: icsData,
+      });
+      return true;
     } catch (e) {
       console.error('Failed to export .ics calendar file:', e);
       return false;

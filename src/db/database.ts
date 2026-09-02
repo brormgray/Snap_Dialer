@@ -19,6 +19,7 @@ class WebDatabase implements IDatabase {
   private sms_templates: any[] = [];
   private settings: { key: string; value: string }[] = [];
   private isInitialized: boolean = false;
+  private inTransaction: boolean = false;
 
   constructor() {}
 
@@ -129,18 +130,28 @@ class WebDatabase implements IDatabase {
   async execAsync(sql: string): Promise<void> {}
 
   async withTransactionAsync(fn: () => Promise<void>): Promise<void> {
+    if (this.inTransaction) {
+      // Nested transaction support: simply execute without re-triggering save
+      await fn();
+      return;
+    }
+
     const snapshot = {
-      leads: [...this.leads],
-      lists: [...this.lists],
-      call_logs: [...this.call_logs],
-      sms_templates: [...this.sms_templates],
-      cadence_rules: [...this.cadence_rules],
-      settings: [...this.settings],
+      leads: JSON.parse(JSON.stringify(this.leads)),
+      lists: JSON.parse(JSON.stringify(this.lists)),
+      call_logs: JSON.parse(JSON.stringify(this.call_logs)),
+      sms_templates: JSON.parse(JSON.stringify(this.sms_templates)),
+      cadence_rules: JSON.parse(JSON.stringify(this.cadence_rules)),
+      settings: JSON.parse(JSON.stringify(this.settings)),
     };
+
+    this.inTransaction = true;
     try {
       await fn();
+      this.inTransaction = false;
       await this.saveToStorage();
     } catch (err) {
+      this.inTransaction = false;
       this.leads = snapshot.leads;
       this.lists = snapshot.lists;
       this.call_logs = snapshot.call_logs;
@@ -493,7 +504,7 @@ class WebDatabase implements IDatabase {
             lead.room_number = params[4] || null;
             lead.planning_period = params[5] || null;
             lead.years_in_frs = params[6] || null;
-            if (params[7] !== undefined && params[7] !== null) lead.notes = params[7];
+            if (params[7] !== undefined) lead.notes = params[7] || null;
             if (params[8] !== undefined) lead.priority_tier = Number(params[8]);
             if (params[9]) lead.list_id = params[9];
             lead.updated_at = params[10] || new Date().toISOString();
@@ -501,14 +512,14 @@ class WebDatabase implements IDatabase {
             lead.email = params[3] || null;
             lead.planning_period = params[4] || null;
             lead.years_in_frs = params[5] || null;
-            if (params[6] !== undefined && params[6] !== null) lead.notes = params[6];
+            if (params[6] !== undefined) lead.notes = params[6] || null;
             if (params[7] !== undefined) lead.priority_tier = Number(params[7]);
             if (params[8]) lead.list_id = params[8];
             lead.updated_at = params[9] || new Date().toISOString();
           } else {
             lead.planning_period = params[3] || null;
             lead.years_in_frs = params[4] || null;
-            if (params[5] !== undefined && params[5] !== null) lead.notes = params[5];
+            if (params[5] !== undefined) lead.notes = params[5] || null;
             if (params[6] !== undefined) lead.priority_tier = Number(params[6]);
             if (params[7]) lead.list_id = params[7];
             lead.updated_at = params[8] || new Date().toISOString();
@@ -566,7 +577,9 @@ class WebDatabase implements IDatabase {
     } else if (s.includes('delete from call_logs')) {
       this.call_logs = [];
     }
-    await this.saveToStorage();
+    if (!this.inTransaction) {
+      await this.saveToStorage();
+    }
     return { changes: 1 };
   }
 }

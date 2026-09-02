@@ -239,8 +239,17 @@ export default function DialerHudScreen({ route, navigation }: any) {
     };
   }, [listId, schoolName]);
 
+  const cancelAutoAdvanceTimer = () => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+      setAutoAdvanceCountdown(null);
+    }
+  };
+
   const openEditLeadModal = () => {
     if (!currentLead) return;
+    cancelAutoAdvanceTimer();
     HapticsService.tick();
     setEditName(currentLead.name || '');
     setEditPhone(currentLead.phone || '');
@@ -590,10 +599,15 @@ export default function DialerHudScreen({ route, navigation }: any) {
         await LeadsRepository.updateLeadNotes(currentLead.id, updatedNotes || null);
       }
       await LeadsRepository.updateLeadDisposition(currentLead.id, disposition, updatedNotes || undefined);
+      const actualDuration = callStartTimeRef.current
+        ? Math.max(callDuration, Math.floor((Date.now() - callStartTimeRef.current) / 1000))
+        : callDuration;
+      callStartTimeRef.current = null;
+
       await CallLogsRepository.logCall({
         leadId: currentLead.id,
         listId: currentLead.list_id,
-        durationSeconds: callDuration,
+        durationSeconds: actualDuration,
         disposition,
         note: noteToRecord,
         smsSent: smsDispatched,
@@ -675,7 +689,28 @@ export default function DialerHudScreen({ route, navigation }: any) {
 
   const openSmsModal = async () => {
     if (!currentLead) return;
+    cancelAutoAdvanceTimer();
     await HapticsService.tick();
+
+    if (currentLead.text_ok === false || currentLead.text_ok === (0 as any)) {
+      Alert.alert(
+        'SMS Consent Notice',
+        `"${currentLead.name}" has marked Text OK: NO on their card. Do you still wish to open the SMS composer?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Proceed to SMS',
+            style: 'destructive',
+            onPress: () => {
+              setSmsModalVisible(true);
+              handleGenerateAiSms();
+            },
+          },
+        ]
+      );
+      return;
+    }
+
     setSmsModalVisible(true);
     handleGenerateAiSms();
   };
@@ -720,6 +755,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
 
   // Structured Notes CRUD Handlers
   const openNotesModal = () => {
+    cancelAutoAdvanceTimer();
     setEditingNoteId(null);
     setNoteDraftText('');
     setNotesModalVisible(true);
@@ -978,6 +1014,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
+              cancelAutoAdvanceTimer();
               HapticsService.tick();
               setObjectionsModalVisible(true);
             }}
@@ -1256,6 +1293,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
           <TouchableOpacity
             style={styles.proofButton}
             onPress={() => {
+              cancelAutoAdvanceTimer();
               HapticsService.tick();
               setImageModalVisible(true);
             }}
@@ -1363,7 +1401,10 @@ export default function DialerHudScreen({ route, navigation }: any) {
             {/* Schedule Follow-up */}
             <TouchableOpacity
               style={[styles.dispositionButton, { backgroundColor: '#7C3AED' }]}
-              onPress={() => setFollowUpModalVisible(true)}
+              onPress={() => {
+                cancelAutoAdvanceTimer();
+                setFollowUpModalVisible(true);
+              }}
               activeOpacity={0.7}
             >
               <Calendar size={18} color="#FFFFFF" />
@@ -1459,10 +1500,10 @@ export default function DialerHudScreen({ route, navigation }: any) {
                   <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
                     <TouchableOpacity
                       style={styles.calSyncBtn}
-                      onPress={() => {
+                      onPress={async () => {
                         HapticsService.medium();
                         const event = CalendarService.buildEducatorEvent(currentLead, scheduledDate, 25, callNote);
-                        CalendarService.downloadIcsFile(event);
+                        await CalendarService.downloadIcsFile(event);
                       }}
                     >
                       <Text style={styles.calSyncBtnText}>🍏 Apple / iCal (.ics)</Text>

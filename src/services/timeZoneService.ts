@@ -167,11 +167,23 @@ export class TimeZoneService {
   }
 
   private static getTimeZoneAbbr(tz: string): string {
-    if (tz.includes('New_York')) return 'EST';
-    if (tz.includes('Chicago')) return 'CST';
-    if (tz.includes('Denver')) return 'MST';
+    try {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz,
+        timeZoneName: 'short',
+      });
+      const parts = formatter.formatToParts(new Date());
+      const tzPart = parts.find((p) => p.type === 'timeZoneName');
+      if (tzPart && tzPart.value) {
+        return tzPart.value;
+      }
+    } catch {}
+
+    if (tz.includes('New_York')) return 'EDT';
+    if (tz.includes('Chicago')) return 'CDT';
+    if (tz.includes('Denver')) return 'MDT';
     if (tz.includes('Phoenix')) return 'MST';
-    if (tz.includes('Los_Angeles')) return 'PST';
-    return 'EST';
+    if (tz.includes('Los_Angeles')) return 'PDT';
+    return 'EDT';
   }
 }

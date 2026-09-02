@@ -121,7 +121,7 @@ try {
         relativeUrls.unshift('/');
       }
 
-      const cacheVersion = `snapdialer-pwa-v1.7.1-${Date.now()}`;
+      const cacheVersion = `snapdialer-pwa-v1.7.2-${Date.now()}`;
       let swContent = fs.readFileSync(swSrc, 'utf8');
       swContent = swContent.replace(/const CACHE_NAME = ['"][^'"]+['"];/, `const CACHE_NAME = '${cacheVersion}';`);
       swContent = swContent.replace(/const ASSETS_TO_CACHE = \[[^\]]*\];/s, `const ASSETS_TO_CACHE = ${JSON.stringify(relativeUrls, null, 2)};`);

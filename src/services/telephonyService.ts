@@ -97,8 +97,13 @@ export class TelephonyService {
     const planningPeriodText = lead.planning_period || 'your planning period';
     const roomText = lead.room_number ? `Room ${lead.room_number}` : 'your classroom';
 
+    const firstName = lead.name ? lead.name.split(' ')[0] : 'there';
+    const lastName = lead.name && lead.name.split(' ').length > 1 ? lead.name.split(' ').slice(1).join(' ') : '';
+
     return template.body
-      .replace(/{{name}}/gi, lead.name ? lead.name.split(' ')[0] : 'there')
+      .replace(/{{name}}/gi, firstName)
+      .replace(/{{first_name}}/gi, firstName)
+      .replace(/{{last_name}}/gi, lastName)
       .replace(/{{full_name}}/gi, lead.name || 'there')
       .replace(/{{school}}/gi, lead.school || 'your school')
       .replace(/{{planning_period}}/gi, planningPeriodText)
@@ -106,6 +111,8 @@ export class TelephonyService {
       .replace(/{{years_in_frs}}/gi, lead.years_in_frs ? `${lead.years_in_frs} years` : 'your time')
       .replace(/{{meeting_pref}}/gi, primaryMeetingPref)
       .replace(/{{company}}/gi, lead.company || 'ValuTeachers')
+      .replace(/{{note}}/gi, lead.notes || '')
+      .replace(/{{notes}}/gi, lead.notes || '')
       .replace(/{{my_name}}/gi, myName);
   }
 }

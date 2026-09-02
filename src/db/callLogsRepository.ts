@@ -90,8 +90,9 @@ export class CallLogsRepository {
         smsSentCount++;
       }
       // Only count as an outbound call dial if it was a voice attempt, not a standalone SMS log
-      const isVoiceDial = !r.sms_sent || Number(r.duration_seconds) > 0 || (r.note && r.note !== 'Sent persuasive ValuTeachers SMS');
-      if (isVoiceDial && r.disposition) {
+      const isStandaloneSms = (r.sms_sent === 1 || r.sms_sent === true) && Number(r.duration_seconds) === 0 && Boolean(r.note && (r.note.includes('Sent persuasive ValuTeachers SMS') || r.note.includes('SMS Only')));
+      const isVoiceDial = !isStandaloneSms && Boolean(r.disposition);
+      if (isVoiceDial) {
         totalDials++;
         if (r.disposition === 'appointment_set') {
           appointmentCount++;
@@ -208,8 +209,9 @@ export class CallLogsRepository {
       if (r.sms_sent === 1 || r.sms_sent === true) {
         smsSentCount++;
       }
-      const isVoiceDial = !r.sms_sent || Number(r.duration_seconds) > 0 || (r.note && r.note !== 'Sent persuasive ValuTeachers SMS');
-      if (isVoiceDial && r.disposition) {
+      const isStandaloneSms = (r.sms_sent === 1 || r.sms_sent === true) && Number(r.duration_seconds) === 0 && Boolean(r.note && (r.note.includes('Sent persuasive ValuTeachers SMS') || r.note.includes('SMS Only')));
+      const isVoiceDial = !isStandaloneSms && Boolean(r.disposition);
+      if (isVoiceDial) {
         totalDials++;
         const isAppt = r.disposition === 'appointment_set';
         const isSpoke = r.disposition === 'connected' || r.disposition === 'spoke';

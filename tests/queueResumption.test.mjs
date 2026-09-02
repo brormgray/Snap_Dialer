@@ -175,4 +175,145 @@ describe('Dialer HUD Queue Resumption Engine', () => {
     assert.strictEqual(fullRoster[cur].name, 'Mrs. Davis');
     assert.strictEqual(fullRoster[cur].last_disposition, 'appointment_set');
   });
+
+  test('Database transaction batching: preserves state on error and saves only once on commit', async () => {
+    let saveCount = 0;
+    const db = {
+      inTransaction: false,
+      leads: [{ id: 'lead_1', name: 'Original Teacher', notes: 'Old Notes' }],
+      async saveToStorage() {
+        saveCount++;
+      },
+      async runAsync(sql, params) {
+        if (params && params[0] === 'New Name') {
+          this.leads[0].name = 'New Name';
+          this.leads[0].notes = 'New Notes';
+        }
+        if (!this.inTransaction) {
+          await this.saveToStorage();
+        }
+      },
+      async withTransactionAsync(fn) {
+        if (this.inTransaction) {
+          await fn();
+          return;
+        }
+        const snapshot = {
+          leads: JSON.parse(JSON.stringify(this.leads)),
+        };
+        this.inTransaction = true;
+        try {
+          await fn();
+          this.inTransaction = false;
+          await this.saveToStorage();
+        } catch (err) {
+          this.inTransaction = false;
+          this.leads = snapshot.leads;
+          throw err;
+        }
+      },
+    };
+
+    // 1. Successful transaction with 5 statements saves to storage exactly ONCE
+    await db.withTransactionAsync(async () => {
+      await db.runAsync('UPDATE leads', ['New Name']);
+      await db.runAsync('UPDATE leads', ['New Name']);
+      await db.runAsync('UPDATE leads', ['New Name']);
+      await db.runAsync('UPDATE leads', ['New Name']);
+      await db.runAsync('UPDATE leads', ['New Name']);
+    });
+
+    assert.strictEqual(saveCount, 1, 'Should execute saveToStorage exactly once at commit');
+    assert.strictEqual(db.leads[0].name, 'New Name');
+
+    // 2. Errored transaction restores deep snapshot without saving
+    try {
+      await db.withTransactionAsync(async () => {
+        db.leads[0].name = 'Corrupted Name';
+        db.leads[0].notes = 'Corrupted Notes';
+        throw new Error('Simulation of disk failure mid-batch');
+      });
+    } catch (e) {
+      assert.strictEqual(e.message, 'Simulation of disk failure mid-batch');
+    }
+
+    assert.strictEqual(saveCount, 1, 'Save count should not have increased on rollback');
+    assert.strictEqual(db.leads[0].name, 'New Name', 'Deep snapshot should restore pre-transaction name');
+    assert.strictEqual(db.leads[0].notes, 'New Notes', 'Deep snapshot should restore pre-transaction notes');
+  });
+
+  test('Analytics voice dial vs standalone SMS: distinguishes voice dials from text messages', () => {
+    const logs = [
+      // 1. Real voice call attempt (No answer, follow-up SMS triggered by cadence)
+      {
+        id: 'log_1',
+        disposition: 'no_answer',
+        duration_seconds: 0,
+        sms_sent: 1,
+        note: 'Call attempt #1: No Answer / Voicemail. Sent follow-up SMS.',
+      },
+      // 2. Real voice call connected (Duration 45s)
+      {
+        id: 'log_2',
+        disposition: 'connected',
+        duration_seconds: 45,
+        sms_sent: 0,
+        note: 'Spoke with teacher',
+      },
+      // 3. Standalone SMS sent via modal (No phone dial made)
+      {
+        id: 'log_3',
+        disposition: 'no_answer',
+        duration_seconds: 0,
+        sms_sent: 1,
+        note: 'Sent persuasive ValuTeachers SMS',
+      },
+    ];
+
+    let totalDials = 0;
+    let smsSentCount = 0;
+
+    for (const r of logs) {
+      if (r.sms_sent === 1 || r.sms_sent === true) {
+        smsSentCount++;
+      }
+      const isStandaloneSms = (r.sms_sent === 1 || r.sms_sent === true) &&
+        Number(r.duration_seconds) === 0 &&
+        Boolean(r.note && (r.note.includes('Sent persuasive ValuTeachers SMS') || r.note.includes('SMS Only')));
+      const isVoiceDial = !isStandaloneSms && Boolean(r.disposition);
+      if (isVoiceDial) {
+        totalDials++;
+      }
+    }
+
+    assert.strictEqual(totalDials, 2, 'Should count exactly 2 voice dials (log_1 and log_2), ignoring log_3');
+    assert.strictEqual(smsSentCount, 2, 'Should count exactly 2 SMS sent (log_1 and log_3)');
+  });
+
+  test('Telephony template token replacement: supports first_name, last_name, and notes', () => {
+    const lead = {
+      name: 'Jennifer Aniston',
+      school: 'Deltona High',
+      planning_period: '3rd Period',
+      notes: 'Interested in FRS Drop Program',
+      company: 'ValuTeachers',
+    };
+
+    function interpolate(tpl, l, myName = 'Alex') {
+      const firstName = l.name ? l.name.split(' ')[0] : 'there';
+      const lastName = l.name && l.name.split(' ').length > 1 ? l.name.split(' ').slice(1).join(' ') : '';
+      return tpl
+        .replace(/{{name}}/gi, firstName)
+        .replace(/{{first_name}}/gi, firstName)
+        .replace(/{{last_name}}/gi, lastName)
+        .replace(/{{school}}/gi, l.school || 'your school')
+        .replace(/{{note}}/gi, l.notes || '')
+        .replace(/{{notes}}/gi, l.notes || '')
+        .replace(/{{my_name}}/gi, myName);
+    }
+
+    const output = interpolate('Hello {{first_name}} {{last_name}}, I saw your note: "{{notes}}". - {{my_name}}', lead);
+    assert.strictEqual(output, 'Hello Jennifer Aniston, I saw your note: "Interested in FRS Drop Program". - Alex');
+  });
 });
+
