@@ -88,6 +88,9 @@ export class VisionService {
     let lastError: any = null;
 
     for (const model of candidateModels) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15-second timeout guard
+
       try {
         const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
@@ -170,10 +173,24 @@ Never output conversational text. Output pure JSON adhering to the schema.`;
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(requestBody),
+          signal: controller.signal,
         });
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           const err = await response.text();
+          // Detect 429 Quota Exhausted / Rate Limit
+          if (
+            response.status === 429 ||
+            err.includes('RESOURCE_EXHAUSTED') ||
+            err.includes('quota') ||
+            err.includes('QuotaExceeded')
+          ) {
+            throw new Error(
+              'QUOTA_EXHAUSTED: Gemini API quota or free credits exhausted. Check your API key in Settings, or enter card details manually below.'
+            );
+          }
           throw new Error(`API ${model} status ${response.status}: ${err}`);
         }
 
@@ -216,8 +233,20 @@ Never output conversational text. Output pure JSON adhering to the schema.`;
           };
         });
       } catch (err: any) {
+        clearTimeout(timeoutId);
         lastError = err;
         console.warn(`Vision model ${model} attempt failed:`, err?.message);
+
+        // Immediate circuit breaker: Stop retrying subsequent models if quota is exhausted or request timed out
+        if (err?.message?.includes('QUOTA_EXHAUSTED')) {
+          break;
+        }
+        if (err?.name === 'AbortError') {
+          lastError = new Error(
+            'TIMEOUT: Card analysis request timed out after 15 seconds. Please check your connection or enter details manually below.'
+          );
+          break;
+        }
       }
     }
 

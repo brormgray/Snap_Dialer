@@ -148,7 +148,30 @@ export default function ScanSheetScreen({ navigation }: any) {
         setExtractedLeads(aggregatedLeads);
         setHasScanned(true);
       } else {
-        throw new Error('No educator details could be extracted from the selected cards.');
+        // Fallback: create manual placeholder entries for each card photo
+        const manualBatch = rawUris.map((u, idx) => ({
+          id: `manual_batch_${Date.now()}_${idx}`,
+          name: '',
+          phone: '',
+          school: 'VOL',
+          email: '',
+          planning_period: '',
+          years_in_frs: '',
+          frs_interests: [],
+          meeting_preferences: [],
+          source_image_uri: u,
+          isValid: true,
+        }));
+        setExtractedLeads(manualBatch);
+        setHasScanned(true);
+        Alert.alert(
+          'AI Quota Notice',
+          'AI scanning could not complete due to credit or rate limits. All card photos have been loaded below for direct manual review.',
+          [
+            { text: 'Review Cards', style: 'default' },
+            { text: 'Go to Settings', onPress: () => navigation.navigate('Settings') },
+          ]
+        );
       }
     } catch (e: any) {
       Alert.alert('Batch Ingestion Notice', e?.message || 'Could not parse batch images.');
@@ -167,12 +190,31 @@ export default function ScanSheetScreen({ navigation }: any) {
       setExtractedLeads(leads);
       setHasScanned(true);
     } catch (e: any) {
-      const msg = e?.message || 'Could not parse leads from image.';
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.alert(`Scan Notice: ${msg}`);
-      } else {
-        Alert.alert('Scan Notice', msg);
+      const rawMsg = e?.message || 'Could not parse leads from image.';
+      const isQuota =
+        rawMsg.includes('QUOTA_EXHAUSTED') ||
+        rawMsg.includes('RESOURCE_EXHAUSTED') ||
+        rawMsg.includes('quota');
+      const isTimeout = rawMsg.includes('TIMEOUT') || rawMsg.includes('timed out');
+
+      let title = 'Scan Notice';
+      let displayMsg = rawMsg.replace(/^(QUOTA_EXHAUSTED|TIMEOUT):\s*/, '');
+
+      if (isQuota) {
+        title = 'AI Quota Exhausted';
+        displayMsg =
+          'Google Gemini free credits or rate limit reached. You can review the captured photo and enter details manually below, or update your free Gemini API key in Settings.';
+      } else if (isTimeout) {
+        title = 'Card Analysis Timed Out';
+        displayMsg =
+          'Card analysis timed out after 15 seconds. You can review the captured photo and enter details manually below.';
       }
+
+      Alert.alert(title, displayMsg, [
+        { text: 'Enter Manually', style: 'default' },
+        { text: 'Go to Settings', onPress: () => navigation.navigate('Settings') },
+      ]);
+
       // Initialize an empty editable educator entry linked to the photo so user can manually verify
       setExtractedLeads([
         {

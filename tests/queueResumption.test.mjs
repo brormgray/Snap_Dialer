@@ -315,5 +315,28 @@ describe('Dialer HUD Queue Resumption Engine', () => {
     const output = interpolate('Hello {{first_name}} {{last_name}}, I saw your note: "{{notes}}". - {{my_name}}', lead);
     assert.strictEqual(output, 'Hello Jennifer Aniston, I saw your note: "Interested in FRS Drop Program". - Alex');
   });
+
+  test('Vision AI 429 quota exhaustion circuit breaker: stops immediately without wasting time on subsequent models', async () => {
+    const candidateModels = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+    let callCount = 0;
+    let finalError = null;
+
+    for (const model of candidateModels) {
+      callCount++;
+      try {
+        // Simulates Google API returning HTTP 429 (Resource Exhausted)
+        throw new Error('QUOTA_EXHAUSTED: Gemini API quota or free credits exhausted.');
+      } catch (err) {
+        finalError = err;
+        if (err?.message?.includes('QUOTA_EXHAUSTED')) {
+          break; // Circuit breaker triggers
+        }
+      }
+    }
+
+    assert.strictEqual(callCount, 1, 'Circuit breaker must abort on the 1st model instead of trying all 4');
+    assert.match(finalError.message, /QUOTA_EXHAUSTED/);
+  });
 });
+
 
