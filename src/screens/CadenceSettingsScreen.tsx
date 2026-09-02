@@ -44,11 +44,11 @@ export default function CadenceSettingsScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.sacredGreenDeep} />
+      <StatusBar barStyle="light-content" backgroundColor={Colors.brandPrimary} />
 
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <ArrowLeft size={22} color={Colors.livingWhite} />
+          <ArrowLeft size={22} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Cadence & Automation</Text>
         <View style={{ width: 40 }} />
@@ -56,7 +56,7 @@ export default function CadenceSettingsScreen({ navigation }: any) {
 
       <ScrollView style={styles.content}>
         <View style={styles.infoBox}>
-          <Zap size={20} color={Colors.heavenlyGold} />
+          <Zap size={20} color={Colors.brandAccent} />
           <Text style={styles.infoText}>
             Multi-touch outreach engine. When you mark a call as No Answer, the next step triggers automatically.
           </Text>
@@ -115,27 +115,31 @@ export default function CadenceSettingsScreen({ navigation }: any) {
               onChangeText={(text) =>
                 setActiveTemplate({ ...activeTemplate, title: text })
               }
+              placeholderTextColor={Colors.textMuted}
             />
 
-            <Text style={[styles.fieldLabel, { marginTop: 12 }]}>SMS Message Body</Text>
+            <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
+              Message Body (Teacher Variables Supported)
+            </Text>
             <TextInput
               style={[styles.input, styles.textArea]}
               value={activeTemplate.body}
-              multiline
               onChangeText={(text) =>
                 setActiveTemplate({ ...activeTemplate, body: text })
               }
+              multiline
+              placeholderTextColor={Colors.textMuted}
             />
 
             <View style={styles.tokenGuide}>
-              <Info size={14} color={Colors.heavenlyGold} />
+              <Info size={14} color={Colors.textMuted} />
               <Text style={styles.tokenGuideText}>
-                Supported tokens: <Text style={styles.tokenTag}>{'{{name}}'}</Text>, <Text style={styles.tokenTag}>{'{{school}}'}</Text>, <Text style={styles.tokenTag}>{'{{planning_period}}'}</Text>
+                Tags: <Text style={styles.tokenTag}>{'{name}'}</Text>, <Text style={styles.tokenTag}>{'{school}'}</Text>
               </Text>
             </View>
 
             <TouchableOpacity style={styles.saveButton} onPress={handleSaveTemplate}>
-              <Save size={18} color={Colors.sacredGreenDeep} />
+              <Save size={18} color="#FFFFFF" />
               <Text style={styles.saveButtonText}>Save Template</Text>
             </TouchableOpacity>
           </View>
@@ -148,7 +152,7 @@ export default function CadenceSettingsScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.sacredGreenDeep,
+    backgroundColor: Colors.bgApp,
   },
   header: {
     flexDirection: 'row',
@@ -156,8 +160,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 14,
+    backgroundColor: Colors.brandPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.borderSubtle,
+    borderBottomColor: Colors.brandPrimary,
   },
   backButton: {
     padding: 8,
@@ -165,7 +170,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: Colors.heavenlyGold,
+    color: '#FFFFFF',
   },
   content: {
     flex: 1,
@@ -173,14 +178,14 @@ const styles = StyleSheet.create({
   },
   infoBox: {
     flexDirection: 'row',
-    backgroundColor: Colors.bgCard,
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.heavenlyGold,
-    gap: 10,
     alignItems: 'center',
+    backgroundColor: Colors.surfaceSubtle,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
     marginBottom: 20,
+    gap: 12,
   },
   infoText: {
     flex: 1,
@@ -189,14 +194,14 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   sectionHeader: {
-    color: Colors.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
+    color: Colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '800',
     letterSpacing: 1,
     marginBottom: 10,
   },
   ruleCard: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 12,
     padding: 14,
     marginBottom: 10,
@@ -209,7 +214,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   stepBadge: {
-    backgroundColor: Colors.bgDark,
+    backgroundColor: Colors.surfaceSubtle,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
@@ -217,17 +222,17 @@ const styles = StyleSheet.create({
     borderColor: Colors.borderSubtle,
   },
   stepBadgeText: {
-    color: Colors.heavenlyGold,
+    color: Colors.brandAccent,
     fontSize: 12,
     fontWeight: '700',
   },
   ruleActionText: {
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
     fontSize: 14,
     fontWeight: '600',
   },
   ruleConditionText: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 12,
     marginTop: 8,
   },
@@ -240,43 +245,43 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
   },
   activeTabButton: {
-    backgroundColor: Colors.heavenlyGold,
-    borderColor: Colors.heavenlyGold,
+    backgroundColor: Colors.brandPrimary,
+    borderColor: Colors.brandPrimary,
   },
   tabButtonText: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },
   activeTabButtonText: {
-    color: Colors.sacredGreenDeep,
+    color: '#FFFFFF',
     fontWeight: '800',
   },
   templateForm: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 14,
     padding: 16,
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
   },
   fieldLabel: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 12,
     fontWeight: '600',
     marginBottom: 6,
   },
   input: {
-    backgroundColor: Colors.bgInput,
-    color: Colors.livingWhite,
+    backgroundColor: Colors.surfaceSubtle,
+    color: Colors.textPrimary,
     borderRadius: 8,
     padding: 12,
     borderWidth: 1,
-    borderColor: Colors.borderSubtle,
+    borderColor: Colors.borderStrong,
     fontSize: 14,
   },
   textArea: {
@@ -294,21 +299,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   tokenTag: {
-    color: Colors.heavenlyGold,
+    color: Colors.brandAccent,
     fontWeight: '600',
   },
   saveButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.heavenlyGold,
+    backgroundColor: Colors.brandPrimary,
     paddingVertical: 14,
     borderRadius: 10,
     marginTop: 18,
     gap: 8,
   },
   saveButtonText: {
-    color: Colors.sacredGreenDeep,
+    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '800',
   },

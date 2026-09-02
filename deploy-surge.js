@@ -87,7 +87,7 @@ try {
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="SnapDialer" />
-    <meta name="theme-color" content="#14291B" />
+    <meta name="theme-color" content="#0B3B60" />
     <script id="snapdialer-pwa-sw">
       if ('serviceWorker' in navigator) {
         var refreshing = false;

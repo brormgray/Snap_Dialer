@@ -463,12 +463,12 @@ export default function SettingsScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
+      <StatusBar barStyle="light-content" backgroundColor={Colors.brandPrimary} />
 
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <ArrowLeft size={22} color="#F8FAFC" />
+          <ArrowLeft size={22} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Global Settings</Text>
         <TouchableOpacity onPress={handleSaveAll}>
@@ -664,8 +664,8 @@ export default function SettingsScreen({ navigation }: any) {
               onPress={handleTestSupabaseConnection}
               disabled={isTestingConnection}
             >
-              {isTestingConnection ? <ActivityIndicator size="small" color={Colors.sacredGreenDeep} /> : <Check size={17} color={Colors.sacredGreenDeep} />}
-              <Text style={[styles.actionButtonText, { color: Colors.sacredGreenDeep, fontWeight: '800' }]}>
+              {isTestingConnection ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Check size={17} color="#FFFFFF" />}
+              <Text style={[styles.actionButtonText, { color: '#FFFFFF', fontWeight: '800' }]}>
                 {isTestingConnection ? 'Testing Connection...' : 'Test & Save Connection'}
               </Text>
             </TouchableOpacity>
@@ -749,8 +749,8 @@ export default function SettingsScreen({ navigation }: any) {
             <Switch
               value={pinEnabled}
               onValueChange={handleTogglePin}
-              trackColor={{ false: '#334155', true: Colors.sacredGreenDeep }}
-              thumbColor={pinEnabled ? Colors.heavenlyGold : '#94A3B8'}
+              trackColor={{ false: Colors.borderStrong, true: Colors.callActive }}
+              thumbColor={pinEnabled ? '#FFFFFF' : Colors.textMuted}
             />
           </View>
 
@@ -1014,8 +1014,8 @@ export default function SettingsScreen({ navigation }: any) {
                   textAlign: 'center',
                   letterSpacing: 8,
                   marginVertical: 12,
-                  backgroundColor: '#0D2D20',
-                  borderColor: Colors.borderGold,
+                  backgroundColor: Colors.surfaceSubtle,
+                  borderColor: Colors.borderStrong,
                 },
               ]}
               value={tempPin}
@@ -1033,14 +1033,14 @@ export default function SettingsScreen({ navigation }: any) {
                 style={[styles.actionButtonSecondary, { flex: 1 }]}
                 onPress={() => setShowPinSetupModal(false)}
               >
-                <Text style={[styles.actionButtonText, { color: Colors.textMuted }]}>Cancel</Text>
+                <Text style={[styles.actionButtonText, { color: Colors.textSecondary }]}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.actionButtonPrimary, { flex: 1, backgroundColor: Colors.heavenlyGold }]}
+                style={[styles.actionButtonPrimary, { flex: 1, backgroundColor: Colors.brandPrimary }]}
                 onPress={handleSavePin}
               >
-                <Text style={[styles.actionButtonText, { color: Colors.sacredGreenDeep }]}>Save & Enable</Text>
+                <Text style={[styles.actionButtonText, { color: '#FFFFFF' }]}>Save & Enable</Text>
               </TouchableOpacity>
             </View>
           </SafeAreaView>
@@ -1053,7 +1053,7 @@ export default function SettingsScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.sacredGreenDeep,
+    backgroundColor: Colors.bgApp,
   },
   header: {
     flexDirection: 'row',
@@ -1061,8 +1061,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 14,
+    backgroundColor: Colors.brandPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.borderSubtle,
+    borderBottomColor: Colors.brandPrimary,
   },
   backButton: {
     padding: 8,
@@ -1070,21 +1071,21 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: Colors.heavenlyGold,
+    color: '#FFFFFF',
   },
   saveLink: {
-    color: Colors.heavenlyGold,
+    color: Colors.focusRing,
     fontWeight: '800',
     fontSize: 15,
   },
   notificationBanner: {
-    backgroundColor: Colors.statusSitDownBg,
+    backgroundColor: Colors.badgeSuccessBg,
     paddingVertical: 10,
     paddingHorizontal: 16,
     alignItems: 'center',
   },
   notificationBannerText: {
-    color: Colors.statusSitDownText,
+    color: Colors.badgeSuccessText,
     fontWeight: '700',
     fontSize: 13,
   },
@@ -1093,14 +1094,14 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   sectionHeader: {
-    color: Colors.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
+    color: Colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '800',
     letterSpacing: 1,
     marginBottom: 8,
   },
   card: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 14,
     padding: 16,
     borderWidth: 1,
@@ -1115,7 +1116,7 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
   },
   cardDesc: {
     fontSize: 13,
@@ -1124,24 +1125,24 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   tokenTag: {
-    color: Colors.heavenlyGold,
+    color: Colors.brandAccent,
     fontWeight: '600',
   },
   inputLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: Colors.heavenlyGold,
+    color: Colors.textSecondary,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
     marginBottom: 4,
   },
   input: {
-    backgroundColor: Colors.bgInput,
-    color: Colors.livingWhite,
+    backgroundColor: Colors.surfaceSubtle,
+    color: Colors.textPrimary,
     borderRadius: 8,
     padding: 12,
     borderWidth: 1,
-    borderColor: Colors.borderSubtle,
+    borderColor: Colors.borderStrong,
     fontSize: 14,
   },
   switchRow: {
@@ -1167,7 +1168,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.heavenlyGold,
+    backgroundColor: Colors.brandPrimary,
     paddingVertical: 12,
     borderRadius: 10,
     gap: 8,
@@ -1176,9 +1177,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.sacredGreen,
-    borderWidth: 1,
-    borderColor: Colors.borderMedium,
+    backgroundColor: Colors.callActive,
     paddingVertical: 12,
     borderRadius: 10,
     gap: 8,
@@ -1187,7 +1186,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.bgDark,
+    backgroundColor: Colors.surfaceSubtle,
     paddingVertical: 12,
     borderRadius: 10,
     borderWidth: 1,
@@ -1195,7 +1194,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   actionButtonText: {
-    color: Colors.sacredGreenDeep,
+    color: '#FFFFFF',
     fontWeight: '800',
     fontSize: 14,
   },
@@ -1208,15 +1207,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.statusDangerBg,
+    backgroundColor: Colors.badgeDangerBg,
     borderWidth: 1,
-    borderColor: Colors.statusDangerText,
+    borderColor: Colors.badgeDangerText,
     paddingVertical: 14,
     borderRadius: 12,
     gap: 8,
   },
   wipeButtonText: {
-    color: Colors.statusDangerText,
+    color: Colors.badgeDangerText,
     fontSize: 15,
     fontWeight: '700',
   },
@@ -1227,7 +1226,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalContainer: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 16,
     padding: 20,
     borderWidth: 1,
@@ -1242,7 +1241,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
   },
   modalDesc: {
     fontSize: 13,
@@ -1251,12 +1250,12 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   pasteJsonInput: {
-    backgroundColor: Colors.bgInput,
-    color: Colors.livingWhite,
+    backgroundColor: Colors.surfaceSubtle,
+    color: Colors.textPrimary,
     borderRadius: 10,
     padding: 12,
     borderWidth: 1,
-    borderColor: Colors.borderSubtle,
+    borderColor: Colors.borderStrong,
     height: 160,
     fontSize: 12,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
@@ -1269,22 +1268,22 @@ const styles = StyleSheet.create({
   },
   mergeBtn: {
     flex: 1,
-    backgroundColor: Colors.heavenlyGold,
+    backgroundColor: Colors.brandPrimary,
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
   },
   overwriteBtn: {
     flex: 1,
-    backgroundColor: Colors.statusDangerBg,
+    backgroundColor: Colors.badgeDangerBg,
     borderWidth: 1,
-    borderColor: Colors.statusDangerText,
+    borderColor: Colors.badgeDangerText,
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
   },
   btnTextWhite: {
-    color: Colors.sacredGreenDeep,
+    color: '#FFFFFF',
     fontWeight: '800',
     fontSize: 13,
   },
@@ -1292,9 +1291,9 @@ const styles = StyleSheet.create({
     marginTop: 24,
     padding: 16,
     borderRadius: 12,
-    backgroundColor: 'rgba(212, 175, 55, 0.08)',
+    backgroundColor: Colors.surfaceSubtle,
     borderWidth: 1,
-    borderColor: 'rgba(212, 175, 55, 0.25)',
+    borderColor: Colors.borderSubtle,
     alignItems: 'center',
   },
   versionHeaderRow: {
@@ -1308,11 +1307,11 @@ const styles = StyleSheet.create({
   versionText: {
     fontSize: 13,
     fontWeight: '700',
-    color: Colors.heavenlyGold,
+    color: Colors.brandPrimary,
   },
   cacheSubtitleText: {
     fontSize: 11,
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     marginBottom: 8,
   },
   cacheStatusText: {
@@ -1336,28 +1335,28 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 8,
-    backgroundColor: Colors.sacredGreenLight,
+    backgroundColor: Colors.surfaceCard,
     borderWidth: 1,
-    borderColor: Colors.borderGold,
+    borderColor: Colors.borderStrong,
   },
   forceReloadText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.heavenlyGold,
+    color: Colors.brandPrimary,
   },
   isolationNoticeBox: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    backgroundColor: 'rgba(52, 211, 153, 0.08)',
+    backgroundColor: Colors.surfaceSubtle,
     borderWidth: 1,
-    borderColor: 'rgba(52, 211, 153, 0.25)',
+    borderColor: Colors.borderSubtle,
     borderRadius: 8,
     padding: 10,
     marginTop: 10,
   },
   isolationNoticeText: {
-    color: '#D1FAE5',
+    color: Colors.textSecondary,
     fontSize: 11,
     lineHeight: 16,
     flex: 1,
@@ -1372,12 +1371,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   cloudStatusSuccess: {
-    backgroundColor: 'rgba(52, 211, 153, 0.12)',
-    borderColor: 'rgba(52, 211, 153, 0.3)',
+    backgroundColor: Colors.badgeSuccessBg,
+    borderColor: Colors.badgeSuccessText,
   },
   cloudStatusError: {
-    backgroundColor: 'rgba(239, 68, 68, 0.12)',
-    borderColor: 'rgba(239, 68, 68, 0.3)',
+    backgroundColor: Colors.badgeDangerBg,
+    borderColor: Colors.badgeDangerText,
   },
   cloudStatusText: {
     fontSize: 12,
@@ -1386,7 +1385,7 @@ const styles = StyleSheet.create({
   },
   lastSyncText: {
     fontSize: 11,
-    color: Colors.heavenlyGold,
+    color: Colors.brandAccent,
     marginTop: 8,
     fontStyle: 'italic',
   },
@@ -1394,7 +1393,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.heavenlyGold,
+    backgroundColor: Colors.brandPrimary,
     paddingVertical: 12,
     borderRadius: 10,
     gap: 8,
@@ -1403,9 +1402,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.bgDark,
+    backgroundColor: Colors.surfaceSubtle,
     borderWidth: 1,
-    borderColor: Colors.borderGold,
+    borderColor: Colors.borderStrong,
     paddingVertical: 12,
     borderRadius: 10,
     gap: 8,

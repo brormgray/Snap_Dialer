@@ -69,9 +69,9 @@ export default function AnalyticsScreen({ navigation }: any) {
   if (loading || !data) {
     return (
       <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor={Colors.sacredGreenDeep} />
+        <StatusBar barStyle="light-content" backgroundColor={Colors.brandPrimary} />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.heavenlyGold} />
+          <ActivityIndicator size="large" color={Colors.brandAccent} />
           <Text style={styles.loadingText}>Computing Agency Velocity Analytics...</Text>
         </View>
       </SafeAreaView>
@@ -98,16 +98,16 @@ export default function AnalyticsScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.sacredGreenDeep} />
+      <StatusBar barStyle="light-content" backgroundColor={Colors.brandPrimary} />
 
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <ArrowLeft size={22} color={Colors.livingWhite} />
+          <ArrowLeft size={22} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Agency Operations & Ratios</Text>
         <TouchableOpacity style={styles.exportButton} onPress={handleExportData}>
-          <Download size={20} color={Colors.heavenlyGold} />
+          <Download size={20} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
 
@@ -115,7 +115,7 @@ export default function AnalyticsScreen({ navigation }: any) {
         {/* Main Sit-Down Conversion Ratio Card */}
         <View style={styles.heroCard}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-            <Target size={18} color={Colors.heavenlyGold} />
+            <Target size={18} color={Colors.brandAccent} />
             <Text style={styles.heroLabel}>SIT-DOWN CONVERSION ACCURACY</Text>
           </View>
           <Text style={styles.heroValue}>{ratios.dialToApptRate}%</Text>
@@ -129,7 +129,7 @@ export default function AnalyticsScreen({ navigation }: any) {
               <Text style={styles.triadValue}>{ratios.dialsPerSitDown || '—'}</Text>
               <Text style={styles.triadLabel}>Dials / Sit-Down</Text>
             </View>
-            <View style={[styles.triadItem, { borderLeftWidth: 1, borderRightWidth: 1, borderColor: 'rgba(255, 255, 255, 0.1)' }]}>
+            <View style={[styles.triadItem, { borderLeftWidth: 1, borderRightWidth: 1, borderColor: Colors.borderSubtle }]}>
               <Text style={styles.triadValue}>{ratios.contactRate}%</Text>
               <Text style={styles.triadLabel}>Connection Rate</Text>
             </View>
@@ -152,8 +152,8 @@ export default function AnalyticsScreen({ navigation }: any) {
               </View>
             </View>
             <View style={[styles.trendBadge, weekly.dialsThisWeek >= weekly.dialsLastWeek ? styles.trendUp : styles.trendNeutral]}>
-              <TrendingUp size={14} color={weekly.dialsThisWeek >= weekly.dialsLastWeek ? '#4ADE80' : Colors.textMuted} />
-              <Text style={[styles.trendText, weekly.dialsThisWeek >= weekly.dialsLastWeek && { color: '#4ADE80' }]}>
+              <TrendingUp size={14} color={weekly.dialsThisWeek >= weekly.dialsLastWeek ? Colors.badgeSuccessText : Colors.textMuted} />
+              <Text style={[styles.trendText, weekly.dialsThisWeek >= weekly.dialsLastWeek && { color: Colors.badgeSuccessText }]}>
                 {weekly.dialsThisWeek >= weekly.dialsLastWeek ? 'Pacing Up' : 'Active'}
               </Text>
             </View>
@@ -165,13 +165,13 @@ export default function AnalyticsScreen({ navigation }: any) {
             <View style={{ flex: 1 }}>
               <Text style={styles.weeklyLabel}>SIT-DOWNS BOOKED</Text>
               <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
-                <Text style={[styles.weeklyValueCurrent, { color: Colors.heavenlyGold }]}>{weekly.apptsThisWeek}</Text>
+                <Text style={[styles.weeklyValueCurrent, { color: Colors.badgeSuccessText }]}>{weekly.apptsThisWeek}</Text>
                 <Text style={styles.weeklyValuePrior}>vs {weekly.apptsLastWeek} prior wk</Text>
               </View>
             </View>
             <View style={[styles.trendBadge, weekly.apptsThisWeek >= weekly.apptsLastWeek ? styles.trendUp : styles.trendNeutral]}>
-              <CheckCircle2 size={14} color={weekly.apptsThisWeek >= weekly.apptsLastWeek ? '#4ADE80' : Colors.textMuted} />
-              <Text style={[styles.trendText, weekly.apptsThisWeek >= weekly.apptsLastWeek && { color: '#4ADE80' }]}>
+              <CheckCircle2 size={14} color={weekly.apptsThisWeek >= weekly.apptsLastWeek ? Colors.badgeSuccessText : Colors.textMuted} />
+              <Text style={[styles.trendText, weekly.apptsThisWeek >= weekly.apptsLastWeek && { color: Colors.badgeSuccessText }]}>
                 {weekly.apptsThisWeek} Booked
               </Text>
             </View>
@@ -183,8 +183,8 @@ export default function AnalyticsScreen({ navigation }: any) {
         <View style={styles.funnelCard}>
           <View style={styles.funnelStep}>
             <View style={styles.funnelIconCol}>
-              <View style={[styles.funnelIconBox, { backgroundColor: 'rgba(56, 189, 248, 0.15)' }]}>
-                <PhoneCall size={18} color="#38BDF8" />
+              <View style={[styles.funnelIconBox, { backgroundColor: Colors.surfaceSubtle }]}>
+                <PhoneCall size={18} color={Colors.brandAccent} />
               </View>
               <View style={styles.funnelLine} />
             </View>
@@ -199,15 +199,15 @@ export default function AnalyticsScreen({ navigation }: any) {
 
           <View style={styles.funnelStep}>
             <View style={styles.funnelIconCol}>
-              <View style={[styles.funnelIconBox, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
-                <Users size={18} color="#10B981" />
+              <View style={[styles.funnelIconBox, { backgroundColor: Colors.badgeSuccessBg }]}>
+                <Users size={18} color={Colors.badgeSuccessText} />
               </View>
               <View style={styles.funnelLine} />
             </View>
             <View style={styles.funnelContent}>
               <View style={styles.funnelRow}>
                 <Text style={styles.funnelTitle}>Spoke / Connected</Text>
-                <Text style={[styles.funnelCount, { color: '#10B981' }]}>
+                <Text style={[styles.funnelCount, { color: Colors.badgeSuccessText }]}>
                   {summary.connectedCount + summary.appointmentCount} ({ratios.contactRate}%)
                 </Text>
               </View>
@@ -217,15 +217,15 @@ export default function AnalyticsScreen({ navigation }: any) {
 
           <View style={styles.funnelStep}>
             <View style={styles.funnelIconCol}>
-              <View style={[styles.funnelIconBox, { backgroundColor: Colors.heavenlyGoldMuted }]}>
-                <Target size={18} color={Colors.heavenlyGold} />
+              <View style={[styles.funnelIconBox, { backgroundColor: Colors.badgeSuccessBg }]}>
+                <Target size={18} color={Colors.badgeSuccessText} />
               </View>
               <View style={styles.funnelLine} />
             </View>
             <View style={styles.funnelContent}>
               <View style={styles.funnelRow}>
                 <Text style={styles.funnelTitle}>Sit-Downs Confirmed</Text>
-                <Text style={[styles.funnelCount, { color: Colors.heavenlyGold }]}>
+                <Text style={[styles.funnelCount, { color: Colors.badgeSuccessText }]}>
                   {summary.appointmentCount} ({ratios.dialToApptRate}%)
                 </Text>
               </View>
@@ -235,14 +235,14 @@ export default function AnalyticsScreen({ navigation }: any) {
 
           <View style={[styles.funnelStep, { marginBottom: 0 }]}>
             <View style={styles.funnelIconCol}>
-              <View style={[styles.funnelIconBox, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
-                <GraduationCap size={18} color="#F59E0B" />
+              <View style={[styles.funnelIconBox, { backgroundColor: Colors.badgeWarningBg }]}>
+                <GraduationCap size={18} color={Colors.badgeWarningText} />
               </View>
             </View>
             <View style={styles.funnelContent}>
               <View style={styles.funnelRow}>
                 <Text style={styles.funnelTitle}>FRS & DROP Review Inquiries</Text>
-                <Text style={[styles.funnelCount, { color: '#F59E0B' }]}>
+                <Text style={[styles.funnelCount, { color: Colors.badgeWarningText }]}>
                   {summary.dropInquiriesCount}
                 </Text>
               </View>
@@ -256,7 +256,7 @@ export default function AnalyticsScreen({ navigation }: any) {
         <View style={styles.card}>
           {peakHour && peakHour.contactRate > 0 ? (
             <View style={styles.peakBanner}>
-              <Clock size={16} color="#4ADE80" />
+              <Clock size={16} color={Colors.badgeSuccessText} />
               <Text style={styles.peakText}>
                 ⚡ Peak Response Window: <Text style={{ fontWeight: '800' }}>{peakHour.label}</Text> ({peakHour.contactRate}% contact rate)
               </Text>
@@ -281,10 +281,10 @@ export default function AnalyticsScreen({ navigation }: any) {
                           width: `${Math.max(item.contactRate, hasData ? 6 : 0)}%`,
                           backgroundColor:
                             peakHour && peakHour.hour === item.hour && peakHour.contactRate > 0
-                              ? '#22C55E'
+                              ? Colors.callActive
                               : hasData
-                              ? Colors.heavenlyGold
-                              : 'rgba(255, 255, 255, 0.08)',
+                              ? Colors.brandAccent
+                              : Colors.borderSubtle,
                         },
                       ]}
                     />
@@ -302,36 +302,36 @@ export default function AnalyticsScreen({ navigation }: any) {
         <Text style={[styles.sectionHeader, { marginTop: 24 }]}>CALL OUTCOME BREAKDOWN</Text>
         <View style={styles.grid}>
           <View style={styles.statCard}>
-            <View style={[styles.statIconBox, { backgroundColor: Colors.heavenlyGoldMuted }]}>
-              <PhoneCall size={20} color={Colors.heavenlyGold} />
+            <View style={[styles.statIconBox, { backgroundColor: Colors.surfaceSubtle }]}>
+              <PhoneCall size={20} color={Colors.brandPrimary} />
             </View>
             <Text style={styles.statNumber}>{summary.totalDials}</Text>
             <Text style={styles.statTitle}>Total Dials</Text>
           </View>
 
-          <View style={[styles.statCard, { borderColor: Colors.borderGold, borderWidth: 1.5 }]}>
-            <View style={[styles.statIconBox, { backgroundColor: Colors.heavenlyGoldMuted }]}>
-              <CheckCircle2 size={20} color={Colors.heavenlyGold} />
+          <View style={[styles.statCard, { borderColor: Colors.badgeSuccessText, borderWidth: 1.5 }]}>
+            <View style={[styles.statIconBox, { backgroundColor: Colors.badgeSuccessBg }]}>
+              <CheckCircle2 size={20} color={Colors.badgeSuccessText} />
             </View>
-            <Text style={[styles.statNumber, { color: Colors.heavenlyGold }]}>
+            <Text style={[styles.statNumber, { color: Colors.badgeSuccessText }]}>
               {summary.appointmentCount}
             </Text>
-            <Text style={[styles.statTitle, { color: Colors.heavenlyGold, fontWeight: '800' }]}>Appts. Set</Text>
+            <Text style={[styles.statTitle, { color: Colors.badgeSuccessText, fontWeight: '800' }]}>Appts. Set</Text>
           </View>
 
           <View style={styles.statCard}>
-            <View style={[styles.statIconBox, { backgroundColor: Colors.statusSitDownBg }]}>
-              <CheckCircle2 size={20} color={Colors.statusSitDownText} />
+            <View style={[styles.statIconBox, { backgroundColor: Colors.badgeSuccessBg }]}>
+              <CheckCircle2 size={20} color={Colors.badgeSuccessText} />
             </View>
-            <Text style={[styles.statNumber, { color: Colors.statusSitDownText }]}>
+            <Text style={[styles.statNumber, { color: Colors.badgeSuccessText }]}>
               {summary.connectedCount}
             </Text>
             <Text style={styles.statTitle}>Spoke / Connected</Text>
           </View>
 
           <View style={styles.statCard}>
-            <View style={[styles.statIconBox, { backgroundColor: Colors.bgDark }]}>
-              <PhoneOff size={20} color={Colors.textMuted} />
+            <View style={[styles.statIconBox, { backgroundColor: Colors.badgeNeutralBg }]}>
+              <PhoneOff size={20} color={Colors.badgeNeutralText} />
             </View>
             <Text style={styles.statNumber}>{summary.noAnswerCount + summary.voicemailCount}</Text>
             <Text style={styles.statTitle}>No Answer / VM</Text>
@@ -340,8 +340,8 @@ export default function AnalyticsScreen({ navigation }: any) {
 
         {/* SMS Performance Card */}
         <View style={styles.smsBanner}>
-          <View style={[styles.statIconBox, { backgroundColor: Colors.deepSkyBlueMuted, marginRight: 16, marginBottom: 0 }]}>
-            <MessageSquare size={22} color={Colors.deepSkyBlueLight} />
+          <View style={[styles.statIconBox, { backgroundColor: Colors.surfaceSubtle, marginRight: 16, marginBottom: 0 }]}>
+            <MessageSquare size={22} color={Colors.brandAccent} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.smsBannerTitle}>{summary.smsSentCount} Follow-Up Texts Sent</Text>
@@ -356,7 +356,7 @@ export default function AnalyticsScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.sacredGreenDeep,
+    backgroundColor: Colors.bgApp,
   },
   loadingContainer: {
     flex: 1,
@@ -375,8 +375,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 14,
+    backgroundColor: Colors.brandPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.borderSubtle,
+    borderBottomColor: Colors.brandPrimary,
   },
   backButton: {
     padding: 8,
@@ -384,7 +385,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: Colors.heavenlyGold,
+    color: '#FFFFFF',
   },
   exportButton: {
     padding: 8,
@@ -394,7 +395,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   heroCard: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 20,
     padding: 20,
     alignItems: 'center',
@@ -403,7 +404,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   heroLabel: {
-    color: Colors.heavenlyGold,
+    color: Colors.brandAccent,
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1,
@@ -411,7 +412,7 @@ const styles = StyleSheet.create({
   heroValue: {
     fontSize: 48,
     fontWeight: '900',
-    color: Colors.statusSitDownText,
+    color: Colors.badgeSuccessText,
     marginTop: 4,
   },
   heroSubtext: {
@@ -426,7 +427,7 @@ const styles = StyleSheet.create({
     marginTop: 18,
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    borderTopColor: Colors.borderSubtle,
   },
   triadItem: {
     flex: 1,
@@ -436,17 +437,17 @@ const styles = StyleSheet.create({
   triadValue: {
     fontSize: 18,
     fontWeight: '800',
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
   },
   triadLabel: {
     fontSize: 10,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     marginTop: 2,
     textAlign: 'center',
   },
   weeklyCard: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
@@ -460,13 +461,13 @@ const styles = StyleSheet.create({
   weeklyLabel: {
     fontSize: 10,
     fontWeight: '800',
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     letterSpacing: 0.8,
   },
   weeklyValueCurrent: {
     fontSize: 22,
     fontWeight: '800',
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
   },
   weeklyValuePrior: {
     fontSize: 12,
@@ -474,7 +475,7 @@ const styles = StyleSheet.create({
   },
   weeklyDivider: {
     height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: Colors.borderSubtle,
     marginVertical: 12,
   },
   trendBadge: {
@@ -486,25 +487,25 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   trendUp: {
-    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+    backgroundColor: Colors.badgeSuccessBg,
   },
   trendNeutral: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: Colors.surfaceSubtle,
   },
   trendText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: Colors.badgeSuccessText,
   },
   sectionHeader: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1,
     marginBottom: 10,
   },
   funnelCard: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
@@ -528,7 +529,7 @@ const styles = StyleSheet.create({
   funnelLine: {
     width: 2,
     flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: Colors.borderSubtle,
     marginVertical: 4,
   },
   funnelContent: {
@@ -543,20 +544,20 @@ const styles = StyleSheet.create({
   funnelTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
   },
   funnelCount: {
     fontSize: 15,
     fontWeight: '800',
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
   },
   funnelSub: {
     fontSize: 11,
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     marginTop: 2,
   },
   card: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
@@ -566,9 +567,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+    backgroundColor: Colors.badgeSuccessBg,
     borderWidth: 1,
-    borderColor: '#22C55E',
+    borderColor: Colors.badgeSuccessText,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -576,7 +577,7 @@ const styles = StyleSheet.create({
   },
   peakText: {
     fontSize: 12,
-    color: '#4ADE80',
+    color: Colors.badgeSuccessText,
     fontWeight: '600',
   },
   hourlyContainer: {
@@ -591,12 +592,12 @@ const styles = StyleSheet.create({
     width: 52,
     fontSize: 11,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
   },
   hourlyTrack: {
     flex: 1,
     height: 8,
-    backgroundColor: Colors.bgDark,
+    backgroundColor: Colors.surfaceSubtle,
     borderRadius: 4,
     overflow: 'hidden',
   },
@@ -608,7 +609,7 @@ const styles = StyleSheet.create({
     width: 68,
     fontSize: 11,
     fontWeight: '700',
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
     textAlign: 'right',
   },
   grid: {
@@ -618,7 +619,7 @@ const styles = StyleSheet.create({
   },
   statCard: {
     width: '48%',
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
@@ -635,17 +636,17 @@ const styles = StyleSheet.create({
   statNumber: {
     fontSize: 24,
     fontWeight: '800',
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
   },
   statTitle: {
     fontSize: 12,
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     marginTop: 2,
   },
   smsBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 16,
     padding: 18,
     marginTop: 20,
@@ -653,7 +654,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.borderSubtle,
   },
   smsBannerTitle: {
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
     fontSize: 16,
     fontWeight: '700',
   },

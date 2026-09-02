@@ -249,24 +249,24 @@ export default function ListsScreen({ navigation }: any) {
   const getStatusBadge = (lead: Lead) => {
     const disp = lead.last_disposition;
     if (disp === 'appointment_set') {
-      return { label: '🎯 Appt. Set', bg: Colors.statusSitDownBg, color: Colors.heavenlyGold };
+      return { label: '🎯 Appt. Set', bg: Colors.badgeSuccessBg, color: Colors.badgeSuccessText };
     }
     if (disp === 'connected') {
-      return { label: '💬 Spoke / Connected', bg: Colors.statusSitDownBg, color: Colors.statusSitDownText };
+      return { label: '💬 Spoke / Connected', bg: Colors.badgeSuccessBg, color: Colors.badgeSuccessText };
     }
     if (disp === 'callback_requested' || lead.follow_up_at) {
-      return { label: 'Callback Scheduled', bg: Colors.statusCallbackBg, color: Colors.statusCallbackText };
+      return { label: 'Callback Scheduled', bg: Colors.badgeWarningBg, color: Colors.badgeWarningText };
     }
     if (disp === 'voicemail') {
-      return { label: `Voicemail (${lead.attempts_count})`, bg: Colors.statusUnansweredBg, color: Colors.statusUnansweredText };
+      return { label: `Voicemail (${lead.attempts_count})`, bg: Colors.badgeNeutralBg, color: Colors.badgeNeutralText };
     }
     if (disp === 'no_answer') {
-      return { label: `No Answer (${lead.attempts_count})`, bg: Colors.statusUnansweredBg, color: Colors.statusUnansweredText };
+      return { label: `No Answer (${lead.attempts_count})`, bg: Colors.badgeNeutralBg, color: Colors.badgeNeutralText };
     }
     if (disp === 'do_not_call') {
-      return { label: 'Do Not Call', bg: Colors.statusDangerBg, color: Colors.statusDangerText };
+      return { label: 'Do Not Call', bg: Colors.badgeDangerBg, color: Colors.badgeDangerText };
     }
-    return { label: 'Ready to Call', bg: Colors.statusPendingBg, color: Colors.statusPendingText };
+    return { label: 'Ready to Call', bg: Colors.badgeNeutralBg, color: Colors.brandAccent };
   };
 
   // Scope leads based on Campaign & School & Priority filters (before Tab filter)
@@ -315,7 +315,7 @@ export default function ListsScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.sacredGreenDeep} />
+      <StatusBar barStyle="light-content" backgroundColor={Colors.brandPrimary} />
 
       {/* App Header */}
       <View style={styles.header}>
@@ -339,28 +339,28 @@ export default function ListsScreen({ navigation }: any) {
             onPress={() => navigation.navigate('PlanningHeatmap')}
             accessibilityLabel="Planning Heatmap"
           >
-            <Calendar size={19} color={Colors.heavenlyGold} />
+            <Calendar size={19} color="#FFFFFF" />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.iconButton}
             onPress={handleExportCsv}
             accessibilityLabel="Export CSV"
           >
-            <Download size={19} color={Colors.heavenlyGold} />
+            <Download size={19} color="#FFFFFF" />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.iconButton}
             onPress={() => navigation.navigate('Analytics')}
             accessibilityLabel="Analytics"
           >
-            <BarChart3 size={19} color={Colors.heavenlyGold} />
+            <BarChart3 size={19} color="#FFFFFF" />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.iconButton}
             onPress={() => navigation.navigate('Settings')}
             accessibilityLabel="Settings"
           >
-            <Settings size={19} color={Colors.heavenlyGold} />
+            <Settings size={19} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       </View>
@@ -372,15 +372,15 @@ export default function ListsScreen({ navigation }: any) {
           <Text style={styles.statLabel}>Educators</Text>
         </View>
         <View style={[styles.statCard, { borderLeftWidth: 1, borderLeftColor: Colors.borderSubtle }]}>
-          <Text style={[styles.statNumber, { color: Colors.deepSkyBlueLight }]}>{pendingCount}</Text>
+          <Text style={[styles.statNumber, { color: Colors.brandAccent }]}>{pendingCount}</Text>
           <Text style={styles.statLabel}>To Call</Text>
         </View>
         <View style={[styles.statCard, { borderLeftWidth: 1, borderLeftColor: Colors.borderSubtle }]}>
-          <Text style={[styles.statNumber, { color: Colors.heavenlyGold }]}>{appointmentCount}</Text>
-          <Text style={[styles.statLabel, { color: Colors.heavenlyGold, fontWeight: '800' }]}>Appts Set</Text>
+          <Text style={[styles.statNumber, { color: Colors.badgeSuccessText }]}>{appointmentCount}</Text>
+          <Text style={[styles.statLabel, { color: Colors.badgeSuccessText, fontWeight: '800' }]}>Appts Set</Text>
         </View>
         <View style={[styles.statCard, { borderLeftWidth: 1, borderLeftColor: Colors.borderSubtle }]}>
-          <Text style={[styles.statNumber, { color: Colors.statusCallbackText }]}>{callbackCount}</Text>
+          <Text style={[styles.statNumber, { color: Colors.badgeWarningText }]}>{callbackCount}</Text>
           <Text style={styles.statLabel}>Callbacks</Text>
         </View>
       </View>
@@ -388,12 +388,12 @@ export default function ListsScreen({ navigation }: any) {
       {/* Main Start Power Dialer CTA */}
       <View style={styles.ctaContainer}>
         <TouchableOpacity
-          style={[styles.startQueueButton, callableCount === 0 && { backgroundColor: Colors.sacredGreenDark, borderColor: Colors.borderSubtle }]}
+          style={[styles.startQueueButton, callableCount === 0 && { backgroundColor: Colors.surfaceSubtle, borderColor: Colors.borderSubtle }]}
           onPress={handleStartMasterQueue}
           activeOpacity={0.8}
         >
           <View style={styles.phoneIconWrap}>
-            <PhoneCall size={20} color={Colors.sacredGreenDeep} />
+            <PhoneCall size={20} color="#FFFFFF" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.startQueueTitle}>
@@ -405,14 +405,13 @@ export default function ListsScreen({ navigation }: any) {
                 : 'All current leads contacted. Snap another card to add more.'}
             </Text>
           </View>
-          <ChevronRight size={22} color={Colors.heavenlyGold} />
+          <ChevronRight size={22} color="#FFFFFF" />
         </TouchableOpacity>
 
         {unansweredCount > 0 && (
           <TouchableOpacity style={styles.recycleButton} onPress={handleRecycleUnanswered}>
-            <RotateCcw size={15} color={Colors.heavenlyGold} />
+            <RotateCcw size={15} color={Colors.badgeWarningText} />
             <Text style={styles.recycleText}>
-
               Recycle {unansweredCount} Unanswered / Voicemail Lead{unansweredCount > 1 ? 's' : ''}
             </Text>
           </TouchableOpacity>
@@ -429,7 +428,7 @@ export default function ListsScreen({ navigation }: any) {
               setSelectedListId('all');
             }}
           >
-            <Layers size={13} color={selectedListId === 'all' ? Colors.sacredGreenDeep : Colors.heavenlyGold} />
+            <Layers size={13} color={selectedListId === 'all' ? '#FFFFFF' : Colors.brandAccent} />
             <Text style={[styles.campaignChipText, selectedListId === 'all' && styles.campaignChipTextActive]}>
               All Campaigns ({leads.length})
             </Text>
@@ -462,7 +461,7 @@ export default function ListsScreen({ navigation }: any) {
               setPriorityFilter(priorityFilter === 'fresh' ? 'all' : 'fresh');
             }}
           >
-            <Flame size={12} color={priorityFilter === 'fresh' ? Colors.sacredGreenDeep : Colors.heavenlyGold} />
+            <Flame size={12} color={priorityFilter === 'fresh' ? '#FFFFFF' : Colors.badgeWarningText} />
             <Text style={[styles.tierFilterChipText, priorityFilter === 'fresh' && styles.tierFilterChipTextActiveFresh]}>
               Fresh Only
             </Text>
@@ -475,7 +474,7 @@ export default function ListsScreen({ navigation }: any) {
               setPriorityFilter(priorityFilter === 'legacy' ? 'all' : 'legacy');
             }}
           >
-            <Archive size={12} color={priorityFilter === 'legacy' ? '#FFFFFF' : '#94A3B8'} />
+            <Archive size={12} color={priorityFilter === 'legacy' ? '#FFFFFF' : Colors.textMuted} />
             <Text style={[styles.tierFilterChipText, priorityFilter === 'legacy' && styles.tierFilterChipTextActiveLegacy]}>
               Legacy Only
             </Text>
@@ -494,7 +493,7 @@ export default function ListsScreen({ navigation }: any) {
                 setSelectedSchool('all');
               }}
             >
-              <MapPin size={11} color={selectedSchool === 'all' ? Colors.sacredGreenDeep : '#38BDF8'} />
+              <MapPin size={11} color={selectedSchool === 'all' ? '#FFFFFF' : Colors.brandAccent} />
               <Text style={[styles.schoolChipText, selectedSchool === 'all' && styles.schoolChipTextActive]}>
                 All Campuses
               </Text>
@@ -614,7 +613,7 @@ export default function ListsScreen({ navigation }: any) {
             style={styles.emptyButton}
             onPress={() => navigation.navigate('ScanSheet')}
           >
-            <Camera size={20} color={Colors.sacredGreenDeep} />
+            <Camera size={20} color="#FFFFFF" />
             <Text style={styles.emptyButtonText}>Snap First Report Card</Text>
           </TouchableOpacity>
         </View>
@@ -718,8 +717,8 @@ export default function ListsScreen({ navigation }: any) {
                       style={styles.cardActionBtn}
                       onPress={() => setPreviewImageUri(item.source_image_uri || null)}
                     >
-                      <Eye size={15} color={Colors.heavenlyGold} />
-                      <Text style={[styles.cardActionBtnText, { color: Colors.heavenlyGold }]}>Card</Text>
+                      <Eye size={15} color={Colors.brandAccent} />
+                      <Text style={[styles.cardActionBtnText, { color: Colors.brandAccent }]}>Card</Text>
                     </TouchableOpacity>
                   ) : null}
 
@@ -727,16 +726,16 @@ export default function ListsScreen({ navigation }: any) {
                     style={styles.cardActionBtn}
                     onPress={() => handleDialSingle(item)}
                   >
-                    <MessageSquare size={15} color={Colors.deepSkyBlueLight} />
-                    <Text style={[styles.cardActionBtnText, { color: Colors.deepSkyBlueLight }]}>AI Text</Text>
+                    <MessageSquare size={15} color={Colors.brandAccent} />
+                    <Text style={[styles.cardActionBtnText, { color: Colors.brandAccent }]}>AI Text</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={[styles.cardActionBtn, styles.callActionBtn]}
                     onPress={() => handleDialSingle(item)}
                   >
-                    <PhoneCall size={15} color={Colors.sacredGreenDeep} />
-                    <Text style={[styles.cardActionBtnText, { color: Colors.sacredGreenDeep, fontWeight: '800' }]}>
+                    <PhoneCall size={15} color="#FFFFFF" />
+                    <Text style={[styles.cardActionBtnText, { color: '#FFFFFF', fontWeight: '800' }]}>
                       Call ({item.phone})
                     </Text>
                   </TouchableOpacity>
@@ -769,7 +768,7 @@ export default function ListsScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.sacredGreenDeep,
+    backgroundColor: Colors.bgApp,
   },
   header: {
     flexDirection: 'row',
@@ -777,8 +776,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 14,
     paddingVertical: 10,
+    backgroundColor: Colors.brandPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.borderSubtle,
+    borderBottomColor: Colors.brandPrimary,
   },
   titleArea: {
     flexShrink: 0,
@@ -787,13 +787,13 @@ const styles = StyleSheet.create({
   appTitle: {
     fontSize: 21,
     fontWeight: '900',
-    color: Colors.heavenlyGold,
+    color: '#FFFFFF',
     letterSpacing: -0.3,
   },
   appSubtitle: {
     fontSize: 11,
     fontWeight: '600',
-    color: Colors.textSecondary,
+    color: Colors.focusRing,
     marginTop: 1,
   },
   headerIcons: {
@@ -806,16 +806,16 @@ const styles = StyleSheet.create({
   snapHeaderButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.sacredGreen,
+    backgroundColor: Colors.brandAccent,
     borderWidth: 1,
-    borderColor: Colors.borderGold,
+    borderColor: Colors.focusRing,
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 16,
     gap: 4,
   },
   snapHeaderButtonText: {
-    color: Colors.livingWhite,
+    color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 12,
   },
@@ -824,7 +824,7 @@ const styles = StyleSheet.create({
   },
   statsRow: {
     flexDirection: 'row',
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     marginHorizontal: 16,
     marginTop: 12,
     borderRadius: 14,
@@ -844,7 +844,7 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 11,
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontWeight: '600',
     marginTop: 2,
   },
@@ -856,32 +856,29 @@ const styles = StyleSheet.create({
   startQueueButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.sacredGreen,
+    backgroundColor: Colors.callActive,
     borderWidth: 1.5,
-    borderColor: Colors.heavenlyGold,
+    borderColor: Colors.callActive,
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderRadius: 14,
     gap: 12,
-    shadowColor: Colors.heavenlyGold,
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
   },
   phoneIconWrap: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: Colors.heavenlyGold,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   startQueueTitle: {
-    color: Colors.livingWhite,
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '800',
   },
   startQueueSubtitle: {
-    color: Colors.textSecondary,
+    color: '#DCFCE7',
     fontSize: 12,
     marginTop: 2,
   },
@@ -889,15 +886,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.heavenlyGoldMuted,
+    backgroundColor: Colors.badgeWarningBg,
     borderWidth: 1,
-    borderColor: Colors.heavenlyGoldBorder,
+    borderColor: Colors.borderStrong,
     borderRadius: 10,
     paddingVertical: 8,
     gap: 6,
   },
   recycleText: {
-    color: Colors.heavenlyGold,
+    color: Colors.badgeWarningText,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -915,14 +912,14 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 20,
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
     gap: 6,
   },
   campaignChipActive: {
-    backgroundColor: Colors.heavenlyGold,
-    borderColor: Colors.heavenlyGold,
+    backgroundColor: Colors.brandPrimary,
+    borderColor: Colors.brandPrimary,
   },
   campaignChipText: {
     fontSize: 12,
@@ -930,13 +927,13 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   campaignChipTextActive: {
-    color: Colors.sacredGreenDeep,
+    color: '#FFFFFF',
     fontWeight: '800',
   },
   dividerVertical: {
     width: 1,
     height: 20,
-    backgroundColor: Colors.borderMedium,
+    backgroundColor: Colors.borderSubtle,
     marginHorizontal: 4,
   },
   tierFilterChip: {
@@ -945,18 +942,18 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     paddingHorizontal: 10,
     borderRadius: 16,
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
     gap: 5,
   },
   tierFilterChipActiveFresh: {
-    backgroundColor: Colors.heavenlyGold,
-    borderColor: Colors.heavenlyGold,
+    backgroundColor: Colors.brandAccent,
+    borderColor: Colors.brandAccent,
   },
   tierFilterChipActiveLegacy: {
-    backgroundColor: '#64748B',
-    borderColor: '#94A3B8',
+    backgroundColor: Colors.surfaceSubtle,
+    borderColor: Colors.borderStrong,
   },
   tierFilterChipText: {
     fontSize: 11,
@@ -964,11 +961,11 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
   },
   tierFilterChipTextActiveFresh: {
-    color: Colors.sacredGreenDeep,
+    color: '#FFFFFF',
     fontWeight: '800',
   },
   tierFilterChipTextActiveLegacy: {
-    color: '#FFFFFF',
+    color: Colors.textSecondary,
     fontWeight: '800',
   },
   schoolFilterContainer: {
@@ -984,19 +981,19 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 10,
     borderRadius: 14,
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
     gap: 4,
   },
   schoolChipActive: {
-    backgroundColor: '#0284C7',
-    borderColor: '#38BDF8',
+    backgroundColor: Colors.brandAccent,
+    borderColor: Colors.brandAccent,
   },
   schoolChipText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#94A3B8',
+    color: Colors.textSecondary,
   },
   schoolChipTextActive: {
     color: '#FFFFFF',
@@ -1005,7 +1002,7 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     marginHorizontal: 16,
     marginTop: 12,
     paddingHorizontal: 12,
@@ -1031,25 +1028,25 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 14,
     borderRadius: 20,
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
   },
   tabChipActive: {
-    backgroundColor: Colors.heavenlyGold,
-    borderColor: Colors.heavenlyGold,
+    backgroundColor: Colors.brandPrimary,
+    borderColor: Colors.brandPrimary,
   },
   tabChipText: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
   },
   tabChipTextActive: {
-    color: Colors.sacredGreenDeep,
+    color: '#FFFFFF',
     fontWeight: '800',
   },
   leadCard: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 14,
     padding: 14,
     marginBottom: 12,
@@ -1064,7 +1061,7 @@ const styles = StyleSheet.create({
   leadName: {
     fontSize: 17,
     fontWeight: '800',
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
   },
   metaRow: {
     flexDirection: 'row',
@@ -1084,9 +1081,9 @@ const styles = StyleSheet.create({
   legacyBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(100, 116, 139, 0.25)',
+    backgroundColor: Colors.badgeNeutralBg,
     borderWidth: 1,
-    borderColor: '#64748B',
+    borderColor: Colors.borderStrong,
     paddingVertical: 3,
     paddingHorizontal: 7,
     borderRadius: 8,
@@ -1095,14 +1092,14 @@ const styles = StyleSheet.create({
   legacyBadgeText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#94A3B8',
+    color: Colors.badgeNeutralText,
   },
   freshBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(218, 165, 32, 0.15)',
+    backgroundColor: Colors.badgeWarningBg,
     borderWidth: 1,
-    borderColor: Colors.heavenlyGoldBorder,
+    borderColor: Colors.borderStrong,
     paddingVertical: 3,
     paddingHorizontal: 7,
     borderRadius: 8,
@@ -1111,7 +1108,7 @@ const styles = StyleSheet.create({
   freshBadgeText: {
     fontSize: 10,
     fontWeight: '700',
-    color: Colors.heavenlyGold,
+    color: Colors.badgeWarningText,
   },
   statusBadge: {
     paddingVertical: 4,
@@ -1123,7 +1120,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   detailsBox: {
-    backgroundColor: Colors.bgDark,
+    backgroundColor: Colors.surfaceSubtle,
     borderRadius: 10,
     padding: 10,
     marginTop: 10,
@@ -1155,7 +1152,7 @@ const styles = StyleSheet.create({
   cardActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.bgDark,
+    backgroundColor: Colors.surfaceSubtle,
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,
@@ -1169,14 +1166,14 @@ const styles = StyleSheet.create({
   },
   callActionBtn: {
     flex: 1,
-    backgroundColor: Colors.heavenlyGold,
-    borderColor: Colors.heavenlyGold,
+    backgroundColor: Colors.callActive,
+    borderColor: Colors.callActive,
     justifyContent: 'center',
   },
   deleteLeadBtn: {
     padding: 8,
     borderRadius: 8,
-    backgroundColor: Colors.statusDangerBg,
+    backgroundColor: Colors.badgeDangerBg,
   },
   centerContainer: {
     flex: 1,
@@ -1200,14 +1197,14 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderWidth: 1,
-    borderColor: Colors.borderGold,
+    borderColor: Colors.borderSubtle,
     alignItems: 'center',
     justifyContent: 'center',
   },
   emptyTitle: {
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
     fontSize: 18,
     fontWeight: '700',
     marginTop: 16,
@@ -1222,7 +1219,7 @@ const styles = StyleSheet.create({
   emptyButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.heavenlyGold,
+    backgroundColor: Colors.brandPrimary,
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 10,
@@ -1230,7 +1227,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emptyButtonText: {
-    color: Colors.sacredGreenDeep,
+    color: '#FFFFFF',
     fontWeight: '800',
     fontSize: 15,
   },
@@ -1247,9 +1244,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 14,
+    backgroundColor: Colors.brandPrimary,
   },
   modalTitle: {
-    color: Colors.livingWhite,
+    color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '700',
   },

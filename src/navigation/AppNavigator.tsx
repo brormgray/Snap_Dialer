@@ -21,7 +21,7 @@ export default function AppNavigator() {
         initialRouteName="Lists"
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: Colors.sacredGreenDeep },
+          contentStyle: { backgroundColor: Colors.bgApp },
           animation: 'slide_from_right',
         }}
       >

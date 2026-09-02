@@ -69,11 +69,11 @@ export default function PinLockModal({ visible, onUnlocked }: PinLockModalProps)
   return (
     <Modal visible={visible} animationType="fade" transparent={false}>
       <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor={Colors.sacredGreenDeep} />
+        <StatusBar barStyle="light-content" backgroundColor={Colors.brandPrimary} />
 
         <View style={styles.headerArea}>
           <View style={styles.iconCircle}>
-            <Lock size={32} color={Colors.heavenlyGold} />
+            <Lock size={32} color={Colors.brandPrimary} />
           </View>
           <Text style={styles.title}>SnapDialer Protected</Text>
           <Text style={styles.subtitle}>Enter your 4-digit PIN to access educator pipeline</Text>
@@ -134,13 +134,13 @@ export default function PinLockModal({ visible, onUnlocked }: PinLockModalProps)
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.actionButton} onPress={handleDelete} activeOpacity={0.65}>
-              <Delete size={24} color={Colors.textMuted} />
+              <Delete size={24} color={Colors.textSecondary} />
             </TouchableOpacity>
           </View>
         </View>
 
         <View style={styles.footerNote}>
-          <ShieldCheck size={16} color={Colors.heavenlyGold} />
+          <ShieldCheck size={16} color={Colors.brandPrimary} />
           <Text style={styles.footerNoteText}>FERPA & Educator Data Shield Active</Text>
         </View>
       </SafeAreaView>
@@ -151,7 +151,7 @@ export default function PinLockModal({ visible, onUnlocked }: PinLockModalProps)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#071A12',
+    backgroundColor: Colors.bgApp,
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 36,
@@ -164,9 +164,9 @@ const styles = StyleSheet.create({
     width: 68,
     height: 68,
     borderRadius: 34,
-    backgroundColor: 'rgba(212, 160, 23, 0.15)',
+    backgroundColor: Colors.surfaceSubtle,
     borderWidth: 1.5,
-    borderColor: Colors.borderGold,
+    borderColor: Colors.brandPrimary,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
@@ -174,13 +174,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: '700',
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
     letterSpacing: 0.5,
     marginBottom: 6,
   },
   subtitle: {
     fontSize: 14,
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     textAlign: 'center',
     paddingHorizontal: 30,
   },
@@ -195,21 +195,21 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 9,
     borderWidth: 2,
-    borderColor: Colors.borderGold,
+    borderColor: Colors.borderStrong,
     backgroundColor: 'transparent',
   },
   dotFilled: {
-    backgroundColor: Colors.heavenlyGold,
-    borderColor: Colors.heavenlyGold,
+    backgroundColor: Colors.brandPrimary,
+    borderColor: Colors.brandPrimary,
     transform: [{ scale: 1.1 }],
   },
   dotError: {
-    borderColor: '#EF4444',
-    backgroundColor: 'rgba(239, 68, 68, 0.3)',
+    borderColor: Colors.badgeDangerText,
+    backgroundColor: Colors.badgeDangerBg,
   },
   errorText: {
     fontSize: 14,
-    color: '#EF4444',
+    color: Colors.badgeDangerText,
     fontWeight: '600',
     height: 20,
   },
@@ -226,16 +226,16 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#0D2D20',
+    backgroundColor: Colors.surfaceCard,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: Colors.borderStrong,
     justifyContent: 'center',
     alignItems: 'center',
   },
   keyText: {
     fontSize: 28,
     fontWeight: '600',
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
   },
   actionButton: {
     width: 72,
@@ -247,17 +247,17 @@ const styles = StyleSheet.create({
   actionText: {
     fontSize: 15,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
   },
   footerNote: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    opacity: 0.7,
+    opacity: 0.8,
   },
   footerNoteText: {
     fontSize: 12,
-    color: Colors.heavenlyGold,
-    fontWeight: '500',
+    color: Colors.brandPrimary,
+    fontWeight: '600',
   },
 });

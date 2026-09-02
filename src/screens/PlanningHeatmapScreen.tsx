@@ -71,12 +71,12 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.sacredGreenDeep} />
+      <StatusBar barStyle="light-content" backgroundColor={Colors.brandPrimary} />
 
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <ArrowLeft size={22} color={Colors.livingWhite} />
+          <ArrowLeft size={22} color="#FFFFFF" />
         </TouchableOpacity>
         <View style={{ flex: 1, marginHorizontal: 8 }}>
           <Text style={styles.headerTitle} numberOfLines={1}>Planning Period Heatmap</Text>
@@ -89,19 +89,19 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
             loadPlanningData();
           }}
         >
-          <CalendarCheck size={20} color={Colors.heavenlyGold} />
+          <CalendarCheck size={20} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
 
       {/* KPI Stats Bar */}
       <View style={styles.statsStrip}>
         <View style={styles.statBox}>
-          <Text style={styles.statNumber}>{apptLeads.length}</Text>
+          <Text style={[styles.statNumber, { color: Colors.badgeSuccessText }]}>{apptLeads.length}</Text>
           <Text style={styles.statLabel}>🎯 Confirmed Sit-Downs</Text>
         </View>
         <View style={[styles.statBox, { borderLeftWidth: 1, borderLeftColor: Colors.borderSubtle }]}>
-          <Text style={[styles.statNumber, { color: Colors.deepSkyBlueLight }]}>{totalSlotsCount}</Text>
-          <Text style={styles.statLabel}>Mapped Planning Periods</Text>
+          <Text style={[styles.statNumber, { color: Colors.brandAccent }]}>{totalSlotsCount}</Text>
+          <Text style={styles.statLabel}>Availability Slots</Text>
         </View>
       </View>
 
@@ -150,12 +150,12 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
               <View key={period.id} style={styles.periodCard}>
                 <View style={styles.periodHeader}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Clock size={16} color={Colors.heavenlyGold} />
+                    <Clock size={16} color={Colors.brandAccent} />
                     <Text style={styles.periodTitle}>{period.name}</Text>
                     <Text style={styles.periodTime}>({period.displayTime})</Text>
                   </View>
                   <View style={[styles.countBadge, confirmedInPeriod.length > 0 && styles.countBadgeConfirmed]}>
-                    <Text style={[styles.countBadgeText, confirmedInPeriod.length > 0 && { color: Colors.sacredGreenDeep }]}>
+                    <Text style={[styles.countBadgeText, confirmedInPeriod.length > 0 && { color: Colors.badgeSuccessText }]}>
                       {periodLeads.length} Educators
                     </Text>
                   </View>
@@ -180,7 +180,7 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
                               <Text style={[styles.leadName, isConfirmed && styles.leadNameConfirmed]}>
                                 {lead.name}
                               </Text>
-                              {isConfirmed && <CheckCircle2 size={13} color={Colors.heavenlyGold} />}
+                              {isConfirmed && <CheckCircle2 size={13} color={Colors.badgeSuccessText} />}
                             </View>
                             <Text style={styles.leadDetails}>
                               {lead.school || 'Campus'} • {lead.room_number ? `Room ${lead.room_number}` : 'Classroom'}
@@ -213,7 +213,7 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.sacredGreenDeep,
+    backgroundColor: Colors.bgApp,
   },
   header: {
     flexDirection: 'row',
@@ -221,8 +221,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 14,
+    backgroundColor: Colors.brandPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.borderSubtle,
+    borderBottomColor: Colors.brandPrimary,
   },
   backButton: {
     padding: 6,
@@ -230,11 +231,11 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 17,
     fontWeight: '800',
-    color: Colors.livingWhite,
+    color: '#FFFFFF',
   },
   headerSubtitle: {
     fontSize: 11,
-    color: Colors.heavenlyGold,
+    color: Colors.focusRing,
     fontWeight: '600',
   },
   refreshButton: {
@@ -242,7 +243,7 @@ const styles = StyleSheet.create({
   },
   statsStrip: {
     flexDirection: 'row',
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderBottomWidth: 1,
     borderBottomColor: Colors.borderSubtle,
   },
@@ -254,11 +255,11 @@ const styles = StyleSheet.create({
   statNumber: {
     fontSize: 20,
     fontWeight: '800',
-    color: Colors.heavenlyGold,
+    color: Colors.badgeSuccessText,
   },
   statLabel: {
     fontSize: 11,
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     marginTop: 2,
     fontWeight: '600',
   },
@@ -280,32 +281,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: '#0D2D20',
+    backgroundColor: Colors.surfaceCard,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: Colors.borderSubtle,
   },
   schoolFilterPillActive: {
-    backgroundColor: Colors.heavenlyGold,
-    borderColor: Colors.heavenlyGold,
+    backgroundColor: Colors.brandPrimary,
+    borderColor: Colors.brandPrimary,
   },
   schoolFilterPillText: {
     fontSize: 12,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
   },
   schoolFilterPillTextActive: {
-    color: Colors.sacredGreenDeep,
+    color: '#FFFFFF',
     fontWeight: '800',
   },
   sectionHeader: {
     fontSize: 11,
     fontWeight: '800',
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     letterSpacing: 0.8,
     marginBottom: 12,
   },
   periodCard: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
@@ -321,15 +322,15 @@ const styles = StyleSheet.create({
   periodTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
   },
   periodTime: {
     fontSize: 12,
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontWeight: '500',
   },
   countBadge: {
-    backgroundColor: Colors.bgDark,
+    backgroundColor: Colors.surfaceSubtle,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 12,
@@ -337,13 +338,13 @@ const styles = StyleSheet.create({
     borderColor: Colors.borderSubtle,
   },
   countBadgeConfirmed: {
-    backgroundColor: Colors.heavenlyGold,
-    borderColor: Colors.heavenlyGold,
+    backgroundColor: Colors.badgeSuccessBg,
+    borderColor: Colors.badgeSuccessText,
   },
   countBadgeText: {
     fontSize: 11,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
   },
   emptyPeriodText: {
     color: Colors.textMuted,
@@ -357,31 +358,31 @@ const styles = StyleSheet.create({
   leadPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.bgDark,
+    backgroundColor: Colors.surfaceSubtle,
     padding: 10,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
   },
   leadPillConfirmed: {
-    borderColor: Colors.heavenlyGold,
-    backgroundColor: 'rgba(218, 165, 32, 0.1)',
+    borderColor: Colors.badgeSuccessText,
+    backgroundColor: Colors.badgeSuccessBg,
   },
   leadName: {
     fontSize: 14,
     fontWeight: '700',
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
   },
   leadNameConfirmed: {
-    color: Colors.heavenlyGold,
+    color: Colors.badgeSuccessText,
   },
   leadDetails: {
     fontSize: 11,
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     marginTop: 2,
   },
   quickDialPill: {
-    backgroundColor: Colors.sacredGreenLight,
+    backgroundColor: Colors.callActive,
     padding: 8,
     borderRadius: 20,
     marginLeft: 8,

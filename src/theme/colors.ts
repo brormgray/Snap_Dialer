@@ -1,56 +1,80 @@
 /**
- * 5 Trees Fellowship Official Color Palette & Mobile Design Tokens
- * Website: 5treesfellowship.church
+ * SnapDialer Design Tokens & Unified Color Palette
+ * Light-theme corporate system
  */
 export const Colors = {
-  // Brand Core Colors
-  sacredGreen: '#244931',
-  sacredGreenDark: '#1A3524',
-  sacredGreenDeep: '#14291B',
-  sacredGreenLight: '#2D5A3D',
-  
-  heavenlyGold: '#D4AF37',
-  heavenlyGoldLight: '#E6C86E',
-  heavenlyGoldDark: '#B3901D',
-  heavenlyGoldMuted: 'rgba(212, 175, 55, 0.15)',
-  heavenlyGoldBorder: 'rgba(212, 175, 55, 0.35)',
+  /* Surfaces */
+  bgApp: '#F8FAFC',              /* Main application/canvas background */
+  surfaceCard: '#FFFFFF',        /* Cards, panels, modals, dial keys */
+  surfaceSubtle: '#F1F5F9',      /* Table stripes, secondary containers, input fills */
 
-  livingWhite: '#FCFCFA',
-  livingOffWhite: '#F4F4F0',
-  warmEarthBrown: '#56413B',
-  deepSkyBlue: '#0077BE',
-  deepSkyBlueLight: '#38A3E5',
-  deepSkyBlueMuted: 'rgba(0, 119, 190, 0.15)',
+  /* Borders */
+  borderSubtle: '#E2E8F0',       /* Card dividers, table borders */
+  borderStrong: '#CBD5E1',       /* Dial pad borders, inactive input outlines */
 
-  // Mobile App Backgrounds & Card Layers
-  bgDark: '#0E1D13',
-  bgPrimary: '#14291B',
-  bgCard: '#1A3624',
-  bgCardElevated: '#21422D',
-  bgInput: '#0E1D13',
-  bgModal: 'rgba(14, 29, 19, 0.92)',
+  /* Typography */
+  textPrimary: '#0F172A',        /* Headings, contact names, primary readouts */
+  textSecondary: '#475569',      /* Labels, metadata, timestamps */
+  textMuted: '#94A3B8',          /* Placeholder text, inactive icons */
 
-  // Borders & Dividers
-  borderSubtle: '#264A32',
-  borderMedium: '#315C3F',
-  borderGold: '#D4AF37',
+  /* Brand & Interactive */
+  brandPrimary: '#0B3B60',       /* Navigation bars, headers, primary brand buttons */
+  brandAccent: '#0284C7',        /* Links, active indicators, interactive elements */
+  focusRing: '#38BDF8',          /* Focus outlines */
 
-  // Typography
-  textPrimary: '#FCFCFA',
-  textSecondary: '#DCDCD2',
-  textMuted: '#98A89C',
-  textGold: '#D4AF37',
-  textDark: '#14291B',
+  /* Telephony Actions & Dispositions */
+  callActive: '#15803D',         /* Call/Dial button background (Emerald) */
+  callHangup: '#DC2626',         /* End Call button background (Red) */
+  badgeSuccessBg: '#DCFCE7',    /* Appt Set / Connected pill bg */
+  badgeSuccessText: '#166534',  /* Appt Set / Connected pill text */
+  badgeWarningBg: '#FEF3C7',    /* Callback / Voicemail pill bg */
+  badgeWarningText: '#B45309',  /* Callback / Voicemail pill text */
+  badgeDangerBg: '#FEE2E2',     /* DNC / Bad Lead pill bg */
+  badgeDangerText: '#991B1B',   /* DNC / Bad Lead pill text */
+  badgeNeutralBg: '#F1F5F9',    /* Busy / No Answer pill bg */
+  badgeNeutralText: '#475569',  /* Busy / No Answer pill text */
 
-  // Status & Disposition Badges
-  statusSitDownBg: '#1D452B',
-  statusSitDownText: '#5CE488',
-  statusCallbackBg: 'rgba(212, 175, 55, 0.2)',
-  statusCallbackText: '#F3D061',
-  statusPendingBg: 'rgba(0, 119, 190, 0.2)',
-  statusPendingText: '#5BB7F5',
-  statusUnansweredBg: '#243B2C',
-  statusUnansweredText: '#A8B8AC',
-  statusDangerBg: 'rgba(239, 68, 68, 0.15)',
-  statusDangerText: '#F87171',
+  /* Backward-compatible aliases mapped strictly to new design tokens */
+  sacredGreen: '#0B3B60',        /* brandPrimary */
+  sacredGreenDark: '#082B46',    /* darker brandPrimary */
+  sacredGreenDeep: '#0B3B60',    /* brandPrimary */
+  sacredGreenLight: '#0284C7',   /* brandAccent */
+
+  heavenlyGold: '#0284C7',       /* brandAccent */
+  heavenlyGoldLight: '#38BDF8',  /* focusRing */
+  heavenlyGoldDark: '#0B3B60',   /* brandPrimary */
+  heavenlyGoldMuted: '#F1F5F9',  /* surfaceSubtle */
+  heavenlyGoldBorder: '#E2E8F0', /* borderSubtle */
+
+  livingWhite: '#FFFFFF',        /* White for elements on dark headers */
+  livingOffWhite: '#F8FAFC',     /* bgApp */
+  warmEarthBrown: '#475569',     /* textSecondary */
+  deepSkyBlue: '#0284C7',        /* brandAccent */
+  deepSkyBlueLight: '#38BDF8',   /* focusRing */
+  deepSkyBlueMuted: '#F1F5F9',   /* surfaceSubtle */
+
+  bgDark: '#F8FAFC',             /* bgApp */
+  bgPrimary: '#F8FAFC',          /* bgApp */
+  bgCard: '#FFFFFF',             /* surfaceCard */
+  bgCardElevated: '#FFFFFF',     /* surfaceCard */
+  bgInput: '#F1F5F9',            /* surfaceSubtle */
+  bgModal: 'rgba(15, 23, 42, 0.65)', /* Modal overlay backdrop */
+  modalSurface: '#FFFFFF',       /* surfaceCard */
+
+  borderMedium: '#CBD5E1',       /* borderStrong */
+  borderGold: '#E2E8F0',         /* borderSubtle */
+
+  textGold: '#0284C7',           /* brandAccent */
+  textDark: '#0F172A',           /* textPrimary */
+
+  statusSitDownBg: '#DCFCE7',    /* badgeSuccessBg */
+  statusSitDownText: '#166534',  /* badgeSuccessText */
+  statusCallbackBg: '#FEF3C7',   /* badgeWarningBg */
+  statusCallbackText: '#B45309', /* badgeWarningText */
+  statusPendingBg: '#F1F5F9',    /* badgeNeutralBg */
+  statusPendingText: '#0284C7',  /* brandAccent */
+  statusUnansweredBg: '#F1F5F9', /* badgeNeutralBg */
+  statusUnansweredText: '#475569', /* badgeNeutralText */
+  statusDangerBg: '#FEE2E2',     /* badgeDangerBg */
+  statusDangerText: '#991B1B',   /* badgeDangerText */
 };

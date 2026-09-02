@@ -77,7 +77,7 @@ export default function ZoomableImageModal({
                 onPress={handleZoomOut}
                 disabled={zoomLevel <= 1}
               >
-                <ZoomOut size={18} color={zoomLevel <= 1 ? Colors.textMuted : Colors.livingWhite} />
+                <ZoomOut size={18} color={zoomLevel <= 1 ? Colors.textMuted : Colors.brandPrimary} />
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.zoomBtn} onPress={handleResetZoom}>
@@ -89,12 +89,12 @@ export default function ZoomableImageModal({
                 onPress={handleZoomIn}
                 disabled={zoomLevel >= 4}
               >
-                <ZoomIn size={18} color={zoomLevel >= 4 ? Colors.textMuted : Colors.livingWhite} />
+                <ZoomIn size={18} color={zoomLevel >= 4 ? Colors.textMuted : Colors.brandPrimary} />
               </TouchableOpacity>
             </View>
 
             <TouchableOpacity style={styles.closeBtn} onPress={handleClose}>
-              <X size={22} color={Colors.livingWhite} />
+              <X size={22} color={Colors.textPrimary} />
             </TouchableOpacity>
           </View>
 
@@ -140,7 +140,7 @@ export default function ZoomableImageModal({
 
           {/* Compliance Footer */}
           <View style={styles.footer}>
-            <ShieldCheck size={16} color={Colors.statusSitDownText} />
+            <ShieldCheck size={16} color={Colors.badgeSuccessText} />
             <Text style={styles.footerText}>
               Verified ValuTeachers Card • Stored Securely in Local Device Sandbox
             </Text>
@@ -154,7 +154,7 @@ export default function ZoomableImageModal({
 const styles = StyleSheet.create({
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(14, 29, 19, 0.96)',
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
   },
   safeContainer: {
     flex: 1,
@@ -174,7 +174,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: '800',
-    color: Colors.heavenlyGold,
+    color: Colors.brandPrimary,
   },
   subtitle: {
     fontSize: 12,
@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
   zoomControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
@@ -204,25 +204,25 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   zoomBadgeText: {
-    color: Colors.heavenlyGold,
+    color: Colors.brandPrimary,
     fontSize: 12,
     fontWeight: '800',
   },
   closeBtn: {
     padding: 6,
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
   },
   viewportContainer: {
     flex: 1,
-    backgroundColor: Colors.bgDark,
+    backgroundColor: Colors.surfaceSubtle,
     borderRadius: 16,
     overflow: 'hidden',
     marginVertical: 12,
     borderWidth: 1.5,
-    borderColor: Colors.borderGold,
+    borderColor: Colors.borderSubtle,
     position: 'relative',
   },
   scrollView: {
@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
     bottom: 8,
     left: 8,
     right: 8,
-    backgroundColor: 'rgba(14, 29, 19, 0.85)',
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 8,
@@ -253,16 +253,16 @@ const styles = StyleSheet.create({
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.statusSitDownBg,
+    backgroundColor: Colors.badgeSuccessBg,
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 10,
     gap: 8,
     borderWidth: 1,
-    borderColor: Colors.borderSubtle,
+    borderColor: Colors.badgeSuccessText,
   },
   footerText: {
-    color: Colors.statusSitDownText,
+    color: Colors.badgeSuccessText,
     fontSize: 12,
     fontWeight: '700',
     flex: 1,

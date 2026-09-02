@@ -95,7 +95,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <SafeAreaProvider>
-        <StatusBar barStyle="light-content" backgroundColor={Colors.sacredGreenDeep} />
+        <StatusBar barStyle="light-content" backgroundColor={Colors.brandPrimary} />
         <AppNavigator />
         <PinLockModal visible={isLocked} onUnlocked={() => setIsLocked(false)} />
       </SafeAreaProvider>
@@ -106,7 +106,7 @@ export default function App() {
 const styles = StyleSheet.create({
   errorContainer: {
     flex: 1,
-    backgroundColor: Colors.sacredGreenDeep,
+    backgroundColor: Colors.bgApp,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
@@ -114,7 +114,7 @@ const styles = StyleSheet.create({
   errorTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#EF4444',
+    color: Colors.callHangup,
     marginBottom: 12,
   },
   errorDescription: {

@@ -388,7 +388,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centerContainer}>
-          <Text style={{ color: '#94A3B8' }}>Loading contact details...</Text>
+          <Text style={{ color: Colors.textMuted }}>Loading contact details...</Text>
         </View>
       </SafeAreaView>
     );
@@ -397,20 +397,38 @@ export default function LeadDetailScreen({ route, navigation }: any) {
   const getDispositionColor = (disp?: CallDisposition | null) => {
     switch (disp) {
       case 'appointment_set':
-        return Colors.heavenlyGold;
       case 'connected':
       case 'spoke':
-        return Colors.statusSitDownText;
+        return Colors.badgeSuccessText;
       case 'callback_requested':
-        return Colors.statusCallbackText;
+        return Colors.badgeWarningText;
       case 'no_answer':
       case 'voicemail':
-        return Colors.statusUnansweredText;
+        return Colors.badgeNeutralText;
       case 'bad_number':
       case 'do_not_call':
-        return Colors.statusDangerText;
+        return Colors.badgeDangerText;
       default:
-        return Colors.statusPendingText;
+        return Colors.brandAccent;
+    }
+  };
+
+  const getDispositionBg = (disp?: CallDisposition | null) => {
+    switch (disp) {
+      case 'appointment_set':
+      case 'connected':
+      case 'spoke':
+        return Colors.badgeSuccessBg;
+      case 'callback_requested':
+        return Colors.badgeWarningBg;
+      case 'no_answer':
+      case 'voicemail':
+        return Colors.badgeNeutralBg;
+      case 'bad_number':
+      case 'do_not_call':
+        return Colors.badgeDangerBg;
+      default:
+        return Colors.surfaceSubtle;
     }
   };
 
@@ -426,9 +444,11 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       case 'no_answer':
         return '📞 NO ANSWER';
       case 'voicemail':
-        return '✉️ VOICEMAIL';
+        return '📼 VOICEMAIL';
       case 'do_not_call':
-        return '🚫 DNC';
+        return '🛡️ DO NOT CALL';
+      case 'bad_number':
+        return '⚠️ BAD NUMBER';
       default:
         return 'READY TO CALL';
     }
@@ -436,12 +456,12 @@ export default function LeadDetailScreen({ route, navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.sacredGreenDeep} />
+      <StatusBar barStyle="light-content" backgroundColor={Colors.brandPrimary} />
 
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <ArrowLeft size={22} color={Colors.livingWhite} />
+          <ArrowLeft size={22} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Educator Profile</Text>
         <TouchableOpacity onPress={() => setIsEditing(!isEditing)}>
@@ -489,7 +509,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                   <View
                     style={[
                       styles.statusBadge,
-                      { backgroundColor: `${getDispositionColor(lead.last_disposition)}20` },
+                      { backgroundColor: getDispositionBg(lead.last_disposition) },
                     ]}
                   >
                     <Text
@@ -808,7 +828,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                       onPress={() => handleAddNote()}
                       disabled={!noteInputText.trim()}
                     >
-                      <Plus size={14} color={Colors.sacredGreenDeep} />
+                      <Plus size={14} color="#FFFFFF" />
                       <Text style={styles.addNoteButtonText}>Add</Text>
                     </TouchableOpacity>
                   </View>
@@ -943,7 +963,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                 numberOfLines={3}
               />
 
-              <Text style={[styles.fieldLabel, { marginTop: 10 }]}>Lead Calling Priority</Text>
+              <Text style={[styles.fieldLabel, { marginTop: 10 }]}>Calling Queue Priority Tier</Text>
               <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
                 <TouchableOpacity
                   style={[
@@ -952,8 +972,8 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                   ]}
                   onPress={() => setPriorityTier(1)}
                 >
-                  <Flame size={14} color={priorityTier === 1 ? Colors.sacredGreenDeep : Colors.heavenlyGold} />
-                  <Text style={[styles.tierEditBtnText, priorityTier === 1 && { color: Colors.sacredGreenDeep, fontWeight: '800' }]}>
+                  <Flame size={14} color={priorityTier === 1 ? Colors.badgeSuccessText : Colors.brandAccent} />
+                  <Text style={[styles.tierEditBtnText, priorityTier === 1 && { color: Colors.badgeSuccessText, fontWeight: '800' }]}>
                     Fresh Priority
                   </Text>
                 </TouchableOpacity>
@@ -965,8 +985,8 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                   ]}
                   onPress={() => setPriorityTier(3)}
                 >
-                  <Archive size={14} color={priorityTier === 3 ? '#FFFFFF' : '#94A3B8'} />
-                  <Text style={[styles.tierEditBtnText, priorityTier === 3 && { color: '#FFFFFF', fontWeight: '800' }]}>
+                  <Archive size={14} color={priorityTier === 3 ? Colors.textPrimary : Colors.textMuted} />
+                  <Text style={[styles.tierEditBtnText, priorityTier === 3 && { color: Colors.textPrimary, fontWeight: '800' }]}>
                     Legacy Archive
                   </Text>
                 </TouchableOpacity>
@@ -982,7 +1002,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                     ]}
                     onPress={() => setListIdVal('master_queue')}
                   >
-                    <Layers size={12} color={listIdVal === 'master_queue' ? Colors.sacredGreenDeep : Colors.heavenlyGold} />
+                    <Layers size={12} color={listIdVal === 'master_queue' ? '#FFFFFF' : Colors.brandAccent} />
                     <Text style={[styles.listSelectChipText, listIdVal === 'master_queue' && styles.listSelectChipTextActive]}>
                       Master Pipeline
                     </Text>
@@ -1217,7 +1237,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.sacredGreenDeep,
+    backgroundColor: Colors.bgApp,
   },
   header: {
     flexDirection: 'row',
@@ -1225,8 +1245,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 14,
+    backgroundColor: Colors.brandPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.borderSubtle,
+    borderBottomColor: Colors.brandPrimary,
   },
   backButton: {
     padding: 8,
@@ -1234,10 +1255,10 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: Colors.heavenlyGold,
+    color: '#FFFFFF',
   },
   editLink: {
-    color: Colors.heavenlyGold,
+    color: Colors.focusRing,
     fontWeight: '700',
     fontSize: 15,
   },
@@ -1246,7 +1267,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   profileCard: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 16,
     padding: 18,
     borderWidth: 1,
@@ -1262,11 +1283,11 @@ const styles = StyleSheet.create({
   nameText: {
     fontSize: 22,
     fontWeight: '800',
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
   },
   phoneText: {
     fontSize: 16,
-    color: Colors.heavenlyGold,
+    color: Colors.brandAccent,
     marginTop: 2,
     fontWeight: '600',
   },
@@ -1278,9 +1299,9 @@ const styles = StyleSheet.create({
   detailLegacyBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(100, 116, 139, 0.25)',
+    backgroundColor: Colors.badgeNeutralBg,
     borderWidth: 1,
-    borderColor: '#64748B',
+    borderColor: Colors.borderStrong,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
@@ -1289,14 +1310,14 @@ const styles = StyleSheet.create({
   detailLegacyBadgeText: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#94A3B8',
+    color: Colors.badgeNeutralText,
   },
   detailFreshBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(218, 165, 32, 0.15)',
+    backgroundColor: Colors.badgeWarningBg,
     borderWidth: 1,
-    borderColor: Colors.heavenlyGoldBorder,
+    borderColor: Colors.borderStrong,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
@@ -1305,13 +1326,13 @@ const styles = StyleSheet.create({
   detailFreshBadgeText: {
     fontSize: 10,
     fontWeight: '800',
-    color: Colors.heavenlyGold,
+    color: Colors.badgeWarningText,
   },
   tierEditBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.bgInput,
+    backgroundColor: Colors.surfaceSubtle,
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 8,
@@ -1320,12 +1341,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   tierEditBtnActiveFresh: {
-    backgroundColor: Colors.heavenlyGold,
-    borderColor: Colors.heavenlyGold,
+    backgroundColor: Colors.brandAccent,
+    borderColor: Colors.brandAccent,
   },
   tierEditBtnActiveLegacy: {
-    backgroundColor: '#64748B',
-    borderColor: '#94A3B8',
+    backgroundColor: Colors.surfaceSubtle,
+    borderColor: Colors.borderStrong,
   },
   tierEditBtnText: {
     fontSize: 12,
@@ -1335,7 +1356,7 @@ const styles = StyleSheet.create({
   listSelectChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.bgInput,
+    backgroundColor: Colors.surfaceSubtle,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 16,
@@ -1344,8 +1365,8 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   listSelectChipActive: {
-    backgroundColor: Colors.heavenlyGold,
-    borderColor: Colors.heavenlyGold,
+    backgroundColor: Colors.brandPrimary,
+    borderColor: Colors.brandPrimary,
   },
   listSelectChipText: {
     color: Colors.textSecondary,
@@ -1353,7 +1374,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   listSelectChipTextActive: {
-    color: Colors.sacredGreenDeep,
+    color: '#FFFFFF',
     fontWeight: '800',
   },
   statusBadge: {
@@ -1366,7 +1387,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   frsInfoBox: {
-    backgroundColor: Colors.bgDark,
+    backgroundColor: Colors.surfaceSubtle,
     borderRadius: 10,
     padding: 10,
     marginTop: 6,
@@ -1385,7 +1406,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   interestsBox: {
-    backgroundColor: Colors.bgDark,
+    backgroundColor: Colors.surfaceSubtle,
     borderRadius: 10,
     padding: 10,
     marginTop: 8,
@@ -1395,7 +1416,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   interestsHeader: {
-    color: Colors.statusSitDownText,
+    color: Colors.badgeSuccessText,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.5,
@@ -1408,7 +1429,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   interestText: {
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
     fontSize: 12,
     fontWeight: '500',
     flex: 1,
@@ -1418,17 +1439,17 @@ const styles = StyleSheet.create({
   customQuestionBox: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: Colors.heavenlyGoldMuted,
+    backgroundColor: Colors.badgeWarningBg,
     borderRadius: 8,
     padding: 10,
     marginTop: 8,
     borderWidth: 1,
-    borderColor: Colors.heavenlyGold,
+    borderColor: Colors.borderStrong,
     gap: 8,
     width: '100%',
   },
   customQuestionText: {
-    color: Colors.heavenlyGold,
+    color: Colors.badgeWarningText,
     fontSize: 12,
     fontWeight: '600',
     flex: 1,
@@ -1436,7 +1457,7 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   meetingPrefsBox: {
-    backgroundColor: Colors.bgDark,
+    backgroundColor: Colors.surfaceSubtle,
     borderRadius: 10,
     padding: 10,
     marginTop: 8,
@@ -1444,14 +1465,14 @@ const styles = StyleSheet.create({
     borderColor: Colors.borderSubtle,
   },
   meetingPrefsTitle: {
-    color: Colors.heavenlyGold,
+    color: Colors.brandAccent,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.5,
     marginBottom: 2,
   },
   prefText: {
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
     fontSize: 12,
     fontWeight: '600',
     marginTop: 2,
@@ -1460,16 +1481,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: Colors.bgDark,
+    backgroundColor: Colors.surfaceSubtle,
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 8,
     marginTop: 10,
     borderWidth: 1,
-    borderColor: Colors.borderGold,
+    borderColor: Colors.borderStrong,
   },
   proofButtonText: {
-    color: Colors.heavenlyGold,
+    color: Colors.brandAccent,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -1487,7 +1508,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.heavenlyGold,
+    backgroundColor: Colors.callActive,
     paddingVertical: 12,
     borderRadius: 10,
     gap: 6,
@@ -1497,17 +1518,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.sacredGreen,
-    borderWidth: 1,
-    borderColor: Colors.borderMedium,
+    backgroundColor: Colors.brandAccent,
     paddingVertical: 12,
     borderRadius: 10,
     gap: 6,
   },
   toastBanner: {
-    backgroundColor: Colors.sacredGreen,
+    backgroundColor: Colors.badgeSuccessBg,
     borderWidth: 1,
-    borderColor: Colors.borderGold,
+    borderColor: Colors.badgeSuccessText,
     paddingVertical: 10,
     paddingHorizontal: 16,
     marginHorizontal: 16,
@@ -1517,7 +1536,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   toastBannerText: {
-    color: Colors.livingWhite,
+    color: Colors.badgeSuccessText,
     fontWeight: '700',
     fontSize: 13,
     textAlign: 'center',
@@ -1525,16 +1544,16 @@ const styles = StyleSheet.create({
   dncWarningBox: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    backgroundColor: Colors.badgeDangerBg,
     borderWidth: 1.5,
-    borderColor: '#EF4444',
+    borderColor: Colors.badgeDangerText,
     borderRadius: 10,
     padding: 12,
     marginTop: 12,
     gap: 10,
   },
   dncWarningTitle: {
-    color: '#EF4444',
+    color: Colors.badgeDangerText,
     fontWeight: '800',
     fontSize: 12,
     letterSpacing: 0.5,
@@ -1552,21 +1571,21 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 12,
     paddingHorizontal: 12,
-    backgroundColor: Colors.statusDangerBg,
+    backgroundColor: Colors.badgeDangerBg,
     borderRadius: 10,
     borderWidth: 1.5,
-    borderColor: Colors.statusDangerText,
+    borderColor: Colors.badgeDangerText,
   },
   dncActionButtonRevert: {
-    backgroundColor: 'rgba(16, 185, 129, 0.18)',
-    borderColor: '#10B981',
+    backgroundColor: Colors.badgeSuccessBg,
+    borderColor: Colors.badgeSuccessText,
   },
   dncActionButtonText: {
     fontWeight: '800',
     fontSize: 12,
   },
   actionButtonText: {
-    color: Colors.sacredGreenDeep,
+    color: '#FFFFFF',
     fontWeight: '800',
     fontSize: 14,
   },
@@ -1574,17 +1593,17 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   fieldLabel: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },
   input: {
-    backgroundColor: Colors.bgInput,
-    color: Colors.livingWhite,
+    backgroundColor: Colors.surfaceSubtle,
+    color: Colors.textPrimary,
     borderRadius: 8,
     padding: 10,
     borderWidth: 1,
-    borderColor: Colors.borderSubtle,
+    borderColor: Colors.borderStrong,
     fontSize: 14,
   },
   textArea: {
@@ -1595,26 +1614,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.heavenlyGold,
+    backgroundColor: Colors.brandPrimary,
     paddingVertical: 12,
     borderRadius: 10,
     marginTop: 12,
     gap: 6,
   },
   saveEditText: {
-    color: Colors.sacredGreenDeep,
+    color: '#FFFFFF',
     fontWeight: '800',
     fontSize: 14,
   },
   sectionHeader: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 1,
     marginBottom: 10,
   },
   emptyLogsCard: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 12,
     padding: 24,
     alignItems: 'center',
@@ -1627,7 +1646,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   logCard: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 12,
     padding: 14,
     marginBottom: 10,
@@ -1646,7 +1665,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   logDisposition: {
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
     fontWeight: '700',
     fontSize: 13,
   },
@@ -1655,7 +1674,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   logDuration: {
-    color: Colors.deepSkyBlueLight,
+    color: Colors.brandAccent,
     fontSize: 12,
     fontWeight: '600',
     marginBottom: 4,
@@ -1669,14 +1688,14 @@ const styles = StyleSheet.create({
   smsSentBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.bgDark,
+    backgroundColor: Colors.surfaceSubtle,
     padding: 8,
     borderRadius: 6,
     marginTop: 8,
     gap: 6,
   },
   smsSentText: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 12,
     flex: 1,
   },
@@ -1689,7 +1708,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   deleteButtonText: {
-    color: Colors.statusDangerText,
+    color: Colors.badgeDangerText,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -1705,11 +1724,11 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   imageModalContent: {
-    backgroundColor: Colors.bgDark,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 20,
     padding: 16,
     borderWidth: 1,
-    borderColor: Colors.borderGold,
+    borderColor: Colors.borderSubtle,
     maxHeight: '90%',
   },
   imageModalHeader: {
@@ -1721,21 +1740,21 @@ const styles = StyleSheet.create({
   imageModalTitle: {
     fontSize: 17,
     fontWeight: '800',
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
   },
   imageModalSubtitle: {
     fontSize: 12,
-    color: Colors.heavenlyGold,
+    color: Colors.brandAccent,
     marginTop: 2,
     fontWeight: '600',
   },
   imageModalCloseBtn: {
     padding: 6,
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceSubtle,
     borderRadius: 10,
   },
   imageFrame: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceSubtle,
     borderRadius: 12,
     overflow: 'hidden',
     height: 400,
@@ -1749,20 +1768,20 @@ const styles = StyleSheet.create({
   complianceFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.statusSitDownBg,
+    backgroundColor: Colors.badgeSuccessBg,
     padding: 10,
     borderRadius: 10,
     marginTop: 12,
     gap: 8,
   },
   complianceText: {
-    color: Colors.statusSitDownText,
+    color: Colors.badgeSuccessText,
     fontSize: 12,
     fontWeight: '700',
     flex: 1,
   },
   modalContent: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
@@ -1771,21 +1790,21 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
   },
   aiGenerateBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.heavenlyGoldMuted,
+    backgroundColor: Colors.surfaceSubtle,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: Colors.heavenlyGold,
+    borderColor: Colors.borderStrong,
     gap: 4,
   },
   aiGenerateBtnText: {
-    color: Colors.heavenlyGold,
+    color: Colors.brandAccent,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -1795,7 +1814,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   focusChip: {
-    backgroundColor: Colors.bgDark,
+    backgroundColor: Colors.surfaceSubtle,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
@@ -1808,12 +1827,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   modalInput: {
-    backgroundColor: Colors.bgInput,
-    color: Colors.livingWhite,
+    backgroundColor: Colors.surfaceSubtle,
+    color: Colors.textPrimary,
     borderRadius: 10,
     padding: 12,
     borderWidth: 1,
-    borderColor: Colors.borderSubtle,
+    borderColor: Colors.borderStrong,
     textAlignVertical: 'top',
     fontSize: 14,
   },
@@ -1828,23 +1847,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   modalCancelText: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 15,
     fontWeight: '600',
   },
   modalSaveButton: {
-    backgroundColor: Colors.heavenlyGold,
+    backgroundColor: Colors.brandPrimary,
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 10,
   },
   modalSaveText: {
-    color: Colors.sacredGreenDeep,
+    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '800',
   },
   calCardContainer: {
-    backgroundColor: Colors.bgDark,
+    backgroundColor: Colors.surfaceSubtle,
     borderRadius: 12,
     padding: 12,
     marginTop: 12,
@@ -1854,25 +1873,24 @@ const styles = StyleSheet.create({
   calCardHeader: {
     fontSize: 10,
     fontWeight: '800',
-    color: Colors.heavenlyGold,
+    color: Colors.brandAccent,
     letterSpacing: 0.8,
   },
   calDetailBtn: {
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 10,
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderWidth: 1,
-    borderColor: Colors.heavenlyGold,
+    borderColor: Colors.borderStrong,
   },
   calDetailBtnText: {
-    color: Colors.heavenlyGold,
+    color: Colors.brandAccent,
     fontSize: 11,
     fontWeight: '700',
   },
-  // Structured Notes Card Styles
   detailNotesCard: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 14,
     padding: 14,
     marginTop: 14,
@@ -1891,27 +1909,27 @@ const styles = StyleSheet.create({
   detailNotesTitle: {
     fontSize: 12,
     fontWeight: '800',
-    color: Colors.heavenlyGold,
+    color: Colors.brandAccent,
     letterSpacing: 0.8,
   },
   notesCountBadge: {
-    backgroundColor: 'rgba(212, 175, 55, 0.15)',
+    backgroundColor: Colors.badgeNeutralBg,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(212, 175, 55, 0.3)',
+    borderColor: Colors.borderStrong,
   },
   notesCountBadgeText: {
     fontSize: 11,
-    color: Colors.heavenlyGold,
+    color: Colors.textSecondary,
     fontWeight: '700',
   },
   detailNotesList: {
     gap: 8,
   },
   detailNoteItem: {
-    backgroundColor: Colors.bgDark,
+    backgroundColor: Colors.surfaceSubtle,
     borderRadius: 10,
     padding: 10,
     borderWidth: 1,
@@ -1927,24 +1945,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(212, 175, 55, 0.1)',
+    backgroundColor: Colors.badgeNeutralBg,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
   },
   detailNoteTimestampText: {
     fontSize: 10,
-    color: Colors.heavenlyGold,
+    color: Colors.textSecondary,
     fontWeight: '700',
   },
   detailNoteActionBtn: {
     padding: 4,
     borderRadius: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: Colors.surfaceCard,
   },
   detailNoteBody: {
     fontSize: 13,
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
     lineHeight: 18,
   },
   detailNotesEmptyText: {
@@ -1954,7 +1972,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   quickTagDetailPill: {
-    backgroundColor: Colors.sacredGreenLight,
+    backgroundColor: Colors.surfaceSubtle,
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
     borderRadius: 12,
@@ -1974,26 +1992,26 @@ const styles = StyleSheet.create({
   },
   addNoteInput: {
     flex: 1,
-    backgroundColor: Colors.bgDark,
+    backgroundColor: Colors.surfaceSubtle,
     borderWidth: 1,
-    borderColor: Colors.borderSubtle,
+    borderColor: Colors.borderStrong,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
     fontSize: 13,
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
   },
   addNoteButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: Colors.heavenlyGold,
+    backgroundColor: Colors.brandPrimary,
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: 10,
   },
   addNoteButtonText: {
-    color: Colors.sacredGreenDeep,
+    color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '800',
   },

@@ -307,12 +307,12 @@ export default function ScanSheetScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.sacredGreenDeep} />
+      <StatusBar barStyle="light-content" backgroundColor={Colors.brandPrimary} />
 
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <ArrowLeft size={22} color={Colors.livingWhite} />
+          <ArrowLeft size={22} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
           {isProcessing
@@ -332,7 +332,7 @@ export default function ScanSheetScreen({ navigation }: any) {
                 <Image source={{ uri: imageUri }} style={styles.loadingThumbImage} resizeMode="cover" />
               </View>
             )}
-            <ActivityIndicator size="large" color={Colors.heavenlyGold} style={{ marginTop: 18 }} />
+            <ActivityIndicator size="large" color={Colors.brandAccent} style={{ marginTop: 18 }} />
             <Text style={styles.loadingTitle}>{processingStatusText}</Text>
             <Text style={styles.loadingSubtitle}>
               Extracting educator contact info, planning period, and written notes.
@@ -340,15 +340,15 @@ export default function ScanSheetScreen({ navigation }: any) {
 
             <View style={styles.loadingStepsBox}>
               <View style={styles.loadingStepItem}>
-                <Sparkles size={14} color={Colors.heavenlyGold} />
+                <Sparkles size={14} color={Colors.brandAccent} />
                 <Text style={styles.loadingStepText}>Scanning handwriting & contact info</Text>
               </View>
               <View style={styles.loadingStepItem}>
-                <Sparkles size={14} color={Colors.heavenlyGold} />
+                <Sparkles size={14} color={Colors.brandAccent} />
                 <Text style={styles.loadingStepText}>Extracting planning period & room number</Text>
               </View>
               <View style={styles.loadingStepItem}>
-                <Sparkles size={14} color={Colors.heavenlyGold} />
+                <Sparkles size={14} color={Colors.brandAccent} />
                 <Text style={styles.loadingStepText}>Capturing FRS needs & written questions</Text>
               </View>
             </View>
@@ -356,7 +356,7 @@ export default function ScanSheetScreen({ navigation }: any) {
         ) : !hasScanned ? (
           <View style={styles.captureSection}>
             <View style={styles.instructionsBox}>
-              <Sparkles size={20} color={Colors.heavenlyGold} />
+              <Sparkles size={20} color={Colors.brandAccent} />
               <Text style={styles.instructionText}>
                 Snap a photo of an educator's handwritten ValuTeachers Report Card. Gemini AI extracts their contact info, planning period, and retirement questions instantly.
               </Text>
@@ -365,14 +365,14 @@ export default function ScanSheetScreen({ navigation }: any) {
             {/* Camera & Ingestion Options */}
             <View style={styles.buttonGroup}>
               <TouchableOpacity style={styles.captureButton} onPress={takePhoto} activeOpacity={0.8}>
-                <Camera size={26} color={Colors.sacredGreenDeep} />
+                <Camera size={26} color="#FFFFFF" />
                 <Text style={styles.captureButtonText}>
                   Take Photo of Card
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.secondaryCaptureButton} onPress={pickImage}>
-                <ImageIcon size={20} color={Colors.heavenlyGold} />
+                <ImageIcon size={20} color={Colors.brandAccent} />
                 <Text style={styles.secondaryCaptureButtonText}>Import Card Photos (Single or Batch)</Text>
               </TouchableOpacity>
 
@@ -380,7 +380,7 @@ export default function ScanSheetScreen({ navigation }: any) {
                 style={styles.secondaryCaptureButton}
                 onPress={() => setPasteModalVisible(true)}
               >
-                <Clipboard size={20} color={Colors.deepSkyBlueLight} />
+                <Clipboard size={20} color={Colors.brandAccent} />
                 <Text style={styles.secondaryCaptureButtonText}>Paste Text (100% Offline)</Text>
               </TouchableOpacity>
             </View>
@@ -415,16 +415,16 @@ export default function ScanSheetScreen({ navigation }: any) {
                   }}
                   activeOpacity={0.8}
                 >
-                  <Flame size={18} color={priorityTier === 1 ? Colors.sacredGreenDeep : Colors.heavenlyGold} />
+                  <Flame size={18} color={priorityTier === 1 ? Colors.badgeSuccessText : Colors.brandAccent} />
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.tierPillTitle, priorityTier === 1 && { color: Colors.sacredGreenDeep }]}>
+                    <Text style={[styles.tierPillTitle, priorityTier === 1 && { color: Colors.badgeSuccessText }]}>
                       Fresh / Hot Lead
                     </Text>
-                    <Text style={[styles.tierPillDesc, priorityTier === 1 && { color: Colors.sacredGreen }]}>
+                    <Text style={[styles.tierPillDesc, priorityTier === 1 && { color: Colors.badgeSuccessText }]}>
                       Priority #1 in calling queue
                     </Text>
                   </View>
-                  {priorityTier === 1 && <Check size={16} color={Colors.sacredGreenDeep} />}
+                  {priorityTier === 1 && <Check size={16} color={Colors.badgeSuccessText} />}
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -438,16 +438,16 @@ export default function ScanSheetScreen({ navigation }: any) {
                   }}
                   activeOpacity={0.8}
                 >
-                  <Archive size={18} color={priorityTier === 3 ? '#FFFFFF' : Colors.textMuted} />
+                  <Archive size={18} color={priorityTier === 3 ? Colors.textPrimary : Colors.textMuted} />
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.tierPillTitle, priorityTier === 3 && { color: '#FFFFFF' }]}>
+                    <Text style={[styles.tierPillTitle, priorityTier === 3 && { color: Colors.textPrimary }]}>
                       Legacy / Archive
                     </Text>
-                    <Text style={[styles.tierPillDesc, priorityTier === 3 && { color: 'rgba(255,255,255,0.85)' }]}>
+                    <Text style={[styles.tierPillDesc, priorityTier === 3 && { color: Colors.textSecondary }]}>
                       Called at end of queue
                     </Text>
                   </View>
-                  {priorityTier === 3 && <Check size={16} color="#FFFFFF" />}
+                  {priorityTier === 3 && <Check size={16} color={Colors.textPrimary} />}
                 </TouchableOpacity>
               </View>
 
@@ -466,7 +466,7 @@ export default function ScanSheetScreen({ navigation }: any) {
                       setIsCreatingNewList(false);
                     }}
                   >
-                    <Layers size={13} color={selectedListId === 'master_queue' && !isCreatingNewList ? Colors.sacredGreenDeep : Colors.heavenlyGold} />
+                    <Layers size={13} color={selectedListId === 'master_queue' && !isCreatingNewList ? '#FFFFFF' : Colors.brandAccent} />
                     <Text
                       style={[
                         styles.listSelectChipText,
@@ -511,7 +511,7 @@ export default function ScanSheetScreen({ navigation }: any) {
                       setIsCreatingNewList(true);
                     }}
                   >
-                    <FolderPlus size={13} color={isCreatingNewList ? Colors.sacredGreenDeep : Colors.deepSkyBlueLight} />
+                    <FolderPlus size={13} color={isCreatingNewList ? '#FFFFFF' : Colors.brandAccent} />
                     <Text
                       style={[
                         styles.listSelectChipText,
@@ -670,7 +670,7 @@ export default function ScanSheetScreen({ navigation }: any) {
                 onPress={() => handleSaveLead(true)}
                 activeOpacity={0.8}
               >
-                <PhoneCall size={18} color={Colors.sacredGreenDeep} />
+                <PhoneCall size={18} color="#FFFFFF" />
                 <Text style={styles.saveAndDialBtnText}>Save & Open Call HUD</Text>
               </TouchableOpacity>
 
@@ -679,7 +679,7 @@ export default function ScanSheetScreen({ navigation }: any) {
                 onPress={() => handleSaveLead(false)}
                 activeOpacity={0.8}
               >
-                <Check size={18} color={Colors.livingWhite} />
+                <Check size={18} color="#FFFFFF" />
                 <Text style={styles.saveOnlyBtnText}>Save Educator to Pipeline</Text>
               </TouchableOpacity>
             </View>
@@ -694,7 +694,7 @@ export default function ScanSheetScreen({ navigation }: any) {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Paste Lead Text</Text>
               <TouchableOpacity onPress={() => setPasteModalVisible(false)}>
-                <X size={24} color={Colors.livingWhite} />
+                <X size={24} color={Colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
@@ -720,7 +720,7 @@ export default function ScanSheetScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.sacredGreenDeep,
+    backgroundColor: Colors.bgApp,
   },
   header: {
     flexDirection: 'row',
@@ -728,8 +728,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 14,
+    backgroundColor: Colors.brandPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.borderSubtle,
+    borderBottomColor: Colors.brandPrimary,
   },
   backButton: {
     padding: 8,
@@ -737,7 +738,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: Colors.heavenlyGold,
+    color: '#FFFFFF',
   },
   content: {
     flex: 1,
@@ -748,7 +749,7 @@ const styles = StyleSheet.create({
   },
   instructionsBox: {
     flexDirection: 'row',
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
@@ -769,16 +770,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.heavenlyGold,
+    backgroundColor: Colors.brandPrimary,
     paddingVertical: 16,
     borderRadius: 14,
     gap: 10,
-    shadowColor: Colors.heavenlyGold,
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
   },
   captureButtonText: {
-    color: Colors.sacredGreenDeep,
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '800',
   },
@@ -786,7 +784,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
     paddingVertical: 14,
@@ -809,18 +807,15 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 2,
-    borderColor: Colors.heavenlyGold,
-    backgroundColor: Colors.bgCard,
-    shadowColor: Colors.heavenlyGold,
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
+    borderColor: Colors.brandAccent,
+    backgroundColor: Colors.surfaceCard,
   },
   loadingThumbImage: {
     width: '100%',
     height: '100%',
   },
   loadingTitle: {
-    color: Colors.heavenlyGold,
+    color: Colors.brandPrimary,
     fontSize: 18,
     fontWeight: '800',
     marginTop: 16,
@@ -835,7 +830,7 @@ const styles = StyleSheet.create({
     maxWidth: 300,
   },
   loadingStepsBox: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 14,
     padding: 16,
     marginTop: 24,
@@ -860,7 +855,7 @@ const styles = StyleSheet.create({
   photoPreviewCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 12,
     padding: 10,
     gap: 12,
@@ -873,22 +868,22 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   photoPreviewTitle: {
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
     fontSize: 13,
     fontWeight: '700',
   },
   photoPreviewDesc: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 11,
     marginTop: 2,
     lineHeight: 14,
   },
   tierSelectorCard: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 14,
     padding: 16,
     borderWidth: 1,
-    borderColor: Colors.borderMedium,
+    borderColor: Colors.borderSubtle,
   },
   tierPillRow: {
     flexDirection: 'row',
@@ -898,30 +893,30 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.bgInput,
+    backgroundColor: Colors.surfaceSubtle,
     borderRadius: 10,
     padding: 12,
     borderWidth: 1.5,
-    borderColor: Colors.borderSubtle,
+    borderColor: Colors.borderStrong,
     gap: 10,
   },
   tierPillActiveFresh: {
-    backgroundColor: Colors.heavenlyGold,
-    borderColor: Colors.heavenlyGold,
+    backgroundColor: Colors.badgeSuccessBg,
+    borderColor: Colors.badgeSuccessText,
   },
   tierPillActiveLegacy: {
-    backgroundColor: '#64748B',
-    borderColor: '#94A3B8',
+    backgroundColor: Colors.surfaceSubtle,
+    borderColor: Colors.borderStrong,
   },
   tierPillTitle: {
     fontSize: 13,
     fontWeight: '800',
-    color: Colors.textSecondary,
+    color: Colors.textPrimary,
   },
   tierPillDesc: {
     fontSize: 10,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     marginTop: 2,
   },
   listChipRow: {
@@ -933,7 +928,7 @@ const styles = StyleSheet.create({
   listSelectChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.bgInput,
+    backgroundColor: Colors.surfaceSubtle,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
@@ -942,8 +937,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   listSelectChipActive: {
-    backgroundColor: Colors.heavenlyGold,
-    borderColor: Colors.heavenlyGold,
+    backgroundColor: Colors.brandPrimary,
+    borderColor: Colors.brandPrimary,
   },
   listSelectChipText: {
     color: Colors.textSecondary,
@@ -951,20 +946,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   listSelectChipTextActive: {
-    color: Colors.sacredGreenDeep,
+    color: '#FFFFFF',
     fontWeight: '800',
   },
   newListNameInput: {
-    backgroundColor: Colors.bgInput,
-    color: Colors.livingWhite,
+    backgroundColor: Colors.surfaceSubtle,
+    color: Colors.textPrimary,
     borderRadius: 8,
     padding: 10,
     fontSize: 13,
     borderWidth: 1,
-    borderColor: Colors.heavenlyGold,
+    borderColor: Colors.borderStrong,
   },
   leadRowCard: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 14,
     padding: 16,
     borderWidth: 1,
@@ -973,7 +968,7 @@ const styles = StyleSheet.create({
   cardSectionTitle: {
     fontSize: 11,
     fontWeight: '800',
-    color: Colors.heavenlyGold,
+    color: Colors.brandAccent,
     letterSpacing: 1,
     marginBottom: 10,
   },
@@ -981,27 +976,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   smallLabel: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 12,
     fontWeight: '600',
     marginBottom: 4,
   },
   rowInput: {
-    backgroundColor: Colors.bgInput,
-    color: Colors.livingWhite,
+    backgroundColor: Colors.surfaceSubtle,
+    color: Colors.textPrimary,
     borderRadius: 8,
     padding: 10,
     fontSize: 14,
     borderWidth: 1,
-    borderColor: Colors.borderSubtle,
+    borderColor: Colors.borderStrong,
   },
   meetingText: {
-    color: Colors.heavenlyGold,
+    color: Colors.badgeSuccessText,
     fontSize: 13,
     fontWeight: '600',
   },
   interestsText: {
-    color: Colors.statusSitDownText,
+    color: Colors.badgeWarningText,
     fontSize: 13,
     fontWeight: '500',
   },
@@ -1018,13 +1013,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.heavenlyGold,
+    backgroundColor: Colors.callActive,
     paddingVertical: 16,
     borderRadius: 12,
     gap: 10,
   },
   saveAndDialBtnText: {
-    color: Colors.sacredGreenDeep,
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '800',
   },
@@ -1032,15 +1027,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.sacredGreen,
+    backgroundColor: Colors.brandPrimary,
     borderWidth: 1,
-    borderColor: Colors.borderMedium,
+    borderColor: Colors.brandPrimary,
     paddingVertical: 14,
     borderRadius: 12,
     gap: 8,
   },
   saveOnlyBtnText: {
-    color: Colors.livingWhite,
+    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
   },
@@ -1051,7 +1046,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalContainer: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 16,
     padding: 20,
     borderWidth: 1,
@@ -1066,28 +1061,28 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: Colors.livingWhite,
+    color: Colors.textPrimary,
   },
   pasteInput: {
-    backgroundColor: Colors.bgInput,
-    color: Colors.livingWhite,
+    backgroundColor: Colors.surfaceSubtle,
+    color: Colors.textPrimary,
     borderRadius: 10,
     padding: 12,
     borderWidth: 1,
-    borderColor: Colors.borderSubtle,
+    borderColor: Colors.borderStrong,
     height: 160,
     fontSize: 13,
     textAlignVertical: 'top',
   },
   parseBtn: {
-    backgroundColor: Colors.heavenlyGold,
+    backgroundColor: Colors.brandPrimary,
     paddingVertical: 14,
     borderRadius: 10,
     alignItems: 'center',
     marginTop: 14,
   },
   parseBtnText: {
-    color: Colors.sacredGreenDeep,
+    color: '#FFFFFF',
     fontWeight: '800',
     fontSize: 15,
   },
