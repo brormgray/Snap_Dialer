@@ -51,7 +51,8 @@ self.addEventListener('fetch', (event) => {
     url.hostname.includes('googleapis.com') ||
     url.hostname.includes('google.com') ||
     url.hostname.includes('supabase.co') ||
-    url.hostname.includes('supabase.io')
+    url.hostname.includes('supabase.io') ||
+    url.pathname.includes('version.json')
   ) {
     return;
   }

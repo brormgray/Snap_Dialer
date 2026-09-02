@@ -63,6 +63,17 @@ try {
       console.log('[PWA] Copied manifest.json to dist/manifest.json');
     }
 
+    // 1b. Write live version.json endpoint for client update checks
+    const buildTimestamp = Date.now();
+    const versionPayload = {
+      version: '1.7.2',
+      edition: 'ValuTeachers Special Edition',
+      buildTime: buildTimestamp,
+      cacheName: `snapdialer-pwa-v1.7.2-${buildTimestamp}`
+    };
+    fs.writeFileSync(path.join(distDir, 'version.json'), JSON.stringify(versionPayload, null, 2), 'utf8');
+    console.log('[PWA] Generated dist/version.json (v1.7.2)');
+
     // 2. Patch index.html with iOS Safari PWA tags & active ServiceWorker update detector
     const indexHtmlPath = path.join(distDir, 'index.html');
     if (fs.existsSync(indexHtmlPath)) {
@@ -79,6 +90,15 @@ try {
     <meta name="theme-color" content="#14291B" />
     <script id="snapdialer-pwa-sw">
       if ('serviceWorker' in navigator) {
+        var refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+          if (!refreshing) {
+            refreshing = true;
+            console.log('[PWA] Controller changed to new version! Refreshing...');
+            window.location.reload();
+          }
+        });
+
         window.addEventListener('load', function() {
           navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(function(reg) {
             console.log('[PWA] ServiceWorker registered with scope:', reg.scope);

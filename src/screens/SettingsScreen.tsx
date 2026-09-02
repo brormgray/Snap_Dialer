@@ -43,6 +43,8 @@ import { CsvService } from '../services/csvService';
 import { HapticsService } from '../services/hapticsService';
 import { SupabaseSyncService, SUPABASE_SQL_SETUP } from '../services/supabaseSyncService';
 import { SecurityService } from '../services/securityService';
+import { APP_VERSION, APP_EDITION } from '../constants/version';
+import { PwaUpdateService, PwaUpdateInfo } from '../services/pwaUpdateService';
 import { Colors } from '../theme/colors';
 
 export default function SettingsScreen({ navigation }: any) {
@@ -52,6 +54,11 @@ export default function SettingsScreen({ navigation }: any) {
   const [autoAdvanceSeconds, setAutoAdvanceSeconds] = useState<string>('3');
   const [leadCount, setLeadCount] = useState<number>(0);
   const [logCount, setLogCount] = useState<number>(0);
+
+  // Dynamic PWA Version & Update State
+  const [updateInfo, setUpdateInfo] = useState<PwaUpdateInfo | null>(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState<boolean>(false);
+  const [updateStatusMsg, setUpdateStatusMsg] = useState<string | null>(null);
 
   // Supabase Cloud Sync State
   const [supabaseUrl, setSupabaseUrl] = useState<string>('');
@@ -132,6 +139,11 @@ export default function SettingsScreen({ navigation }: any) {
         console.warn('Storage estimate failed:', err);
       }
     }
+
+    try {
+      const info = await PwaUpdateService.checkUpdateStatus();
+      setUpdateInfo(info);
+    } catch {}
   };
 
   const handleRequestStoragePersistence = async () => {
@@ -835,31 +847,49 @@ export default function SettingsScreen({ navigation }: any) {
           </View>
         </View>
 
-        {/* PWA Version & Cache Controller */}
+        {/* PWA Version & Dynamic Cache Controller */}
         <View style={styles.versionFooter}>
-          <Text style={styles.versionText}>SnapDialer v1.1.0 • ValuTeachers Special Edition</Text>
+          <View style={styles.versionHeaderRow}>
+            <Text style={styles.versionText}>SnapDialer v{APP_VERSION} • {APP_EDITION}</Text>
+            {updateInfo?.hasUpdate && (
+              <View style={styles.updateBadge}>
+                <Text style={styles.updateBadgeText}>v{updateInfo.serverVersion} Available</Text>
+              </View>
+            )}
+          </View>
+
+          {updateInfo?.activeCacheName && (
+            <Text style={styles.cacheSubtitleText}>
+              PWA Cache: {updateInfo.activeCacheName}
+            </Text>
+          )}
+
+          {updateStatusMsg && (
+            <Text style={[styles.cacheStatusText, { color: updateInfo?.hasUpdate ? Colors.heavenlyGold : '#10B981' }]}>
+              {updateStatusMsg}
+            </Text>
+          )}
+
           <TouchableOpacity
-            style={styles.forceReloadBtn}
+            style={[styles.forceReloadBtn, isCheckingUpdate && { opacity: 0.7 }]}
+            disabled={isCheckingUpdate}
             onPress={async () => {
               await HapticsService.medium();
-              if (typeof window !== 'undefined') {
-                if ('caches' in window) {
-                  try {
-                    const keys = await caches.keys();
-                    await Promise.all(keys.map((k) => caches.delete(k)));
-                  } catch {}
-                }
-                if ('serviceWorker' in navigator) {
-                  try {
-                    const regs = await navigator.serviceWorker.getRegistrations();
-                    await Promise.all(regs.map((r) => r.unregister()));
-                  } catch {}
-                }
-                window.location.reload();
+              setIsCheckingUpdate(true);
+              setUpdateStatusMsg('Checking server for updates & clearing cache...');
+              try {
+                await PwaUpdateService.forceUpdateAndReload();
+              } catch (e: any) {
+                setUpdateStatusMsg('Update check completed. Reloading...');
+                setTimeout(() => {
+                  if (typeof window !== 'undefined') window.location.reload();
+                }, 400);
               }
             }}
           >
-            <Text style={styles.forceReloadText}>🔄 Force Check & Reload Latest PWA Update</Text>
+            <Text style={styles.forceReloadText}>
+              {isCheckingUpdate ? '⏳ Checking & Updating PWA...' : '🔄 Force Check & Reload Latest PWA Update'}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -1267,11 +1297,40 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(212, 175, 55, 0.25)',
     alignItems: 'center',
   },
+  versionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 4,
+    flexWrap: 'wrap',
+  },
   versionText: {
     fontSize: 13,
     fontWeight: '700',
     color: Colors.heavenlyGold,
-    marginBottom: 10,
+  },
+  cacheSubtitleText: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginBottom: 8,
+  },
+  cacheStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  updateBadge: {
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  updateBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#000000',
   },
   forceReloadBtn: {
     paddingVertical: 8,
