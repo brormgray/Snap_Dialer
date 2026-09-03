@@ -12,9 +12,9 @@ Whenever any part of the codebase is updated, fixed, enhanced, refactored, or ad
 3. **MANDATORY: Automatic Commit & Push to Git / GitHub**:
    - Automatically stage the changes (`git add`).
    - Commit with a clear, conventional commit message (`git commit -m "..."`).
-   - Automatically push to the remote GitHub repository:
+   - Automatically push to the remote GitHub repository (both `main` and default `master` branches):
      ```bash
-     git push origin main
+     git push origin main master
      ```
    - Never leave completed work uncommitted or unpushed to GitHub.
 
