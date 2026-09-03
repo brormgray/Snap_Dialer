@@ -1,6 +1,22 @@
 import { getDatabase } from './database';
 import { Lead, LeadList, CallDisposition, ExtractedLeadItem } from '../types';
 
+export function normalizePhoneKey(phone?: string | null): string {
+  if (!phone) return '';
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return digits.substring(1);
+  }
+  return digits;
+}
+
+export interface DeduplicationResult {
+  totalBefore: number;
+  totalAfter: number;
+  duplicatesRemoved: number;
+  uniqueEducators: number;
+}
+
 export class LeadsRepository {
   static async createListWithLeads(
     title: string,
@@ -78,6 +94,42 @@ export class LeadsRepository {
     imageUri?: string | null
   ): Promise<Lead> {
     const db = await getDatabase();
+    const targetPhoneKey = normalizePhoneKey(item.phone);
+
+    // If an educator with this phone number already exists, update and merge rather than duplicate
+    if (targetPhoneKey.length >= 7) {
+      const all = await this.getAllLeads();
+      const existing = all.find((l) => normalizePhoneKey(l.phone) === targetPhoneKey);
+      if (existing) {
+        let mergedNotes = existing.notes || '';
+        if (item.notes && item.notes.trim()) {
+          if (!mergedNotes.includes(item.notes.trim())) {
+            mergedNotes = mergedNotes ? `${mergedNotes}\n\n${item.notes.trim()}` : item.notes.trim();
+          }
+        }
+        await this.updateLeadDetails({
+          id: existing.id,
+          name: item.name.trim() || existing.name,
+          phone: item.phone.trim() || existing.phone,
+          school: item.school || existing.school,
+          email: item.email || existing.email,
+          room_number: item.room_number || existing.room_number,
+          planning_period: item.planning_period || existing.planning_period,
+          years_in_frs: item.years_in_frs || existing.years_in_frs,
+          notes: mergedNotes || null,
+          priority_tier: existing.priority_tier,
+          list_id: existing.list_id,
+        });
+        if (imageUri && imageUri.length > 50) {
+          try {
+            const { dexieDb } = await import('./dexieDb');
+            await dexieDb.saveLeadPhoto(existing.id, imageUri);
+          } catch {}
+        }
+        return (await this.getLeadById(existing.id)) || existing;
+      }
+    }
+
     const leadId = 'lead_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     const now = new Date().toISOString();
     const targetListId = item.list_id || 'master_queue';
@@ -436,6 +488,195 @@ export class LeadsRepository {
         leadData.id,
       ]
     );
+  }
+
+  /**
+   * Consolidates duplicate educator records across the pipeline.
+   * Matches primarily on normalized 10-digit phone numbers (with name + school fallback).
+   * Merges notes, call history, appointment dispositions, and fields into master records,
+   * re-pointing all associated call logs so ZERO historical data is lost.
+   */
+  static async deduplicateLeads(): Promise<DeduplicationResult> {
+    const db = await getDatabase();
+    const allLeads = await this.getAllLeads();
+    const totalBefore = allLeads.length;
+
+    if (totalBefore <= 1) {
+      return {
+        totalBefore,
+        totalAfter: totalBefore,
+        duplicatesRemoved: 0,
+        uniqueEducators: totalBefore,
+      };
+    }
+
+    // Group leads by normalized key
+    const groups = new Map<string, Lead[]>();
+    for (const lead of allLeads) {
+      const phoneKey = normalizePhoneKey(lead.phone);
+      const key =
+        phoneKey.length >= 7
+          ? `phone_${phoneKey}`
+          : `name_${lead.name.toLowerCase().trim()}_${(lead.school || 'VOL').toLowerCase().trim()}`;
+
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key)!.push(lead);
+    }
+
+    let duplicatesRemoved = 0;
+
+    await db.withTransactionAsync(async () => {
+      for (const [key, group] of groups.entries()) {
+        if (group.length <= 1) continue;
+
+        // Rank the group to pick the "master / keeper" lead:
+        // Prioritize:
+        // 1. Confirmed appointment
+        // 2. Connected / spoke disposition
+        // 3. Highest attempts count
+        // 4. Most detailed notes length
+        // 5. Earlier created_at
+        group.sort((a, b) => {
+          const isApptA = a.last_disposition === 'appointment_set' ? 1 : 0;
+          const isApptB = b.last_disposition === 'appointment_set' ? 1 : 0;
+          if (isApptA !== isApptB) return isApptB - isApptA;
+
+          const isConnectedA = ['connected', 'spoke'].includes(a.last_disposition || '') ? 1 : 0;
+          const isConnectedB = ['connected', 'spoke'].includes(b.last_disposition || '') ? 1 : 0;
+          if (isConnectedA !== isConnectedB) return isConnectedB - isConnectedA;
+
+          const attemptsA = Number(a.attempts_count) || 0;
+          const attemptsB = Number(b.attempts_count) || 0;
+          if (attemptsA !== attemptsB) return attemptsB - attemptsA;
+
+          const notesLenA = (a.notes || '').length;
+          const notesLenB = (b.notes || '').length;
+          if (notesLenA !== notesLenB) return notesLenB - notesLenA;
+
+          return (a.created_at || '').localeCompare(b.created_at || '');
+        });
+
+        const master = group[0];
+        const duplicates = group.slice(1);
+
+        let mergedNotes = master.notes || '';
+        let highestAttempts = Number(master.attempts_count) || 0;
+        let bestDisposition = master.last_disposition || 'pending';
+        let bestLastAttemptAt = master.last_attempt_at;
+        let bestFollowUpAt = master.follow_up_at;
+        let photoUri = master.source_image_uri;
+        let roomNumber = master.room_number;
+        let planningPeriod = master.planning_period;
+        let email = master.email;
+        let yearsInFrs = master.years_in_frs;
+        let frsKnowledge = master.frs_knowledge;
+        let customQuestions = master.custom_questions;
+
+        const interestsSet = new Set<string>(master.frs_interests || []);
+        const prefSet = new Set<string>(master.meeting_preferences || []);
+
+        for (const dup of duplicates) {
+          duplicatesRemoved++;
+
+          // Merge notes
+          if (dup.notes && dup.notes.trim().length > 0) {
+            if (!mergedNotes.includes(dup.notes.trim())) {
+              mergedNotes = mergedNotes ? `${mergedNotes}\n\n${dup.notes.trim()}` : dup.notes.trim();
+            }
+          }
+
+          // Merge attempts count
+          if (dup.attempts_count && dup.attempts_count > highestAttempts) {
+            highestAttempts = dup.attempts_count;
+          }
+
+          // Merge disposition priority
+          if (dup.last_disposition === 'appointment_set') {
+            bestDisposition = 'appointment_set';
+          } else if (bestDisposition !== 'appointment_set' && ['connected', 'spoke'].includes(dup.last_disposition || '')) {
+            bestDisposition = dup.last_disposition!;
+          } else if (bestDisposition === 'pending' && dup.last_disposition && dup.last_disposition !== 'pending') {
+            bestDisposition = dup.last_disposition;
+          }
+
+          if (dup.last_attempt_at && (!bestLastAttemptAt || new Date(dup.last_attempt_at) > new Date(bestLastAttemptAt))) {
+            bestLastAttemptAt = dup.last_attempt_at;
+          }
+          if (dup.follow_up_at && (!bestFollowUpAt || new Date(dup.follow_up_at) > new Date(bestFollowUpAt))) {
+            bestFollowUpAt = dup.follow_up_at;
+          }
+
+          if (!photoUri && dup.source_image_uri) photoUri = dup.source_image_uri;
+          if (!roomNumber && dup.room_number) roomNumber = dup.room_number;
+          if (!planningPeriod && dup.planning_period) planningPeriod = dup.planning_period;
+          if (!email && dup.email) email = dup.email;
+          if (!yearsInFrs && dup.years_in_frs) yearsInFrs = dup.years_in_frs;
+          if (!frsKnowledge && dup.frs_knowledge) frsKnowledge = dup.frs_knowledge;
+          if (!customQuestions && dup.custom_questions) customQuestions = dup.custom_questions;
+
+          if (dup.frs_interests) {
+            dup.frs_interests.forEach((item) => interestsSet.add(item));
+          }
+          if (dup.meeting_preferences) {
+            dup.meeting_preferences.forEach((item) => prefSet.add(item));
+          }
+
+          // Re-link call logs belonging to duplicate to the master lead
+          await db.runAsync('UPDATE call_logs SET lead_id = ? WHERE lead_id = ?', [master.id, dup.id]);
+          // Delete duplicate
+          await db.runAsync('DELETE FROM leads WHERE id = ?', [dup.id]);
+        }
+
+        // Update master lead with all consolidated attributes
+        await db.runAsync(
+          `UPDATE leads SET
+             notes = ?,
+             attempts_count = ?,
+             last_disposition = ?,
+             last_attempt_at = ?,
+             follow_up_at = ?,
+             source_image_uri = ?,
+             room_number = ?,
+             planning_period = ?,
+             email = ?,
+             years_in_frs = ?,
+             frs_knowledge = ?,
+             custom_questions = ?,
+             frs_interests = ?,
+             meeting_preferences = ?,
+             updated_at = ?
+           WHERE id = ?`,
+          [
+            mergedNotes || null,
+            highestAttempts,
+            bestDisposition,
+            bestLastAttemptAt || null,
+            bestFollowUpAt || null,
+            photoUri || null,
+            roomNumber || null,
+            planningPeriod || null,
+            email || null,
+            yearsInFrs || null,
+            frsKnowledge || null,
+            customQuestions || null,
+            JSON.stringify(Array.from(interestsSet)),
+            JSON.stringify(Array.from(prefSet)),
+            new Date().toISOString(),
+            master.id,
+          ]
+        );
+      }
+    });
+
+    const finalLeads = await this.getAllLeads();
+    return {
+      totalBefore,
+      totalAfter: finalLeads.length,
+      duplicatesRemoved,
+      uniqueEducators: finalLeads.length,
+    };
   }
 
   static async saveLeadCardPhoto(leadId: string, photoUri: string): Promise<void> {

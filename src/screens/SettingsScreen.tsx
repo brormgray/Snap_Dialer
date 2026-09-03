@@ -91,6 +91,7 @@ export default function SettingsScreen({ navigation }: any) {
 
   // Storage Quota State
   const [storageQuota, setStorageQuota] = useState<{ usedMb: string; totalGb: string; isPersisted: boolean } | null>(null);
+  const [isDeduplicating, setIsDeduplicating] = useState<boolean>(false);
 
   useEffect(() => {
     loadSettings();
@@ -286,6 +287,56 @@ export default function SettingsScreen({ navigation }: any) {
       await HapticsService.success();
       showBanner('✓ Pipeline CSV exported successfully.');
     }
+  };
+
+  // 6. Smart Pipeline Deduplication
+  const handleDeduplicatePipeline = async () => {
+    await HapticsService.medium();
+
+    const doDeduplicate = async () => {
+      setIsDeduplicating(true);
+      try {
+        const result = await LeadsRepository.deduplicateLeads();
+        await loadSettings();
+        await HapticsService.success();
+
+        if (result.duplicatesRemoved === 0) {
+          Alert.alert(
+            'Pipeline Clean',
+            `Your pipeline is completely clean with ${result.uniqueEducators} unique educators and 0 duplicates detected.`
+          );
+        } else {
+          Alert.alert(
+            'Pipeline Deduplicated',
+            `✓ Successfully merged ${result.totalBefore} records into ${result.uniqueEducators} unique educators.\n\n${result.duplicatesRemoved} duplicate cards removed.\n\nAll call logs, appointment outcomes, notes, and profile details have been safely preserved.`
+          );
+        }
+      } catch (err: any) {
+        console.error('Deduplication failed:', err);
+        Alert.alert('Deduplication Error', err?.message || 'Failed to deduplicate pipeline.');
+      } finally {
+        setIsDeduplicating(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed =
+        typeof window !== 'undefined' &&
+        window.confirm(
+          'Run Smart Pipeline Deduplication?\n\nThis will safely consolidate all duplicate cards sharing the same educator phone number or name, while preserving 100% of your notes, appointments, and call logs.'
+        );
+      if (confirmed) await doDeduplicate();
+      return;
+    }
+
+    Alert.alert(
+      'Smart Pipeline Deduplication',
+      'Consolidate duplicate educator cards? All call logs, appointments, notes, and profile details from duplicate records will be merged into the primary educator profile.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Deduplicate Now', onPress: doDeduplicate },
+      ]
+    );
   };
 
   const handleImportRosterCsv = async () => {
@@ -609,6 +660,22 @@ export default function SettingsScreen({ navigation }: any) {
               <Text style={{ color: Colors.textMuted, fontSize: 11, marginTop: 2 }}>Call Records Logged</Text>
             </View>
           </View>
+
+          {/* Deduplication Action */}
+          <TouchableOpacity
+            style={[styles.actionButtonSecondary, { marginTop: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }]}
+            onPress={handleDeduplicatePipeline}
+            disabled={isDeduplicating}
+          >
+            {isDeduplicating ? (
+              <ActivityIndicator size="small" color={Colors.brandAccent} />
+            ) : (
+              <RefreshCw size={16} color={Colors.brandAccent} />
+            )}
+            <Text style={[styles.actionButtonText, { color: Colors.brandAccent, fontWeight: '700' }]}>
+              {isDeduplicating ? 'Deduplicating Pipeline...' : 'Smart Deduplicate Pipeline (Consolidate Records)'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Supabase Cloud Sync & Auto-Backup */}

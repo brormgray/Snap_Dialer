@@ -479,6 +479,14 @@ class WebDatabase implements IDatabase {
           lead.last_disposition = 'pending';
         }
       }
+    } else if (s.includes('update call_logs set lead_id = ? where lead_id = ?')) {
+      const newLeadId = params[0];
+      const oldLeadId = params[1];
+      for (const log of this.call_logs) {
+        if (String(log.lead_id).trim() === String(oldLeadId).trim()) {
+          log.lead_id = newLeadId;
+        }
+      }
     } else if (s.includes('update cadence_rules set')) {
       const ruleId = params[params.length - 1];
       const rule = this.cadence_rules.find((r) => r.id === ruleId);
@@ -490,7 +498,27 @@ class WebDatabase implements IDatabase {
       const leadId = params[params.length - 1];
       const lead = this.leads.find((l) => String(l.id).trim() === String(leadId).trim());
       if (lead) {
-        if (s.includes('follow_up_at = ?')) {
+        if (s.includes('notes = ?') && s.includes('attempts_count = ?') && s.includes('last_disposition = ?') && s.includes('room_number = ?')) {
+          lead.notes = params[0] || null;
+          lead.attempts_count = Number(params[1]) || 0;
+          lead.last_disposition = params[2] || 'pending';
+          lead.last_attempt_at = params[3] || null;
+          lead.follow_up_at = params[4] || null;
+          lead.source_image_uri = params[5] || null;
+          lead.room_number = params[6] || null;
+          lead.planning_period = params[7] || null;
+          lead.email = params[8] || null;
+          lead.years_in_frs = params[9] || null;
+          lead.frs_knowledge = params[10] || null;
+          lead.custom_questions = params[11] || null;
+          try {
+            lead.frs_interests = typeof params[12] === 'string' ? JSON.parse(params[12]) : (params[12] || []);
+          } catch { lead.frs_interests = []; }
+          try {
+            lead.meeting_preferences = typeof params[13] === 'string' ? JSON.parse(params[13]) : (params[13] || []);
+          } catch { lead.meeting_preferences = []; }
+          lead.updated_at = params[14] || new Date().toISOString();
+        } else if (s.includes('follow_up_at = ?')) {
           lead.follow_up_at = params[0];
           lead.last_disposition = 'callback_requested';
           if (params[1] !== undefined && params[1] !== null) lead.notes = params[1];

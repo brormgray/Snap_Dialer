@@ -63,6 +63,64 @@ export default function ListsScreen({ navigation }: any) {
 
   // Original Card Image Proof Modal
   const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
+  const [isDeduplicating, setIsDeduplicating] = useState<boolean>(false);
+
+  // Calculate duplicates count across the current pipeline
+  const duplicateCount = React.useMemo(() => {
+    if (leads.length <= 1) return 0;
+    const phoneKeys = new Set<string>();
+    let dupes = 0;
+    for (const l of leads) {
+      const pKey = (l.phone || '').replace(/\D/g, '').replace(/^1/, '');
+      const key = pKey.length >= 7 ? `p_${pKey}` : `n_${l.name.toLowerCase().trim()}_${(l.school || 'VOL').toLowerCase().trim()}`;
+      if (phoneKeys.has(key)) {
+        dupes++;
+      } else {
+        phoneKeys.add(key);
+      }
+    }
+    return dupes;
+  }, [leads]);
+
+  const handleDeduplicateDirectly = async () => {
+    await HapticsService.medium();
+
+    const doDeduplicate = async () => {
+      setIsDeduplicating(true);
+      try {
+        const result = await LeadsRepository.deduplicateLeads();
+        await loadLeads();
+        await HapticsService.success();
+        Alert.alert(
+          'Pipeline Cleaned',
+          `✓ Merged ${result.totalBefore} records into ${result.uniqueEducators} unique educators.\n\n${result.duplicatesRemoved} duplicate cards removed.\n\nAll notes, appointments, and call logs were preserved.`
+        );
+      } catch (e: any) {
+        Alert.alert('Deduplication Error', e?.message || 'Could not clean duplicate records.');
+      } finally {
+        setIsDeduplicating(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed =
+        typeof window !== 'undefined' &&
+        window.confirm(
+          `Merge ${duplicateCount} duplicate cards into master educator records?\n\nAll notes, call logs, and appointment outcomes will be preserved.`
+        );
+      if (confirmed) await doDeduplicate();
+      return;
+    }
+
+    Alert.alert(
+      'Clean Duplicate Leads',
+      `Merge ${duplicateCount} duplicate cards into primary educator records? All call logs, notes, and appointments will be consolidated.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Clean Pipeline', onPress: doDeduplicate },
+      ]
+    );
+  };
 
   const loadLeads = async () => {
     try {
@@ -514,6 +572,29 @@ export default function ListsScreen({ navigation }: any) {
               </TouchableOpacity>
             ))}
           </ScrollView>
+        </View>
+      )}
+
+      {/* Duplicate Leads Notification Banner */}
+      {duplicateCount > 0 && (
+        <View style={styles.dedupBannerContainer}>
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Sparkles size={16} color={Colors.badgeWarningText} />
+            <Text style={styles.dedupBannerText}>
+              {duplicateCount} duplicate card{duplicateCount > 1 ? 's' : ''} detected
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.dedupBannerBtn}
+            onPress={handleDeduplicateDirectly}
+            disabled={isDeduplicating}
+          >
+            {isDeduplicating ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.dedupBannerBtnText}>Clean Pipeline</Text>
+            )}
+          </TouchableOpacity>
         </View>
       )}
 
@@ -997,6 +1078,36 @@ const styles = StyleSheet.create({
   },
   schoolChipTextActive: {
     color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  dedupBannerContainer: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 2,
+    backgroundColor: Colors.badgeWarningBg,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.badgeWarningText,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dedupBannerText: {
+    color: Colors.badgeWarningText,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  dedupBannerBtn: {
+    backgroundColor: Colors.brandPrimary,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+  },
+  dedupBannerBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
     fontWeight: '800',
   },
   searchContainer: {

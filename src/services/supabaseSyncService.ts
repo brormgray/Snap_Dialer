@@ -401,12 +401,26 @@ export class SupabaseSyncService {
 
       // 1. RECONCILE LEADS
       const localLeadsMap = new Map<string, any>(localLeads.map((l: any) => [String(l.id).trim(), l]));
+      // Also index local leads by normalized phone to prevent duplicate rows across devices
+      const localLeadsPhoneMap = new Map<string, any>();
+      for (const l of localLeads) {
+        const pKey = (l.phone || '').replace(/\D/g, '').replace(/^1/, '');
+        if (pKey.length >= 7) localLeadsPhoneMap.set(pKey, l);
+      }
+
       const cloudLeadsMap = new Map<string, any>((cloudLeads || []).map((l: any) => [String(l.id).trim(), l]));
       const leadsToPush: any[] = [];
       let localLeadsMutated = false;
 
       for (const [id, cLead] of cloudLeadsMap.entries()) {
-        const lLead = localLeadsMap.get(id);
+        let lLead = localLeadsMap.get(id);
+        if (!lLead) {
+          const cPhoneKey = (cLead.phone || '').replace(/\D/g, '').replace(/^1/, '');
+          if (cPhoneKey.length >= 7) {
+            lLead = localLeadsPhoneMap.get(cPhoneKey);
+          }
+        }
+
         if (!lLead) {
           localLeads.push(cLead);
           localCreated++;
