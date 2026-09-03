@@ -189,9 +189,10 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
 
                           <TouchableOpacity
                             style={styles.quickDialPill}
-                            onPress={() => {
-                              HapticsService.medium();
-                              TelephonyService.makeCall(lead.phone);
+                            onPress={async () => {
+                              await HapticsService.medium();
+                              await TelephonyService.makeCall(lead.phone);
+                              navigation.navigate('LeadDetail', { leadId: lead.id });
                             }}
                           >
                             <PhoneCall size={14} color="#FFFFFF" />

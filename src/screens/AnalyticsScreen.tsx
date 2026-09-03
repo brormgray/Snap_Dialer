@@ -10,6 +10,7 @@ import {
   Share,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import {
   ArrowLeft,
@@ -57,8 +58,23 @@ export default function AnalyticsScreen({ navigation }: any) {
     try {
       const lists = await LeadsRepository.getAllLists();
       const exportJson = JSON.stringify({ lists, analytics: data, exportedAt: new Date().toISOString() }, null, 2);
+      const filename = `SnapDialer_Agency_Analytics_${new Date().toISOString().slice(0, 10)}.json`;
+
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
+        const blob = new Blob([exportJson], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        return;
+      }
+
       await Share.share({
-        title: 'SnapDialer_Agency_Analytics.json',
+        title: filename,
         message: exportJson,
       });
     } catch (e) {

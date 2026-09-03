@@ -295,7 +295,15 @@ export default function ScanSheetScreen({ navigation }: any) {
       }
 
       if (andDial) {
-        navigation.replace('LeadDetail', { leadId: savedLead.id });
+        const listObj = availableLists.find((l) => l.id === targetListId);
+        const listTitle = listObj ? listObj.title : 'ValuTeachers Calling Queue';
+        if (typeof window !== 'undefined' && window.localStorage) {
+          try {
+            const storageKey = `snap_dialer_last_lead_${targetListId}_all`;
+            localStorage.setItem(storageKey, savedLead.id);
+          } catch {}
+        }
+        navigation.replace('DialerHUD', { listId: targetListId, listTitle });
       } else {
         navigation.navigate('Lists');
       }

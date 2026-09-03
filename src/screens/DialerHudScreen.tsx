@@ -64,7 +64,7 @@ import { CalendarService } from '../services/calendarService';
 import { NotesService, NoteEntry, EDUCATOR_QUICK_TAGS } from '../services/notesService';
 import { FRS_OBJECTIONS, ObjectionCard } from '../data/objections';
 import { isTeacherInPlanningNow } from '../data/bellSchedules';
-import { Lead, CallDisposition, SMSTemplate, AppSettings } from '../types';
+import { Lead, CallDisposition, SMSTemplate, AppSettings, CadenceRule } from '../types';
 import { Colors } from '../theme/colors';
 import ZoomableImageModal from '../components/ZoomableImageModal';
 
@@ -111,6 +111,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
   // Multi-template SMS Modal
   const [smsModalVisible, setSmsModalVisible] = useState<boolean>(false);
   const [templates, setTemplates] = useState<SMSTemplate[]>([]);
+  const [cadenceRules, setCadenceRules] = useState<CadenceRule[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<SMSTemplate | null>(null);
   const [customSmsBody, setCustomSmsBody] = useState<string>('');
   const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false);
@@ -187,8 +188,12 @@ export default function DialerHudScreen({ route, navigation }: any) {
     try {
       const s = await SettingsRepository.getSettings();
       setAppSettings(s);
-      const allTemplates = await CadenceRepository.getAllTemplates();
+      const [allTemplates, allRules] = await Promise.all([
+        CadenceRepository.getAllTemplates(),
+        CadenceRepository.getAllRules(),
+      ]);
       setTemplates(allTemplates);
+      setCadenceRules(allRules);
 
       const leads = schoolName
         ? await LeadsRepository.getDialingQueueForSchool(schoolName, listId)
@@ -543,9 +548,14 @@ export default function DialerHudScreen({ route, navigation }: any) {
     // 1. Immediate SMS Dispatch for No Answer / Voicemail (Preserves iOS Safari Gesture Token)
     let smsDispatched = false;
     let interpolatedSms = '';
+    const attemptNum = (currentLead.attempts_count || 0) + 1;
+
     if ((disposition === 'no_answer' || disposition === 'voicemail') && currentLead.text_ok !== false) {
-      // Find template synchronously from memory state to avoid async gesture expiration
+      // Find template according to configured Cadence rule for this step, or fallback
+      const stepRule = cadenceRules.find((r) => r.step_number === attemptNum);
+      const ruleTemplateId = stepRule?.sms_template_id;
       const matchingTemplate =
+        (ruleTemplateId ? templates.find((t) => t.id === ruleTemplateId) : null) ||
         templates.find((t) => t.id === 'tpl_just_called') ||
         templates[0] || {
           id: 'tpl_just_called',
@@ -569,7 +579,6 @@ export default function DialerHudScreen({ route, navigation }: any) {
     }
 
     // 2. Build and append timestamped structured note for this outreach attempt
-    const attemptNum = (currentLead.attempts_count || 0) + 1;
     const defaultNote =
       disposition === 'no_answer'
         ? `Call attempt #${attemptNum}: No Answer / Voicemail. Sent follow-up SMS.`

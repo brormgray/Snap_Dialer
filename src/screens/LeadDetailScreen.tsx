@@ -75,6 +75,10 @@ export default function LeadDetailScreen({ route, navigation }: any) {
   const [smsBody, setSmsBody] = useState<string>('');
   const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false);
 
+  // Call & Post-Call Disposition State
+  const [showDispositionRow, setShowDispositionRow] = useState<boolean>(false);
+  const [callStartTime, setCallStartTime] = useState<number | null>(null);
+
   // Edit form state
   const [name, setName] = useState<string>('');
   const [phone, setPhone] = useState<string>('');
@@ -232,6 +236,49 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         ]
       );
     }
+  };
+
+  const handleCall = async () => {
+    if (!lead) return;
+    await HapticsService.medium();
+    setCallStartTime(Date.now());
+    setShowDispositionRow(true);
+    await TelephonyService.makeCall(lead.phone);
+  };
+
+  const handleLogCallOutcome = async (disposition: CallDisposition) => {
+    if (!lead) return;
+    await HapticsService.success();
+    const durationSeconds = callStartTime ? Math.max(0, Math.floor((Date.now() - callStartTime) / 1000)) : 0;
+    setCallStartTime(null);
+    setShowDispositionRow(false);
+
+    const defaultNote =
+      disposition === 'appointment_set'
+        ? 'Direct profile call: Appointment Set.'
+        : disposition === 'connected' || disposition === 'spoke'
+        ? 'Direct profile call: Spoke with educator.'
+        : disposition === 'no_answer'
+        ? 'Direct profile call: No Answer.'
+        : disposition === 'voicemail'
+        ? 'Direct profile call: Left Voicemail.'
+        : disposition === 'callback_requested'
+        ? 'Direct profile call: Callback requested.'
+        : `Direct profile call: ${disposition}.`;
+
+    const updatedNotes = NotesService.addNote(lead.notes, defaultNote);
+
+    await LeadsRepository.updateLeadDisposition(lead.id, disposition, updatedNotes);
+    await CallLogsRepository.logCall({
+      leadId: lead.id,
+      listId: lead.list_id,
+      durationSeconds,
+      disposition,
+      note: defaultNote,
+    });
+
+    await loadLeadData();
+    showToast(`✓ Logged: ${getDispositionLabel(disposition)}`);
   };
 
   const openSmsModal = async () => {
@@ -881,10 +928,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
               <View style={styles.actionButtonsRow}>
                 <TouchableOpacity
                   style={styles.callButton}
-                  onPress={() => {
-                    HapticsService.medium();
-                    TelephonyService.makeCall(lead.phone);
-                  }}
+                  onPress={handleCall}
                 >
                   <PhoneCall size={18} color="#FFFFFF" />
                   <Text style={styles.actionButtonText}>Call Now</Text>
@@ -916,6 +960,54 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                   )}
                 </TouchableOpacity>
               </View>
+
+              {/* Post-Call Outcome Logging Strip */}
+              {showDispositionRow && (
+                <View style={styles.detailDispositionSection}>
+                  <View style={styles.detailDispositionHeader}>
+                    <Text style={styles.detailDispositionTitle}>LOG CALL OUTCOME (1-TAP)</Text>
+                    <TouchableOpacity onPress={() => setShowDispositionRow(false)}>
+                      <Text style={styles.detailDispositionDismiss}>Dismiss</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.detailDispositionGrid}>
+                    <TouchableOpacity
+                      style={[styles.detailDispBtn, { backgroundColor: Colors.badgeSuccessBg, borderColor: Colors.badgeSuccessText }]}
+                      onPress={() => handleLogCallOutcome('appointment_set')}
+                    >
+                      <Text style={[styles.detailDispBtnText, { color: Colors.badgeSuccessText }]}>🎯 Appt Set</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.detailDispBtn, { backgroundColor: Colors.badgeSuccessBg, borderColor: Colors.badgeSuccessText }]}
+                      onPress={() => handleLogCallOutcome('connected')}
+                    >
+                      <Text style={[styles.detailDispBtnText, { color: Colors.badgeSuccessText }]}>💬 Connected</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.detailDispBtn, { backgroundColor: Colors.badgeWarningBg, borderColor: Colors.badgeWarningText }]}
+                      onPress={() => handleLogCallOutcome('voicemail')}
+                    >
+                      <Text style={[styles.detailDispBtnText, { color: Colors.badgeWarningText }]}>📼 Left VM</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.detailDispBtn, { backgroundColor: Colors.badgeNeutralBg, borderColor: Colors.borderStrong }]}
+                      onPress={() => handleLogCallOutcome('no_answer')}
+                    >
+                      <Text style={[styles.detailDispBtnText, { color: Colors.badgeNeutralText }]}>📞 No Answer</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.detailDispBtn, { backgroundColor: Colors.badgeWarningBg, borderColor: Colors.badgeWarningText }]}
+                      onPress={() => handleLogCallOutcome('callback_requested')}
+                    >
+                      <Text style={[styles.detailDispBtnText, { color: Colors.badgeWarningText }]}>📅 Callback</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
             </>
           ) : (
             /* Edit Form */
@@ -2014,5 +2106,48 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '800',
+  },
+  detailDispositionSection: {
+    backgroundColor: Colors.surfaceCard,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.borderSubtle,
+  },
+  detailDispositionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  detailDispositionTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.brandAccent,
+    letterSpacing: 0.8,
+  },
+  detailDispositionDismiss: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontWeight: '600',
+  },
+  detailDispositionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  detailDispBtn: {
+    flex: 1,
+    minWidth: '45%',
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailDispBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

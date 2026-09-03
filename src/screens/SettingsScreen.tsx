@@ -35,6 +35,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Lock,
+  Sparkles,
 } from 'lucide-react-native';
 import { SettingsRepository } from '../db/settingsRepository';
 import { LeadsRepository } from '../db/leadsRepository';
@@ -520,6 +521,19 @@ export default function SettingsScreen({ navigation }: any) {
             value={userName}
             onChangeText={setUserName}
           />
+
+          <TouchableOpacity
+            style={[styles.actionButtonSecondary, { marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }]}
+            onPress={() => {
+              HapticsService.tick();
+              navigation.navigate('CadenceSettings');
+            }}
+          >
+            <Sparkles size={16} color={Colors.brandAccent} />
+            <Text style={[styles.actionButtonText, { color: Colors.brandAccent, fontWeight: '700' }]}>
+              Configure Cadence Steps & SMS Templates
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Power Dialer Pacing Controls */}
