@@ -29,13 +29,14 @@ import {
   Archive,
   Layers,
   FolderPlus,
+  AlertTriangle,
 } from 'lucide-react-native';
 import { VisionService } from '../services/visionService';
 import { DocumentScannerService } from '../services/documentScannerService';
-import { LeadsRepository } from '../db/leadsRepository';
+import { LeadsRepository, normalizePhoneKey, isValidDialablePhone } from '../db/leadsRepository';
 import { SettingsRepository } from '../db/settingsRepository';
 import { HapticsService } from '../services/hapticsService';
-import { ExtractedLeadItem, LeadList } from '../types';
+import { ExtractedLeadItem, LeadList, Lead } from '../types';
 import { Colors } from '../theme/colors';
 
 export default function ScanSheetScreen({ navigation }: any) {
@@ -52,6 +53,7 @@ export default function ScanSheetScreen({ navigation }: any) {
   const [selectedListId, setSelectedListId] = useState<string>('master_queue');
   const [isCreatingNewList, setIsCreatingNewList] = useState<boolean>(false);
   const [newListName, setNewListName] = useState<string>('');
+  const [existingLeads, setExistingLeads] = useState<Lead[]>([]);
 
   useEffect(() => {
     SettingsRepository.getSettings().then((s) => {
@@ -61,6 +63,9 @@ export default function ScanSheetScreen({ navigation }: any) {
     });
     LeadsRepository.getAllLists().then((lists) => {
       setAvailableLists(lists);
+    });
+    LeadsRepository.getAllLeads().then((leads) => {
+      setExistingLeads(leads);
     });
   }, []);
 
@@ -257,9 +262,20 @@ export default function ScanSheetScreen({ navigation }: any) {
   };
 
   const handleSaveLead = async (andDial: boolean = false) => {
-    const validLeads = extractedLeads.filter((l) => l.name.trim() && l.phone.trim());
+    const invalidPhoneLeads = extractedLeads.filter(
+      (l) => l.name.trim() && !isValidDialablePhone(l.phone)
+    );
+    if (invalidPhoneLeads.length > 0) {
+      Alert.alert(
+        'Valid Phone Required',
+        `A valid 10-digit phone number is required to save and dial "${invalidPhoneLeads[0].name}". Please provide their phone number before saving.`
+      );
+      return;
+    }
+
+    const validLeads = extractedLeads.filter((l) => l.name.trim() && isValidDialablePhone(l.phone));
     if (validLeads.length === 0) {
-      Alert.alert('Incomplete Lead', 'Please provide at least a Teacher Name and Phone Number.');
+      Alert.alert('Incomplete Lead', 'Please provide at least a Teacher Name and a valid 10-digit Phone Number.');
       return;
     }
 
@@ -547,9 +563,39 @@ export default function ScanSheetScreen({ navigation }: any) {
             </View>
 
             {/* Editable Educator Form Fields */}
-            {extractedLeads.map((item, index) => (
-              <View key={item.id || index} style={styles.leadRowCard}>
-                <Text style={styles.cardSectionTitle}>EDUCATOR CONTACT INFO</Text>
+            {extractedLeads.map((item, index) => {
+              const phoneKey = normalizePhoneKey(item.phone);
+              const isPhoneValid = isValidDialablePhone(item.phone);
+              const matchingExisting =
+                phoneKey.length >= 10
+                  ? existingLeads.find((l) => normalizePhoneKey(l.phone) === phoneKey)
+                  : null;
+
+              return (
+                <View
+                  key={item.id || index}
+                  style={[
+                    styles.leadRowCard,
+                    !isPhoneValid && styles.leadRowCardWarning,
+                  ]}
+                >
+                  {matchingExisting ? (
+                    <View style={styles.matchNoticeBox}>
+                      <Sparkles size={13} color={Colors.brandAccent} />
+                      <Text style={styles.matchNoticeText}>
+                        Existing Educator in Pipeline ({matchingExisting.name} • {matchingExisting.school || 'VOL'}). Saving updates card & notes without duplicating.
+                      </Text>
+                    </View>
+                  ) : !isPhoneValid ? (
+                    <View style={styles.invalidPhoneNoticeBox}>
+                      <AlertTriangle size={13} color="#EF4444" />
+                      <Text style={styles.invalidPhoneNoticeText}>
+                        ⚠️ 10-digit cell phone number required to dial this card
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  <Text style={styles.cardSectionTitle}>EDUCATOR CONTACT INFO</Text>
 
                 <View style={styles.inputRow}>
                   <View style={{ flex: 1, marginRight: 8 }}>
@@ -669,7 +715,8 @@ export default function ScanSheetScreen({ navigation }: any) {
                   </View>
                 ) : null}
               </View>
-            ))}
+            );
+          })}
 
             {/* Action Buttons */}
             <View style={styles.actionButtonsContainer}>
@@ -972,6 +1019,46 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
+  },
+  leadRowCardWarning: {
+    borderColor: '#EF4444',
+    borderWidth: 1.5,
+  },
+  matchNoticeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.badgeSuccessBg,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.brandAccent,
+    marginBottom: 12,
+    gap: 6,
+  },
+  matchNoticeText: {
+    color: Colors.brandAccent,
+    fontSize: 12,
+    fontWeight: '700',
+    flex: 1,
+  },
+  invalidPhoneNoticeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.badgeDangerBg,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    marginBottom: 12,
+    gap: 6,
+  },
+  invalidPhoneNoticeText: {
+    color: Colors.badgeDangerText,
+    fontSize: 12,
+    fontWeight: '700',
+    flex: 1,
   },
   cardSectionTitle: {
     fontSize: 11,

@@ -193,4 +193,119 @@ describe('Smart Pipeline Deduplication & Record Consolidation Engine', () => {
     assert.strictEqual(result.totalAfter, 33);
     assert.strictEqual(result.duplicatesRemoved, 0);
   });
+
+  test('validates 10-digit phone requirement and rejects uncallable phone numbers', () => {
+    function isValidDialablePhone(phone) {
+      const digits = normalizePhoneKey(phone);
+      return digits.length >= 10;
+    }
+
+    assert.strictEqual(isValidDialablePhone('(386) 555-1234'), true);
+    assert.strictEqual(isValidDialablePhone('1-386-555-1234'), true);
+    assert.strictEqual(isValidDialablePhone('3865551234'), true);
+    assert.strictEqual(isValidDialablePhone('555-1234'), false, 'Rejects 7-digit local number without area code');
+    assert.strictEqual(isValidDialablePhone(''), false, 'Rejects empty phone');
+    assert.strictEqual(isValidDialablePhone(null), false, 'Rejects null phone');
+    assert.strictEqual(isValidDialablePhone('N/A'), false, 'Rejects text string');
+  });
+
+  test('ingestion upsert merges new card data into existing educator without creating duplicates', () => {
+    const existingDb = [
+      {
+        id: 'lead_perm_101',
+        name: 'Marcus Vance',
+        phone: '(386) 555-9000',
+        school: 'Mainland High',
+        room_number: '101',
+        notes: '[Aug 15] Met at school orientation',
+        attempts_count: 1,
+        last_disposition: 'no_answer',
+      },
+    ];
+
+    const callLogs = [
+      { id: 'log_900', lead_id: 'lead_perm_101', disposition: 'no_answer' },
+    ];
+
+    // Simulate scanning the same educator with updated room & notes
+    function ingestLeadMock(item, db, logs) {
+      const targetPhoneKey = normalizePhoneKey(item.phone);
+      if (targetPhoneKey.length < 10) {
+        throw new Error('A valid 10-digit phone number is required.');
+      }
+
+      const existing = db.find((l) => normalizePhoneKey(l.phone) === targetPhoneKey);
+      if (existing) {
+        existing.room_number = item.room_number || existing.room_number;
+        existing.planning_period = item.planning_period || existing.planning_period;
+        if (item.notes && !existing.notes.includes(item.notes)) {
+          existing.notes += '\n\n' + item.notes;
+        }
+        return { lead: existing, isNew: false };
+      }
+
+      const newLead = { id: 'lead_new_' + Date.now(), ...item };
+      db.push(newLead);
+      return { lead: newLead, isNew: true };
+    }
+
+    const intakeResult = ingestLeadMock(
+      {
+        name: 'Marcus Vance',
+        phone: '1-386-555-9000', // Formatted differently
+        school: 'Mainland High',
+        room_number: 'Building 4 Room 402',
+        planning_period: '4th Period',
+        notes: '[Sep 03] Gave updated room number',
+      },
+      existingDb,
+      callLogs
+    );
+
+    assert.strictEqual(intakeResult.isNew, false, 'Must identify existing educator');
+    assert.strictEqual(existingDb.length, 1, 'Must NOT create duplicate row in database');
+    assert.strictEqual(existingDb[0].id, 'lead_perm_101', 'Must preserve permanent UUID');
+    assert.strictEqual(existingDb[0].room_number, 'Building 4 Room 402', 'Must update room number');
+    assert.ok(existingDb[0].notes.includes('Met at school orientation'), 'Must preserve previous notes');
+    assert.ok(existingDb[0].notes.includes('Gave updated room number'), 'Must append new notes');
+    assert.strictEqual(callLogs[0].lead_id, 'lead_perm_101', 'Call logs remain permanently anchored');
+  });
+
+  test('editing educator phone number preserves stable ID and detects collision with another educator', () => {
+    const db = [
+      { id: 'lead_1', name: 'Teacher Alpha', phone: '3865551111' },
+      { id: 'lead_2', name: 'Teacher Beta', phone: '3865552222' },
+    ];
+    const logs = [
+      { id: 'log_alpha', lead_id: 'lead_1', disposition: 'appointment_set' },
+    ];
+
+    function updateLeadMock(leadData, database) {
+      const targetPhoneKey = normalizePhoneKey(leadData.phone);
+      if (targetPhoneKey.length < 10) {
+        throw new Error('A valid 10-digit phone number is required.');
+      }
+      const collision = database.find(
+        (l) => l.id !== leadData.id && normalizePhoneKey(l.phone) === targetPhoneKey
+      );
+      if (collision) {
+        throw new Error(`Phone number is already assigned to "${collision.name}".`);
+      }
+      const existing = database.find((l) => l.id === leadData.id);
+      existing.phone = leadData.phone;
+      return existing;
+    }
+
+    // 1. Valid phone edit: ID and call logs stay intact
+    const updatedAlpha = updateLeadMock({ id: 'lead_1', phone: '(386) 555-3333' }, db);
+    assert.strictEqual(updatedAlpha.id, 'lead_1', 'ID must not change');
+    assert.strictEqual(logs[0].lead_id, 'lead_1', 'Call logs remain linked to lead_1');
+    assert.strictEqual(normalizePhoneKey(db[0].phone), '3865553333');
+
+    // 2. Collision detection: attempting to change to Teacher Beta's phone throws error
+    assert.throws(
+      () => updateLeadMock({ id: 'lead_1', phone: '386-555-2222' }, db),
+      /already assigned to "Teacher Beta"/
+    );
+  });
 });

@@ -121,6 +121,7 @@ export class CsvService {
       const rawName = nameIdx >= 0 ? cols[nameIdx]?.trim() : '';
       const rawPhone = phoneIdx >= 0 ? cols[phoneIdx]?.trim() : '';
       const digitsOnly = rawPhone ? rawPhone.replace(/\D/g, '') : '';
+      const normalizedDigits = digitsOnly.length === 11 && digitsOnly.startsWith('1') ? digitsOnly.slice(1) : digitsOnly;
 
       if (rawName || rawPhone) {
         results.push({
@@ -132,7 +133,7 @@ export class CsvService {
           years_in_frs: yearsIdx >= 0 && cols[yearsIdx] ? cols[yearsIdx].trim() : undefined,
           email: emailIdx >= 0 && cols[emailIdx] ? cols[emailIdx].trim() : undefined,
           notes: notesIdx >= 0 && cols[notesIdx] ? cols[notesIdx].trim() : undefined,
-          isValid: Boolean(rawName && digitsOnly.length >= 7),
+          isValid: Boolean(rawName && normalizedDigits.length >= 10),
         });
       }
     }

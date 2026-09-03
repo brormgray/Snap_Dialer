@@ -10,6 +10,11 @@ export function normalizePhoneKey(phone?: string | null): string {
   return digits;
 }
 
+export function isValidDialablePhone(phone?: string | null): boolean {
+  const digits = normalizePhoneKey(phone);
+  return digits.length >= 10;
+}
+
 export interface DeduplicationResult {
   totalBefore: number;
   totalAfter: number;
@@ -27,7 +32,7 @@ export class LeadsRepository {
     const listId = 'list_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     const now = new Date().toISOString();
 
-    const validLeads = leads.filter((l) => l.name.trim() && l.phone.trim());
+    const validLeads = leads.filter((l) => l.name.trim() && isValidDialablePhone(l.phone));
 
     await db.withTransactionAsync(async () => {
       await db.runAsync(
@@ -87,6 +92,17 @@ export class LeadsRepository {
   }
 
   /**
+   * Unified single ingestion gateway for all lead intake (Scanner, CSV, API, Manual).
+   * Validates 10-digit phone requirement and automatically performs safe upsert/merge.
+   */
+  static async ingestLead(
+    item: ExtractedLeadItem,
+    imageUri?: string | null
+  ): Promise<Lead> {
+    return this.addSingleLead(item, imageUri);
+  }
+
+  /**
    * Adds a single educator lead directly to the pipeline with customizable list and priority tier
    */
   static async addSingleLead(
@@ -96,11 +112,14 @@ export class LeadsRepository {
     const db = await getDatabase();
     const targetPhoneKey = normalizePhoneKey(item.phone);
 
+    if (targetPhoneKey.length < 10) {
+      throw new Error(`A valid 10-digit phone number is required to add "${item.name}".`);
+    }
+
     // If an educator with this phone number already exists, update and merge rather than duplicate
-    if (targetPhoneKey.length >= 7) {
-      const all = await this.getAllLeads();
-      const existing = all.find((l) => normalizePhoneKey(l.phone) === targetPhoneKey);
-      if (existing) {
+    const all = await this.getAllLeads();
+    const existing = all.find((l) => normalizePhoneKey(l.phone) === targetPhoneKey);
+    if (existing) {
         let mergedNotes = existing.notes || '';
         if (item.notes && item.notes.trim()) {
           if (!mergedNotes.includes(item.notes.trim())) {
@@ -128,7 +147,6 @@ export class LeadsRepository {
         }
         return (await this.getLeadById(existing.id)) || existing;
       }
-    }
 
     const leadId = 'lead_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     const now = new Date().toISOString();
@@ -325,22 +343,26 @@ export class LeadsRepository {
   static async importLeadsBatch(leads: Partial<ExtractedLeadItem>[], targetListId: string = 'master_queue'): Promise<number> {
     let count = 0;
     for (const item of leads) {
-      if (item.name && item.phone) {
-        await this.addSingleLead({
-          name: item.name,
-          phone: item.phone,
-          school: item.school || 'VOL',
-          email: item.email,
-          room_number: item.room_number,
-          planning_period: item.planning_period,
-          years_in_frs: item.years_in_frs,
-          notes: item.notes,
-          priority_tier: 1,
-          list_id: targetListId,
-          text_ok: true,
-          isValid: true,
-        });
-        count++;
+      if (item.name && item.phone && isValidDialablePhone(item.phone)) {
+        try {
+          await this.addSingleLead({
+            name: item.name,
+            phone: item.phone,
+            school: item.school || 'VOL',
+            email: item.email,
+            room_number: item.room_number,
+            planning_period: item.planning_period,
+            years_in_frs: item.years_in_frs,
+            notes: item.notes,
+            priority_tier: 1,
+            list_id: targetListId,
+            text_ok: true,
+            isValid: true,
+          });
+          count++;
+        } catch (err) {
+          console.warn(`[importLeadsBatch] Skipped ${item.name}:`, err);
+        }
       }
     }
     return count;
@@ -467,6 +489,21 @@ export class LeadsRepository {
     priority_tier?: number;
     list_id?: string;
   }): Promise<void> {
+    const targetPhoneKey = normalizePhoneKey(leadData.phone);
+    if (targetPhoneKey.length < 10) {
+      throw new Error('A valid 10-digit phone number is required to save educator details.');
+    }
+
+    const all = await this.getAllLeads();
+    const collision = all.find(
+      (l) => l.id !== leadData.id && normalizePhoneKey(l.phone) === targetPhoneKey
+    );
+    if (collision) {
+      throw new Error(
+        `Phone number (${leadData.phone}) is already assigned to "${collision.name}" (${collision.school || 'VOL'}). Cannot assign duplicate phone numbers.`
+      );
+    }
+
     const db = await getDatabase();
     const now = new Date().toISOString();
     await db.runAsync(
