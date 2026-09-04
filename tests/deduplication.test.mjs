@@ -308,4 +308,54 @@ describe('Smart Pipeline Deduplication & Record Consolidation Engine', () => {
       /already assigned to "Teacher Beta"/
     );
   });
+
+  test('sending confirmation SMS to booked educators does not inflate appointment counter', () => {
+    const educators = [
+      { id: 'lead_1', name: 'Teacher 1', last_disposition: 'appointment_set' },
+      { id: 'lead_2', name: 'Teacher 2', last_disposition: 'appointment_set' },
+      { id: 'lead_3', name: 'Teacher 3', last_disposition: 'appointment_set' },
+      { id: 'lead_4', name: 'Teacher 4', last_disposition: 'no_answer' },
+    ];
+
+    // Initial 3 voice call appointments
+    const logs = [
+      { id: 'log_1', lead_id: 'lead_1', disposition: 'appointment_set', duration_seconds: 120, sms_sent: false },
+      { id: 'log_2', lead_id: 'lead_2', disposition: 'appointment_set', duration_seconds: 95, sms_sent: false },
+      { id: 'log_3', lead_id: 'lead_3', disposition: 'appointment_set', duration_seconds: 140, sms_sent: false },
+    ];
+
+    // Simulate sending confirmation SMS to all 3 appointment leads
+    for (const edu of educators.filter((l) => l.last_disposition === 'appointment_set')) {
+      const smsLogDisposition = edu.last_disposition === 'appointment_set' ? 'connected' : edu.last_disposition;
+      logs.push({
+        id: 'log_sms_' + edu.id,
+        lead_id: edu.id,
+        disposition: smsLogDisposition,
+        duration_seconds: 0,
+        sms_sent: true,
+        note: 'Sent appointment confirmation SMS',
+      });
+    }
+
+    // Tab chip count (exact match with filtered list of educators)
+    const apptsInLeads = educators.filter((l) => l.last_disposition === 'appointment_set').length;
+
+    // KPI count (deduplicated by educator, excluding standalone SMS)
+    const scopedLeadIds = new Set(educators.map((l) => l.id));
+    const uniqueApptLeadIdsInLogs = new Set(
+      logs
+        .filter(
+          (log) =>
+            log.disposition === 'appointment_set' &&
+            !log.sms_sent &&
+            Number(log.duration_seconds || 0) > 0 &&
+            scopedLeadIds.has(log.lead_id)
+        )
+        .map((log) => log.lead_id)
+    );
+    const appointmentCount = Math.max(uniqueApptLeadIdsInLogs.size, apptsInLeads);
+
+    assert.strictEqual(apptsInLeads, 3, 'Filter tab badge must show exactly 3');
+    assert.strictEqual(appointmentCount, 3, 'KPI appointment count must show exactly 3, not 6');
+  });
 });

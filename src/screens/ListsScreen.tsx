@@ -342,13 +342,25 @@ export default function ListsScreen({ navigation }: any) {
   // 'To Call': ONLY leads that have NOT been called at least once ever (0 attempts)
   const pendingCount = scopedLeads.filter((l) => !hasEverBeenCalled(l)).length;
 
-  // 'Appts Set': Running count of ALL appointments set, ever
-  const scopedLeadIds = new Set(scopedLeads.map((l) => l.id));
-  const apptsInLogs = callLogs.filter(
-    (log) => log.disposition === 'appointment_set' && (selectedListId === 'all' && selectedSchool === 'all' && priorityFilter === 'all' ? true : scopedLeadIds.has(log.lead_id))
-  ).length;
+  // 'Appts Set': Count of active scheduled educator appointments in the current pipeline
   const apptsInLeads = scopedLeads.filter((l) => l.last_disposition === 'appointment_set').length;
-  const appointmentCount = Math.max(apptsInLogs, apptsInLeads);
+
+  // Historical voice call appointments set, deduplicated by unique educator ID (excluding standalone SMS)
+  const scopedLeadIds = new Set(scopedLeads.map((l) => l.id));
+  const uniqueApptLeadIdsInLogs = new Set(
+    callLogs
+      .filter(
+        (log) =>
+          log.disposition === 'appointment_set' &&
+          !log.sms_sent &&
+          Number(log.duration_seconds || 0) > 0 &&
+          (selectedListId === 'all' && selectedSchool === 'all' && priorityFilter === 'all'
+            ? true
+            : scopedLeadIds.has(log.lead_id))
+      )
+      .map((log) => log.lead_id)
+  );
+  const appointmentCount = Math.max(uniqueApptLeadIdsInLogs.size, apptsInLeads);
 
   // 'Callbacks': Leads scheduled for a callback, removed once called back and answered (connected/spoke/appt/dnc/bad_number)
   const callbackCount = scopedLeads.filter((l) => {
@@ -639,7 +651,7 @@ export default function ListsScreen({ navigation }: any) {
             onPress={() => setFilterTab('appts')}
           >
             <Text style={[styles.tabChipText, filterTab === 'appts' && styles.tabChipTextActive]}>
-              Appts Set ({appointmentCount})
+              Appts Set ({apptsInLeads})
             </Text>
           </TouchableOpacity>
           {spokeCount > 0 && (

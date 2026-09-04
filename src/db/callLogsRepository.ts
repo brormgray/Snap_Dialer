@@ -90,7 +90,7 @@ export class CallLogsRepository {
         smsSentCount++;
       }
       // Only count as an outbound call dial if it was a voice attempt, not a standalone SMS log
-      const isStandaloneSms = (r.sms_sent === 1 || r.sms_sent === true) && Number(r.duration_seconds) === 0 && Boolean(r.note && (r.note.includes('Sent persuasive ValuTeachers SMS') || r.note.includes('SMS Only')));
+      const isStandaloneSms = (r.sms_sent === 1 || r.sms_sent === true) && Number(r.duration_seconds || 0) === 0;
       const isVoiceDial = !isStandaloneSms && Boolean(r.disposition);
       if (isVoiceDial) {
         totalDials++;
@@ -209,7 +209,7 @@ export class CallLogsRepository {
       if (r.sms_sent === 1 || r.sms_sent === true) {
         smsSentCount++;
       }
-      const isStandaloneSms = (r.sms_sent === 1 || r.sms_sent === true) && Number(r.duration_seconds) === 0 && Boolean(r.note && (r.note.includes('Sent persuasive ValuTeachers SMS') || r.note.includes('SMS Only')));
+      const isStandaloneSms = (r.sms_sent === 1 || r.sms_sent === true) && Number(r.duration_seconds || 0) === 0;
       const isVoiceDial = !isStandaloneSms && Boolean(r.disposition);
       if (isVoiceDial) {
         totalDials++;

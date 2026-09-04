@@ -334,10 +334,11 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     await HapticsService.medium();
     setSmsModalVisible(false);
     await TelephonyService.sendSMS(lead.phone, smsBody);
-    // Log the SMS event using the lead's current/actual disposition so it doesn't
-    // falsely inflate the Callbacks KPI counter.
+    // Log the SMS event as an outreach touchpoint without re-registering an appointment booking
     const smsLogDisposition: CallDisposition =
-      lead.last_disposition && lead.last_disposition !== 'pending'
+      lead.last_disposition === 'appointment_set'
+        ? 'connected'
+        : lead.last_disposition && lead.last_disposition !== 'pending'
         ? lead.last_disposition
         : 'no_answer';
     await CallLogsRepository.logCall({
@@ -345,7 +346,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       listId: lead.list_id,
       durationSeconds: 0,
       disposition: smsLogDisposition,
-      note: 'Sent persuasive ValuTeachers SMS',
+      note: lead.last_disposition === 'appointment_set' ? 'Sent appointment confirmation SMS' : 'Sent persuasive ValuTeachers SMS',
       smsSent: true,
       smsBody: smsBody,
     });
