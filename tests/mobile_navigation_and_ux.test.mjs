@@ -129,5 +129,10 @@ test('Mobile Navigation & Touch Ergonomics Architecture', async (t) => {
              !l.appointment_outcome;
     }).length;
     assert.equal(dispoDueCount, 1); // l3
+
+    // Parity verification: top KPI card appointmentCount matches filter tab badge (upcomingCount)
+    const appointmentCount = upcomingSitDownsCount;
+    assert.equal(appointmentCount, upcomingSitDownsCount, 'Top KPI card and filter tab must have 1:1 parity');
   });
 });
+

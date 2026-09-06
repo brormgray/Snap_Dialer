@@ -369,25 +369,8 @@ export default function ListsScreen({ navigation }: any) {
   const upcomingCount = scopedLeads.filter((l) => PipelineStateService.isUpcomingAppointment(l, now)).length;
   const dispoNeededCount = scopedLeads.filter((l) => PipelineStateService.isDispoNeeded(l, now)).length;
 
-  // 'Appts Set': Count of active scheduled educator appointments in the current pipeline
-  const apptsInLeads = scopedLeads.filter((l) => l.last_disposition === 'appointment_set').length;
-
-  // Historical voice call appointments set, deduplicated by unique educator ID (excluding standalone SMS)
-  const scopedLeadIds = new Set(scopedLeads.map((l) => l.id));
-  const uniqueApptLeadIdsInLogs = new Set(
-    callLogs
-      .filter(
-        (log) =>
-          log.disposition === 'appointment_set' &&
-          !log.sms_sent &&
-          Number(log.duration_seconds || 0) > 0 &&
-          (selectedListId === 'all' && selectedSchool === 'all' && priorityFilter === 'all'
-            ? true
-            : scopedLeadIds.has(log.lead_id))
-      )
-      .map((log) => log.lead_id)
-  );
-  const appointmentCount = Math.max(uniqueApptLeadIdsInLogs.size, apptsInLeads);
+  // 'Appts Set': Strictly reflects active upcoming confirmed sit-downs in 1:1 parity with the filter tab
+  const appointmentCount = upcomingCount;
 
   // 'Callbacks': Leads scheduled for a callback, removed once called back and answered (connected/spoke/appt/dnc/bad_number)
   const callbackCount = scopedLeads.filter((l) => {
