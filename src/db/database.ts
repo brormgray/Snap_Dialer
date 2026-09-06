@@ -550,7 +550,14 @@ class WebDatabase implements IDatabase {
               lead.drip_step = params[18] !== undefined ? Number(params[18]) : 0;
               lead.last_drip_sent_at = params[19] || null;
               lead.next_drip_scheduled_at = params[20] || null;
-              lead.updated_at = params[21] || new Date().toISOString();
+              if (s.includes('appointment_scheduled_at = ?')) {
+                lead.appointment_scheduled_at = params[21] || null;
+                lead.appointment_outcome = params[22] || null;
+                lead.appointment_completed_at = params[23] || null;
+                lead.updated_at = params[24] || new Date().toISOString();
+              } else {
+                lead.updated_at = params[21] || new Date().toISOString();
+              }
             } else {
               lead.updated_at = params[10] || new Date().toISOString();
             }
@@ -585,6 +592,43 @@ class WebDatabase implements IDatabase {
           lead.next_drip_scheduled_at = params[9] || null;
           if (params[10] && s.includes('notes = ?')) lead.notes = params[10];
           lead.updated_at = params[params.length - 2] || new Date().toISOString();
+        } else if (s.includes('appointment_outcome') || s.includes('appointment_scheduled_at')) {
+          if (s.includes("appointment_outcome = 'converted'")) {
+            lead.appointment_outcome = 'converted';
+            lead.appointment_completed_at = params[0] || new Date().toISOString();
+            lead.updated_at = params[1] || new Date().toISOString();
+          } else if (s.includes("appointment_outcome = 'nurture_drip'")) {
+            lead.appointment_outcome = 'nurture_drip';
+            lead.appointment_completed_at = params[0] || new Date().toISOString();
+            lead.last_disposition = 'connected';
+            lead.drip_track = 'prospect_nurture';
+            lead.drip_step = 0;
+            lead.next_drip_scheduled_at = params[1] || null;
+            if (params[2]) lead.notes = lead.notes ? `${lead.notes}\n\n${params[2]}` : params[2];
+            lead.updated_at = params[4] || new Date().toISOString();
+          } else if (s.includes("appointment_outcome = 'no_show'") || s.includes("outcome = 'declined'")) {
+            lead.appointment_outcome = s.includes('no_show') ? 'no_show' : 'declined';
+            lead.appointment_completed_at = params[0] || new Date().toISOString();
+            lead.last_disposition = s.includes('no_show') ? 'no_answer' : 'spoke';
+            if (params[1]) lead.notes = lead.notes ? `${lead.notes}\n\n${params[1]}` : params[1];
+            lead.updated_at = params[params.length - 2] || new Date().toISOString();
+          } else if (s.includes('appointment_outcome = ?')) {
+            lead.appointment_outcome = params[0];
+            lead.appointment_completed_at = params[1] || new Date().toISOString();
+            if (s.includes('last_disposition = ?')) {
+              lead.last_disposition = params[2];
+            }
+            lead.updated_at = params[params.length - 2] || new Date().toISOString();
+          } else if (s.includes('appointment_scheduled_at = ?')) {
+            lead.appointment_scheduled_at = params[0];
+            lead.appointment_outcome = null;
+            lead.appointment_completed_at = null;
+            lead.last_disposition = 'appointment_set';
+            if (s.includes('planning_period = coalesce(?, planning_period)')) {
+              if (params[1]) lead.planning_period = params[1];
+            }
+            lead.updated_at = params[params.length - 2] || new Date().toISOString();
+          }
         } else if (s.includes('drip_step = ?') || s.includes('last_drip_sent_at = ?')) {
           lead.drip_step = Number(params[0]) || 0;
           lead.last_drip_sent_at = params[1] || null;
@@ -801,6 +845,9 @@ async function initNativeDatabase(db: any): Promise<void> {
       drip_step INTEGER DEFAULT 0,
       last_drip_sent_at TEXT,
       next_drip_scheduled_at TEXT,
+      appointment_scheduled_at TEXT,
+      appointment_outcome TEXT,
+      appointment_completed_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (list_id) REFERENCES lists(id) ON DELETE CASCADE
@@ -846,6 +893,7 @@ async function initNativeDatabase(db: any): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_leads_is_client ON leads(is_client);
     CREATE INDEX IF NOT EXISTS idx_leads_drip ON leads(drip_track, next_drip_scheduled_at);
     CREATE INDEX IF NOT EXISTS idx_leads_annual_review ON leads(annual_review_due_date);
+    CREATE INDEX IF NOT EXISTS idx_leads_appointment_lifecycle ON leads(last_disposition, appointment_outcome, appointment_scheduled_at);
     CREATE INDEX IF NOT EXISTS idx_call_logs_lead ON call_logs(lead_id);
   `);
 
@@ -883,6 +931,9 @@ async function initNativeDatabase(db: any): Promise<void> {
     'drip_step INTEGER DEFAULT 0',
     'last_drip_sent_at TEXT',
     'next_drip_scheduled_at TEXT',
+    'appointment_scheduled_at TEXT',
+    'appointment_outcome TEXT',
+    'appointment_completed_at TEXT',
   ];
   for (const col of columnsToAdd) {
     try {

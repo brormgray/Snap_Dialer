@@ -56,6 +56,7 @@ import { Lead, CallLog, CallDisposition, LeadList } from '../types';
 import { Colors } from '../theme/colors';
 import ZoomableImageModal from '../components/ZoomableImageModal';
 import { ClientPortfolioCard } from '../components/ClientPortfolioCard';
+import { PostApptWrapUpCard } from '../components/PostApptWrapUpCard';
 
 export default function LeadDetailScreen({ route, navigation }: any) {
   const leadId = route.params?.leadId;
@@ -270,7 +271,13 @@ export default function LeadDetailScreen({ route, navigation }: any) {
 
     const updatedNotes = NotesService.addNote(lead.notes, defaultNote);
 
-    await LeadsRepository.updateLeadDisposition(lead.id, disposition, updatedNotes);
+    if (disposition === 'appointment_set') {
+      const scheduledDate = CalendarService.calculateNextPlanningDate(lead.planning_period, lead.school);
+      await LeadsRepository.scheduleAppointment(lead.id, scheduledDate.toISOString(), defaultNote);
+    } else {
+      await LeadsRepository.updateLeadDisposition(lead.id, disposition, updatedNotes);
+    }
+
     await CallLogsRepository.logCall({
       leadId: lead.id,
       listId: lead.list_id,
@@ -281,6 +288,99 @@ export default function LeadDetailScreen({ route, navigation }: any) {
 
     await loadLeadData();
     showToast(`✓ Logged: ${getDispositionLabel(disposition)}`);
+  };
+
+  const handleWrapUpConverted = async () => {
+    if (!lead) return;
+    await HapticsService.success();
+    const note = '[Sit-Down Wrap-Up] Converted to client after sit-down.';
+
+    await LeadsRepository.recordAppointmentDisposition(lead.id, {
+      outcome: 'converted',
+      notes: note,
+    });
+
+    await CallLogsRepository.logCall({
+      leadId: lead.id,
+      listId: lead.list_id,
+      durationSeconds: 0,
+      disposition: 'connected',
+      note,
+    });
+
+    await loadLeadData();
+    showToast('★ Converted to Client! Add policy details below.');
+  };
+
+  const handleWrapUpProspectDrip = async () => {
+    if (!lead) return;
+    await HapticsService.success();
+    const note = '[Sit-Down Wrap-Up] Enrolled in FRS Prospect Nurture Drip (Day 7 Multiplier).';
+
+    await LeadsRepository.recordAppointmentDisposition(lead.id, {
+      outcome: 'nurture_drip',
+      notes: note,
+    });
+
+    await CallLogsRepository.logCall({
+      leadId: lead.id,
+      listId: lead.list_id,
+      durationSeconds: 0,
+      disposition: 'connected',
+      note,
+    });
+
+    await loadLeadData();
+    showToast('💬 Enrolled in Prospect Nurture Drip (Track A)');
+  };
+
+  const handleConfirmReschedule = async (newDateISO: string, newPeriod?: string) => {
+    if (!lead) return;
+    await HapticsService.success();
+    const note = `[Sit-Down Rescheduled] New sit-down scheduled for ${new Date(newDateISO).toLocaleDateString()} @ ${new Date(newDateISO).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`;
+
+    await LeadsRepository.recordAppointmentDisposition(lead.id, {
+      outcome: 'rescheduled',
+      newScheduledDate: newDateISO,
+      newPlanningPeriod: newPeriod,
+      notes: note,
+    });
+
+    await CallLogsRepository.logCall({
+      leadId: lead.id,
+      listId: lead.list_id,
+      durationSeconds: 0,
+      disposition: 'appointment_set',
+      note,
+    });
+
+    await loadLeadData();
+    showToast('📅 Sit-Down Rescheduled!');
+  };
+
+  const handleConfirmNoShowOrDeclined = async (outcome: 'no_show' | 'declined') => {
+    if (!lead) return;
+    await HapticsService.tick();
+    const note =
+      outcome === 'no_show'
+        ? '[Sit-Down Outcome] Educator was a no-show / unavailable during planning.'
+        : '[Sit-Down Outcome] Educator declined to proceed with retirement options.';
+
+    await LeadsRepository.recordAppointmentDisposition(lead.id, {
+      outcome,
+      notes: note,
+    });
+
+    await CallLogsRepository.logCall({
+      leadId: lead.id,
+      listId: lead.list_id,
+      durationSeconds: 0,
+      disposition: outcome === 'no_show' ? 'no_answer' : 'spoke',
+      note,
+    });
+
+    await loadLeadData();
+    showToast(outcome === 'no_show' ? 'Marked as No-Show' : 'Marked as Declined');
   };
 
   const openSmsModal = async () => {
@@ -820,6 +920,15 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                 <Text style={styles.proofButtonText}>View Original Report Card (Proof of Request)</Text>
                 <Eye size={16} color="#38BDF8" />
               </TouchableOpacity>
+
+              {/* Post-Appointment Sit-Down Wrap-Up Card */}
+              <PostApptWrapUpCard
+                lead={lead}
+                onConverted={handleWrapUpConverted}
+                onNurtureDrip={handleWrapUpProspectDrip}
+                onReschedule={handleConfirmReschedule}
+                onNoShowOrDeclined={handleConfirmNoShowOrDeclined}
+              />
 
               {/* Client Portfolio & Policy Card */}
               <ClientPortfolioCard

@@ -5,6 +5,7 @@ import { Colors } from '../theme/colors';
 import { HapticsService } from '../services/hapticsService';
 import { Lead } from '../types';
 import { isTeacherInPlanningNow } from '../data/bellSchedules';
+import { PipelineStateService } from '../services/pipelineStateService';
 
 interface TodayCockpitCardProps {
   leads: Lead[];
@@ -12,6 +13,7 @@ interface TodayCockpitCardProps {
   onOpenDripModal: () => void;
   onNavigateLead: (leadId: string) => void;
   onStartDialing: () => void;
+  onFilterDispoDue?: () => void;
 }
 
 export function TodayCockpitCard({
@@ -20,13 +22,21 @@ export function TodayCockpitCard({
   onOpenDripModal,
   onNavigateLead,
   onStartDialing,
+  onFilterDispoDue,
 }: TodayCockpitCardProps) {
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
-  // Sit-Downs scheduled
-  const sitDowns = useMemo(() => {
-    return leads.filter((l) => l.last_disposition === 'appointment_set');
-  }, [leads]);
+  const now = useMemo(() => new Date(), [leads]);
+
+  // Strictly upcoming confirmed sit-downs (window not ended and not dispositioned)
+  const upcomingSitDowns = useMemo(() => {
+    return leads.filter((l) => PipelineStateService.isUpcomingAppointment(l, now));
+  }, [leads, now]);
+
+  // Sit-downs that need disposition (window ended and no outcome logged)
+  const dispoNeededLeads = useMemo(() => {
+    return leads.filter((l) => PipelineStateService.isDispoNeeded(l, now));
+  }, [leads, now]);
 
   // Callbacks scheduled for today or priority callbacks
   const callbacksDue = useMemo(() => {
@@ -106,16 +116,56 @@ export function TodayCockpitCard({
           </Text>
         </TouchableOpacity>
 
-        {/* Metric 3: Sit-Downs */}
+        {/* Metric 3: Upcoming Sit-Downs */}
         <View style={styles.triadBox}>
           <View style={styles.triadTop}>
             <Calendar size={14} color="#10B981" />
-            <Text style={[styles.triadNumber, { color: '#10B981' }]}>{sitDowns.length}</Text>
+            <Text style={[styles.triadNumber, { color: '#10B981' }]}>{upcomingSitDowns.length}</Text>
           </View>
           <Text style={styles.triadLabel}>Sit-Downs</Text>
-          <Text style={styles.triadSub}>Confirmed</Text>
+          <Text style={styles.triadSub}>Upcoming</Text>
         </View>
       </View>
+
+      {/* Amber Alert Banner: When Sit-Downs Need Disposition */}
+      {dispoNeededLeads.length > 0 && (
+        <TouchableOpacity
+          style={styles.dispoAlertCard}
+          onPress={() => {
+            HapticsService.medium();
+            if (onFilterDispoDue) {
+              onFilterDispoDue();
+            } else {
+              onNavigateLead(dispoNeededLeads[0].id);
+            }
+          }}
+          activeOpacity={0.85}
+        >
+          <View style={styles.dispoAlertLeft}>
+            <View style={styles.dispoAlertIconBadge}>
+              <Clock size={16} color="#D97706" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={styles.dispoAlertTitle}>
+                  {dispoNeededLeads.length} Sit-Down{dispoNeededLeads.length > 1 ? 's' : ''} Need Dispo
+                </Text>
+                <View style={styles.actionRequiredBadge}>
+                  <Text style={styles.actionRequiredText}>Due Now</Text>
+                </View>
+              </View>
+              <Text style={styles.dispoAlertSub} numberOfLines={1}>
+                Appointment window ended • Log conversion, nurture drip, or no-show
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.dispoReviewBtn}>
+            <Text style={styles.dispoReviewBtnText}>Review</Text>
+            <ChevronRight size={14} color="#B45309" />
+          </View>
+        </TouchableOpacity>
+      )}
 
       {/* 1-Tap Action Buttons Row */}
       {dueDripsCount > 0 && (
@@ -135,13 +185,13 @@ export function TodayCockpitCard({
         </TouchableOpacity>
       )}
 
-      {/* Confirmed Sit-Downs Preview List if any */}
-      {sitDowns.length > 0 && (
+      {/* Confirmed Upcoming Sit-Downs Preview List if any */}
+      {upcomingSitDowns.length > 0 && (
         <View style={styles.sitDownsSection}>
-          <Text style={styles.sitDownsHeader}>CONFIRMED SIT-DOWNS:</Text>
+          <Text style={styles.sitDownsHeader}>UPCOMING SIT-DOWNS TODAY:</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              {sitDowns.slice(0, 5).map((s) => {
+              {upcomingSitDowns.slice(0, 5).map((s) => {
                 const planningInfo = isTeacherInPlanningNow(s.planning_period, s.school);
                 return (
                   <TouchableOpacity
@@ -310,5 +360,69 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     backgroundColor: '#22C55E',
+  },
+  dispoAlertCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 10,
+    gap: 10,
+  },
+  dispoAlertLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  dispoAlertIconBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(245, 158, 11, 0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dispoAlertTitle: {
+    color: '#D97706',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  actionRequiredBadge: {
+    backgroundColor: '#B45309',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+  },
+  actionRequiredText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  dispoAlertSub: {
+    color: Colors.textSecondary,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  dispoReviewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    gap: 3,
+  },
+  dispoReviewBtnText: {
+    color: '#B45309',
+    fontSize: 12,
+    fontWeight: '800',
   },
 });

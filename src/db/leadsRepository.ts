@@ -7,6 +7,7 @@ import {
   ClientProduct,
   DripTrack,
   ClientConversionPayload,
+  AppointmentOutcome,
 } from '../types';
 
 export function normalizePhoneKey(phone?: string | null): string {
@@ -28,6 +29,21 @@ export interface DeduplicationResult {
   totalAfter: number;
   duplicatesRemoved: number;
   uniqueEducators: number;
+}
+
+export interface RecordDispoPayload {
+  outcome: AppointmentOutcome;
+  notes?: string;
+  // If converted to client:
+  isClient?: boolean;
+  products?: ClientProduct[];
+  annualizedPremium?: number;
+  transferAssetsVolume?: number;
+  policyEffectiveDate?: string;
+  annualReviewDueDate?: string;
+  // If rescheduled:
+  newScheduledDate?: string;
+  newPlanningPeriod?: string;
 }
 
 export class LeadsRepository {
@@ -507,6 +523,9 @@ export class LeadsRepository {
     drip_step?: number;
     last_drip_sent_at?: string | null;
     next_drip_scheduled_at?: string | null;
+    appointment_scheduled_at?: string | null;
+    appointment_outcome?: AppointmentOutcome | null;
+    appointment_completed_at?: string | null;
   }): Promise<void> {
     const targetPhoneKey = normalizePhoneKey(leadData.phone);
     if (targetPhoneKey.length < 10) {
@@ -538,12 +557,16 @@ export class LeadsRepository {
     const dripStep = leadData.drip_step !== undefined ? leadData.drip_step : (current?.drip_step || 0);
     const lastDripSent = leadData.last_drip_sent_at !== undefined ? leadData.last_drip_sent_at : (current?.last_drip_sent_at || null);
     const nextDripAt = leadData.next_drip_scheduled_at !== undefined ? leadData.next_drip_scheduled_at : (current?.next_drip_scheduled_at || null);
+    const apptScheduledAt = leadData.appointment_scheduled_at !== undefined ? leadData.appointment_scheduled_at : (current?.appointment_scheduled_at || null);
+    const apptOutcome = leadData.appointment_outcome !== undefined ? leadData.appointment_outcome : (current?.appointment_outcome || null);
+    const apptCompletedAt = leadData.appointment_completed_at !== undefined ? leadData.appointment_completed_at : (current?.appointment_completed_at || null);
 
     await db.runAsync(
       `UPDATE leads 
        SET name = ?, phone = ?, school = ?, email = ?, room_number = ?, planning_period = ?, years_in_frs = ?, notes = ?, priority_tier = ?, list_id = ?,
            is_client = ?, client_since = ?, products = ?, annualized_premium = ?, transfer_assets_volume = ?, policy_effective_date = ?, annual_review_due_date = ?,
-           drip_track = ?, drip_step = ?, last_drip_sent_at = ?, next_drip_scheduled_at = ?, updated_at = ? 
+           drip_track = ?, drip_step = ?, last_drip_sent_at = ?, next_drip_scheduled_at = ?,
+           appointment_scheduled_at = ?, appointment_outcome = ?, appointment_completed_at = ?, updated_at = ? 
        WHERE id = ?`,
       [
         leadData.name.trim(),
@@ -567,10 +590,125 @@ export class LeadsRepository {
         dripStep,
         lastDripSent,
         nextDripAt,
+        apptScheduledAt,
+        apptOutcome,
+        apptCompletedAt,
         now,
         leadData.id,
       ]
     );
+  }
+
+  /**
+   * Locks in a confirmed sit-down appointment date/time
+   */
+  static async scheduleAppointment(
+    leadId: string,
+    scheduledDateISO: string,
+    note?: string
+  ): Promise<void> {
+    const db = await getDatabase();
+    const now = new Date().toISOString();
+    await db.runAsync(
+      `UPDATE leads 
+       SET appointment_scheduled_at = ?,
+           appointment_outcome = NULL,
+           appointment_completed_at = NULL,
+           last_disposition = 'appointment_set',
+           notes = COALESCE(?, notes),
+           updated_at = ?
+       WHERE id = ?`,
+      [scheduledDateISO, note || null, now, leadId]
+    );
+  }
+
+  /**
+   * Records the definitive post-appointment outcome for a sit-down
+   */
+  static async recordAppointmentDisposition(
+    leadId: string,
+    payload: RecordDispoPayload
+  ): Promise<void> {
+    const db = await getDatabase();
+    const now = new Date().toISOString();
+
+    if (payload.outcome === 'converted') {
+      await this.convertLeadToClient(leadId, {
+        products: payload.products || ['flow_annuity'],
+        annualized_premium: payload.annualizedPremium || 0,
+        transfer_assets_volume: payload.transferAssetsVolume || 0,
+        policy_effective_date: payload.policyEffectiveDate || now.split('T')[0],
+        annual_review_due_date: payload.annualReviewDueDate,
+        notes: payload.notes || 'Converted to ValuTeachers client after sit-down.',
+        drip_track: 'client_annual_review',
+      });
+      await db.runAsync(
+        `UPDATE leads 
+         SET appointment_outcome = 'converted', 
+             appointment_completed_at = ?, 
+             updated_at = ? 
+         WHERE id = ?`,
+        [now, now, leadId]
+      );
+    } else if (payload.outcome === 'nurture_drip') {
+      const nextDate = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      await db.runAsync(
+        `UPDATE leads 
+         SET appointment_outcome = 'nurture_drip', 
+             appointment_completed_at = ?, 
+             last_disposition = 'connected', 
+             drip_track = 'prospect_nurture', 
+             drip_step = 0, 
+             next_drip_scheduled_at = ?, 
+             notes = CASE WHEN ? IS NOT NULL THEN COALESCE(notes || '\n\n', '') || ? ELSE notes END,
+             updated_at = ? 
+         WHERE id = ?`,
+        [now, nextDate, payload.notes || null, payload.notes || null, now, leadId]
+      );
+    } else if (payload.outcome === 'rescheduled') {
+      if (payload.newScheduledDate) {
+        await db.runAsync(
+          `UPDATE leads 
+           SET appointment_scheduled_at = ?, 
+               appointment_outcome = NULL, 
+               appointment_completed_at = NULL, 
+               last_disposition = 'appointment_set', 
+               planning_period = COALESCE(?, planning_period),
+               notes = CASE WHEN ? IS NOT NULL THEN COALESCE(notes || '\n\n', '') || ? ELSE notes END,
+               updated_at = ? 
+           WHERE id = ?`,
+          [payload.newScheduledDate, payload.newPlanningPeriod || null, payload.notes || null, payload.notes || null, now, leadId]
+        );
+      } else {
+        await this.scheduleFollowUp(
+          leadId,
+          new Date(Date.now() + 24 * 3600000).toISOString(),
+          payload.notes || 'Sit-down rescheduled for phone follow-up'
+        );
+      }
+    } else if (payload.outcome === 'no_show') {
+      await db.runAsync(
+        `UPDATE leads 
+         SET appointment_outcome = 'no_show', 
+             appointment_completed_at = ?, 
+             last_disposition = 'no_answer', 
+             notes = CASE WHEN ? IS NOT NULL THEN COALESCE(notes || '\n\n', '') || ? ELSE notes END,
+             updated_at = ? 
+         WHERE id = ?`,
+        [now, payload.notes || 'Sit-down no-show / educator unavailable.', payload.notes || 'Sit-down no-show / educator unavailable.', now, leadId]
+      );
+    } else if (payload.outcome === 'declined') {
+      await db.runAsync(
+        `UPDATE leads 
+         SET appointment_outcome = 'declined', 
+             appointment_completed_at = ?, 
+             last_disposition = 'spoke', 
+             notes = CASE WHEN ? IS NOT NULL THEN COALESCE(notes || '\n\n', '') || ? ELSE notes END,
+             updated_at = ? 
+         WHERE id = ?`,
+        [now, payload.notes || 'Educator declined to proceed with FRS options.', payload.notes || 'Educator declined to proceed with FRS options.', now, leadId]
+      );
+    }
   }
 
   /**
@@ -768,6 +906,9 @@ export class LeadsRepository {
         let dripTrack = master.drip_track || 'none';
         let dripStep = Number(master.drip_step) || 0;
         let nextDripScheduledAt = master.next_drip_scheduled_at;
+        let appointmentScheduledAt = master.appointment_scheduled_at;
+        let appointmentOutcome = master.appointment_outcome;
+        let appointmentCompletedAt = master.appointment_completed_at;
         const productsSet = new Set<string>(master.products || []);
 
         const interestsSet = new Set<string>(master.frs_interests || []);
@@ -798,6 +939,17 @@ export class LeadsRepository {
             dripTrack = dup.drip_track;
             dripStep = dup.drip_step || 0;
             nextDripScheduledAt = dup.next_drip_scheduled_at;
+          }
+
+          // Merge appointment lifecycle details
+          if (!appointmentScheduledAt && dup.appointment_scheduled_at) {
+            appointmentScheduledAt = dup.appointment_scheduled_at;
+          } else if (dup.appointment_scheduled_at && appointmentScheduledAt && new Date(dup.appointment_scheduled_at) > new Date(appointmentScheduledAt)) {
+            appointmentScheduledAt = dup.appointment_scheduled_at;
+          }
+          if (!appointmentOutcome && dup.appointment_outcome) {
+            appointmentOutcome = dup.appointment_outcome;
+            appointmentCompletedAt = dup.appointment_completed_at;
           }
 
           // Merge notes
@@ -876,6 +1028,9 @@ export class LeadsRepository {
              drip_track = ?,
              drip_step = ?,
              next_drip_scheduled_at = ?,
+             appointment_scheduled_at = ?,
+             appointment_outcome = ?,
+             appointment_completed_at = ?,
              updated_at = ?
            WHERE id = ?`,
           [
@@ -903,6 +1058,9 @@ export class LeadsRepository {
             dripTrack,
             dripStep,
             nextDripScheduledAt || null,
+            appointmentScheduledAt || null,
+            appointmentOutcome || null,
+            appointmentCompletedAt || null,
             new Date().toISOString(),
             master.id,
           ]
@@ -993,6 +1151,11 @@ export class LeadsRepository {
           : 0,
       last_drip_sent_at: raw.last_drip_sent_at || null,
       next_drip_scheduled_at: raw.next_drip_scheduled_at || null,
+
+      // Post-Appointment Sit-Down Lifecycle Hydration
+      appointment_scheduled_at: raw.appointment_scheduled_at || null,
+      appointment_outcome: raw.appointment_outcome || null,
+      appointment_completed_at: raw.appointment_completed_at || null,
     };
   }
 }

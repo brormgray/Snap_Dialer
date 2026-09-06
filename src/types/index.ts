@@ -20,6 +20,13 @@ export type DripTrack =
   | 'client_annual_review'  // Post-conversion policy servicing and anniversary review cadence
   | 'none';
 
+export type AppointmentOutcome =
+  | 'converted'             // Met and converted into client
+  | 'nurture_drip'          // Met, did not buy yet, enrolled in Track A prospect drip
+  | 'rescheduled'           // Sit-down postponed to a new confirmed time
+  | 'no_show'               // Educator was unavailable / not in classroom
+  | 'declined';             // Met or called, decided not to proceed
+
 export interface Lead {
   id: string;
   list_id: string;
@@ -65,6 +72,11 @@ export interface Lead {
   drip_step?: number;
   last_drip_sent_at?: string | null;
   next_drip_scheduled_at?: string | null;
+
+  // --- Post-Appointment Sit-Down Lifecycle Fields ---
+  appointment_scheduled_at?: string | null; // ISO 8601 string of confirmed sit-down
+  appointment_outcome?: AppointmentOutcome | null; // Post-appointment disposition outcome
+  appointment_completed_at?: string | null; // ISO 8601 timestamp of when dispo was recorded
 }
 
 export interface LeadList {
@@ -142,6 +154,11 @@ export interface ExtractedLeadItem {
   drip_step?: number;
   last_drip_sent_at?: string | null;
   next_drip_scheduled_at?: string | null;
+
+  // Optional post-appointment lifecycle fields
+  appointment_scheduled_at?: string | null;
+  appointment_outcome?: AppointmentOutcome | null;
+  appointment_completed_at?: string | null;
 }
 
 export interface ClientConversionPayload {

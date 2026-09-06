@@ -196,6 +196,11 @@ export class IndexedDbStorage {
             : 0,
         last_drip_sent_at: l.last_drip_sent_at || null,
         next_drip_scheduled_at: l.next_drip_scheduled_at || null,
+
+        // Post-Appointment Sit-Down Lifecycle Defaults
+        appointment_scheduled_at: l.appointment_scheduled_at || null,
+        appointment_outcome: l.appointment_outcome || null,
+        appointment_completed_at: l.appointment_completed_at || null,
       };
     });
 

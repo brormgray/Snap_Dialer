@@ -607,6 +607,17 @@ export default function DialerHudScreen({ route, navigation }: any) {
       if (noteToRecord) {
         await LeadsRepository.updateLeadNotes(currentLead.id, updatedNotes || null);
       }
+      if (disposition === 'appointment_set') {
+        const scheduledDate = CalendarService.calculateNextPlanningDate(
+          currentLead.planning_period,
+          currentLead.school
+        );
+        await LeadsRepository.scheduleAppointment(
+          currentLead.id,
+          scheduledDate.toISOString(),
+          updatedNotes || undefined
+        );
+      }
       await LeadsRepository.updateLeadDisposition(currentLead.id, disposition, updatedNotes || undefined);
       const actualDuration = callStartTimeRef.current
         ? Math.max(callDuration, Math.floor((Date.now() - callStartTimeRef.current) / 1000))

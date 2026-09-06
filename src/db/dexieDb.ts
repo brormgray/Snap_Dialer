@@ -55,6 +55,18 @@ export class SnapDialerDexieDB extends Dexie {
           if (lead.next_drip_scheduled_at === undefined) lead.next_drip_scheduled_at = null;
         });
       });
+
+    this.version(3)
+      .stores({
+        leads: 'id, list_id, school, priority_tier, last_disposition, follow_up_at, is_client, drip_track, annual_review_due_date, next_drip_scheduled_at, appointment_outcome, appointment_scheduled_at, created_at',
+      })
+      .upgrade(async (tx) => {
+        await tx.table('leads').toCollection().modify((lead: any) => {
+          if (lead.appointment_outcome === undefined) lead.appointment_outcome = null;
+          if (lead.appointment_scheduled_at === undefined) lead.appointment_scheduled_at = null;
+          if (lead.appointment_completed_at === undefined) lead.appointment_completed_at = null;
+        });
+      });
   }
 
   /**

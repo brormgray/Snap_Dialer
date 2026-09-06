@@ -51,6 +51,7 @@ import ZoomableImageModal from '../components/ZoomableImageModal';
 import { TodayCockpitCard } from '../components/TodayCockpitCard';
 import { BatchDripDispatchModal } from '../components/BatchDripDispatchModal';
 import { DripDispatcherService } from '../services/dripDispatcherService';
+import { PipelineStateService } from '../services/pipelineStateService';
 
 export default function ListsScreen({ navigation }: any) {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -61,7 +62,7 @@ export default function ListsScreen({ navigation }: any) {
   const [selectedSchool, setSelectedSchool] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'fresh' | 'legacy'>('all');
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
-  const [filterTab, setFilterTab] = useState<'all' | 'pending' | 'appts' | 'connected' | 'callback' | 'unanswered' | 'clients'>('all');
+  const [filterTab, setFilterTab] = useState<'all' | 'pending' | 'appts' | 'dispo_needed' | 'connected' | 'callback' | 'unanswered' | 'clients'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -185,10 +186,13 @@ export default function ListsScreen({ navigation }: any) {
     }
 
     // Filter by Tab
+    const now = new Date();
     if (filterTab === 'pending') {
       result = result.filter((l) => !hasEverBeenCalled(l));
     } else if (filterTab === 'appts') {
-      result = result.filter((l) => l.last_disposition === 'appointment_set');
+      result = result.filter((l) => PipelineStateService.isUpcomingAppointment(l, now));
+    } else if (filterTab === 'dispo_needed') {
+      result = result.filter((l) => PipelineStateService.isDispoNeeded(l, now));
     } else if (filterTab === 'connected') {
       result = result.filter((l) => ['connected', 'spoke'].includes(l.last_disposition || ''));
     } else if (filterTab === 'callback') {
@@ -314,9 +318,18 @@ export default function ListsScreen({ navigation }: any) {
   const getStatusBadge = (lead: Lead) => {
     const disp = lead.last_disposition;
     if (disp === 'appointment_set') {
+      if (PipelineStateService.isDispoNeeded(lead)) {
+        return { label: '⚠️ Dispo Due', bg: Colors.badgeWarningBg, color: Colors.badgeWarningText };
+      }
       return { label: '🎯 Appt. Set', bg: Colors.badgeSuccessBg, color: Colors.badgeSuccessText };
     }
-    if (disp === 'connected') {
+    if (lead.appointment_outcome === 'converted') {
+      return { label: '★ Client Converted', bg: 'rgba(16, 185, 129, 0.18)', color: '#10B981' };
+    }
+    if (lead.appointment_outcome === 'nurture_drip') {
+      return { label: '💬 Prospect Drip', bg: 'rgba(2, 132, 199, 0.18)', color: '#0284C7' };
+    }
+    if (disp === 'connected' || disp === 'spoke') {
       return { label: '💬 Spoke / Connected', bg: Colors.badgeSuccessBg, color: Colors.badgeSuccessText };
     }
     if (disp === 'callback_requested' || lead.follow_up_at) {
@@ -348,6 +361,10 @@ export default function ListsScreen({ navigation }: any) {
 
   // 'To Call': ONLY leads that have NOT been called at least once ever (0 attempts)
   const pendingCount = scopedLeads.filter((l) => !hasEverBeenCalled(l)).length;
+
+  const now = new Date();
+  const upcomingCount = scopedLeads.filter((l) => PipelineStateService.isUpcomingAppointment(l, now)).length;
+  const dispoNeededCount = scopedLeads.filter((l) => PipelineStateService.isDispoNeeded(l, now)).length;
 
   // 'Appts Set': Count of active scheduled educator appointments in the current pipeline
   const apptsInLeads = scopedLeads.filter((l) => l.last_disposition === 'appointment_set').length;
@@ -456,6 +473,7 @@ export default function ListsScreen({ navigation }: any) {
         onOpenDripModal={() => setDripModalVisible(true)}
         onNavigateLead={(leadId) => navigation.navigate('LeadDetail', { leadId })}
         onStartDialing={handleStartMasterQueue}
+        onFilterDispoDue={() => setFilterTab('dispo_needed')}
       />
 
       {/* KPI Stats Strip */}
@@ -674,9 +692,34 @@ export default function ListsScreen({ navigation }: any) {
             onPress={() => setFilterTab('appts')}
           >
             <Text style={[styles.tabChipText, filterTab === 'appts' && styles.tabChipTextActive]}>
-              Appts Set ({apptsInLeads})
+              Appts Set ({upcomingCount})
             </Text>
           </TouchableOpacity>
+          {dispoNeededCount > 0 && (
+            <TouchableOpacity
+              style={[
+                styles.tabChip,
+                styles.tabChipDispoDue,
+                filterTab === 'dispo_needed' && styles.tabChipDispoDueActive,
+              ]}
+              onPress={() => setFilterTab('dispo_needed')}
+            >
+              <Clock
+                size={12}
+                color={filterTab === 'dispo_needed' ? '#000000' : '#D97706'}
+                style={{ marginRight: 4 }}
+              />
+              <Text
+                style={[
+                  styles.tabChipText,
+                  styles.tabChipDispoDueText,
+                  filterTab === 'dispo_needed' && styles.tabChipDispoDueTextActive,
+                ]}
+              >
+                ⚠️ Dispo Due ({dispoNeededCount})
+              </Text>
+            </TouchableOpacity>
+          )}
           {spokeCount > 0 && (
             <TouchableOpacity
               style={[styles.tabChip, filterTab === 'connected' && styles.tabChipActive]}
@@ -901,6 +944,18 @@ export default function ListsScreen({ navigation }: any) {
                     <MessageSquare size={15} color={Colors.brandAccent} />
                     <Text style={[styles.cardActionBtnText, { color: Colors.brandAccent }]}>AI Text</Text>
                   </TouchableOpacity>
+
+                  {PipelineStateService.isDispoNeeded(item) ? (
+                    <TouchableOpacity
+                      style={[styles.cardActionBtn, styles.dispoActionBtn]}
+                      onPress={() => navigation.navigate('LeadDetail', { leadId: item.id })}
+                    >
+                      <Clock size={15} color="#D97706" />
+                      <Text style={[styles.cardActionBtnText, { color: '#D97706', fontWeight: '800' }]}>
+                        Record Dispo
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
 
                   <TouchableOpacity
                     style={[styles.cardActionBtn, styles.callActionBtn]}
@@ -1255,6 +1310,24 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '800',
   },
+  tabChipDispoDue: {
+    borderColor: '#D97706',
+    backgroundColor: 'rgba(217, 119, 6, 0.12)',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tabChipDispoDueActive: {
+    backgroundColor: '#D97706',
+    borderColor: '#D97706',
+  },
+  tabChipDispoDueText: {
+    color: '#D97706',
+    fontWeight: '700',
+  },
+  tabChipDispoDueTextActive: {
+    color: '#000000',
+    fontWeight: '800',
+  },
   leadCard: {
     backgroundColor: Colors.surfaceCard,
     borderRadius: 14,
@@ -1379,6 +1452,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.callActive,
     borderColor: Colors.callActive,
     justifyContent: 'center',
+  },
+  dispoActionBtn: {
+    backgroundColor: 'rgba(217, 119, 6, 0.15)',
+    borderColor: '#D97706',
   },
   deleteLeadBtn: {
     padding: 8,
