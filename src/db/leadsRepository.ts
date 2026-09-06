@@ -526,6 +526,7 @@ export class LeadsRepository {
     appointment_scheduled_at?: string | null;
     appointment_outcome?: AppointmentOutcome | null;
     appointment_completed_at?: string | null;
+    last_disposition?: CallDisposition | null;
   }): Promise<void> {
     const targetPhoneKey = normalizePhoneKey(leadData.phone);
     if (targetPhoneKey.length < 10) {
@@ -558,15 +559,37 @@ export class LeadsRepository {
     const lastDripSent = leadData.last_drip_sent_at !== undefined ? leadData.last_drip_sent_at : (current?.last_drip_sent_at || null);
     const nextDripAt = leadData.next_drip_scheduled_at !== undefined ? leadData.next_drip_scheduled_at : (current?.next_drip_scheduled_at || null);
     const apptScheduledAt = leadData.appointment_scheduled_at !== undefined ? leadData.appointment_scheduled_at : (current?.appointment_scheduled_at || null);
-    const apptOutcome = leadData.appointment_outcome !== undefined ? leadData.appointment_outcome : (current?.appointment_outcome || null);
-    const apptCompletedAt = leadData.appointment_completed_at !== undefined ? leadData.appointment_completed_at : (current?.appointment_completed_at || null);
+    let apptOutcome = leadData.appointment_outcome !== undefined ? leadData.appointment_outcome : (current?.appointment_outcome || null);
+    let apptCompletedAt = leadData.appointment_completed_at !== undefined ? leadData.appointment_completed_at : (current?.appointment_completed_at || null);
+    let finalDispo = leadData.last_disposition !== undefined ? leadData.last_disposition : (current?.last_disposition || 'pending');
+
+    // Normalization: converting to client automatically resolves appointment
+    if (isClient) {
+      if (!apptOutcome) {
+        apptOutcome = 'converted';
+      }
+      if (!apptCompletedAt) {
+        apptCompletedAt = now;
+      }
+      if (finalDispo === 'appointment_set') {
+        finalDispo = 'connected';
+      }
+    } else if (dripTrack === 'prospect_nurture' && finalDispo === 'appointment_set') {
+      if (!apptOutcome) {
+        apptOutcome = 'nurture_drip';
+      }
+      if (!apptCompletedAt) {
+        apptCompletedAt = now;
+      }
+      finalDispo = 'connected';
+    }
 
     await db.runAsync(
       `UPDATE leads 
        SET name = ?, phone = ?, school = ?, email = ?, room_number = ?, planning_period = ?, years_in_frs = ?, notes = ?, priority_tier = ?, list_id = ?,
            is_client = ?, client_since = ?, products = ?, annualized_premium = ?, transfer_assets_volume = ?, policy_effective_date = ?, annual_review_due_date = ?,
            drip_track = ?, drip_step = ?, last_drip_sent_at = ?, next_drip_scheduled_at = ?,
-           appointment_scheduled_at = ?, appointment_outcome = ?, appointment_completed_at = ?, updated_at = ? 
+           appointment_scheduled_at = ?, appointment_outcome = ?, appointment_completed_at = ?, last_disposition = ?, updated_at = ? 
        WHERE id = ?`,
       [
         leadData.name.trim(),
@@ -593,6 +616,7 @@ export class LeadsRepository {
         apptScheduledAt,
         apptOutcome,
         apptCompletedAt,
+        finalDispo,
         now,
         leadData.id,
       ]
@@ -745,6 +769,9 @@ export class LeadsRepository {
          drip_track = ?,
          drip_step = ?,
          next_drip_scheduled_at = ?,
+         appointment_outcome = 'converted',
+         appointment_completed_at = COALESCE(appointment_completed_at, ?),
+         last_disposition = CASE WHEN last_disposition = 'appointment_set' THEN 'connected' ELSE last_disposition END,
          notes = CASE WHEN ? IS NOT NULL THEN COALESCE(notes || '\n\n', '') || ? ELSE notes END,
          updated_at = ?
        WHERE id = ?`,
@@ -758,6 +785,7 @@ export class LeadsRepository {
         dripTrack,
         dripStep,
         nextDripAt,
+        now,
         payload.notes || null,
         payload.notes || null,
         now,
@@ -1119,17 +1147,74 @@ export class LeadsRepository {
       }
     }
 
+    const isClient = raw.is_client === 1 || raw.is_client === true || raw.is_client === 'true';
+    const dripTrack = raw.drip_track || 'none';
+    let apptOutcome = raw.appointment_outcome || null;
+    let apptCompletedAt = raw.appointment_completed_at || null;
+    let lastDisp = raw.last_disposition || 'pending';
+    let needsHealing = false;
+
+    // Auto-healing rule 1: If client is true but appointment_outcome is null or disposition is still appointment_set
+    if (isClient) {
+      if (!apptOutcome) {
+        apptOutcome = 'converted';
+        apptCompletedAt = apptCompletedAt || raw.client_since || raw.updated_at || raw.created_at || new Date().toISOString();
+        needsHealing = true;
+      }
+      if (lastDisp === 'appointment_set') {
+        lastDisp = 'connected';
+        needsHealing = true;
+      }
+    }
+
+    // Auto-healing rule 2: If enrolled in prospect_nurture drip while still in appointment_set
+    if (dripTrack === 'prospect_nurture' && lastDisp === 'appointment_set') {
+      lastDisp = 'connected';
+      if (!apptOutcome) {
+        apptOutcome = 'nurture_drip';
+        apptCompletedAt = apptCompletedAt || raw.updated_at || raw.created_at || new Date().toISOString();
+      }
+      needsHealing = true;
+    }
+
+    // In-memory normalization and background persistence
+    if (needsHealing) {
+      raw.appointment_outcome = apptOutcome;
+      raw.appointment_completed_at = apptCompletedAt;
+      raw.last_disposition = lastDisp;
+
+      if (raw.id) {
+        setTimeout(async () => {
+          try {
+            const db = await getDatabase();
+            await db.runAsync(
+              `UPDATE leads 
+               SET appointment_outcome = ?, 
+                   appointment_completed_at = ?, 
+                   last_disposition = ?, 
+                   updated_at = ? 
+               WHERE id = ?`,
+              [apptOutcome, apptCompletedAt, lastDisp, new Date().toISOString(), raw.id]
+            );
+          } catch {
+            // Non-fatal auto-healing persistence
+          }
+        }, 0);
+      }
+    }
+
     return {
       ...raw,
       priority_tier: raw.priority_tier !== undefined && raw.priority_tier !== null ? Number(raw.priority_tier) : 1,
       cadence_step: raw.cadence_step !== undefined && raw.cadence_step !== null ? Number(raw.cadence_step) : 1,
       attempts_count: raw.attempts_count !== undefined && raw.attempts_count !== null ? Number(raw.attempts_count) : 0,
       text_ok: raw.text_ok === 1 || raw.text_ok === true,
+      last_disposition: lastDisp,
       frs_interests: interests,
       meeting_preferences: preferences,
 
       // Client Conversion Hydration
-      is_client: raw.is_client === 1 || raw.is_client === true || raw.is_client === 'true',
+      is_client: isClient,
       client_since: raw.client_since || null,
       products,
       annualized_premium:
@@ -1144,7 +1229,7 @@ export class LeadsRepository {
       annual_review_due_date: raw.annual_review_due_date || null,
 
       // Drip Tracking Hydration
-      drip_track: raw.drip_track || 'none',
+      drip_track: dripTrack,
       drip_step:
         raw.drip_step !== undefined && raw.drip_step !== null && !isNaN(Number(raw.drip_step))
           ? Number(raw.drip_step)
@@ -1154,8 +1239,8 @@ export class LeadsRepository {
 
       // Post-Appointment Sit-Down Lifecycle Hydration
       appointment_scheduled_at: raw.appointment_scheduled_at || null,
-      appointment_outcome: raw.appointment_outcome || null,
-      appointment_completed_at: raw.appointment_completed_at || null,
+      appointment_outcome: apptOutcome,
+      appointment_completed_at: apptCompletedAt,
     };
   }
 }

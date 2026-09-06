@@ -189,25 +189,28 @@ export class CalendarService {
   }
 
   /**
-   * Calculates the next school-day occurrence of an educator's planning period.
-   * If today is a weekday and the planning period hasn't ended yet, schedules for today.
-   * Otherwise, schedules for the next school day (skipping weekends).
+   * Calculates the next school-day occurrence of an educator's planning period relative to a reference date.
+   * If the reference date is a weekday and the planning period hasn't ended yet as of that date/time,
+   * schedules for that date. Otherwise, schedules for the next school day (skipping weekends).
+   * 
+   * @param referenceDate Optional anchor date for the calculation (defaults to new Date()).
    */
   static calculateNextPlanningDate(
     planningPeriod?: string | null,
-    schoolName?: string | null
+    schoolName?: string | null,
+    referenceDate: Date = new Date()
   ): Date {
-    const now = new Date();
+    const ref = (referenceDate instanceof Date && !isNaN(referenceDate.getTime())) ? referenceDate : new Date();
     const schedule = getScheduleForSchool(schoolName);
     const periodId = matchPeriodId(planningPeriod);
     const period = schedule.find((p) => p.id === periodId) || schedule[2]; // Default to Period 3 if unknown
 
-    const targetDate = new Date(now);
+    const targetDate = new Date(ref);
     const [startHour, startMinute] = (period.startTime || '09:00').split(':').map(Number);
     targetDate.setHours(startHour || 9, startMinute || 0, 0, 0);
 
     const dayOfWeek = targetDate.getDay(); // 0 = Sun, 6 = Sat
-    if (targetDate.getTime() <= now.getTime() || dayOfWeek === 0 || dayOfWeek === 6) {
+    if (targetDate.getTime() <= ref.getTime() || dayOfWeek === 0 || dayOfWeek === 6) {
       targetDate.setDate(targetDate.getDate() + 1);
       while (targetDate.getDay() === 0 || targetDate.getDay() === 6) {
         targetDate.setDate(targetDate.getDate() + 1);

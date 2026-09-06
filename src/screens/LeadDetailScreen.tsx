@@ -934,14 +934,37 @@ export default function LeadDetailScreen({ route, navigation }: any) {
               <ClientPortfolioCard
                 lead={lead}
                 onSave={async (portfolioUpdates) => {
+                  const isNowClient = Boolean(portfolioUpdates.is_client);
+                  const isDripNurture = portfolioUpdates.drip_track === 'prospect_nurture';
+                  const hadApptSet = lead.last_disposition === 'appointment_set';
+                  const nowISO = new Date().toISOString();
+
+                  let syncOutcome = portfolioUpdates.appointment_outcome !== undefined ? portfolioUpdates.appointment_outcome : lead.appointment_outcome;
+                  let syncCompletedAt = portfolioUpdates.appointment_completed_at !== undefined ? portfolioUpdates.appointment_completed_at : lead.appointment_completed_at;
+                  let syncDisposition = portfolioUpdates.last_disposition || lead.last_disposition;
+
+                  if (isNowClient) {
+                    syncOutcome = 'converted';
+                    syncCompletedAt = syncCompletedAt || nowISO;
+                    if (hadApptSet) syncDisposition = 'connected';
+                  } else if (isDripNurture && hadApptSet) {
+                    if (!syncOutcome) syncOutcome = 'nurture_drip';
+                    syncCompletedAt = syncCompletedAt || nowISO;
+                    syncDisposition = 'connected';
+                  }
+
                   await LeadsRepository.updateLeadDetails({
                     id: lead.id,
                     name: lead.name,
                     phone: lead.phone,
                     school: lead.school,
                     ...portfolioUpdates,
+                    appointment_outcome: syncOutcome,
+                    appointment_completed_at: syncCompletedAt,
+                    last_disposition: syncDisposition,
                   });
                   await loadLeadData();
+                  showToast(isNowClient ? '★ Converted to Client & Appointment Resolved' : '✓ Portfolio & Drip Cadence Saved');
                 }}
               />
 

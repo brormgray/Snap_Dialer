@@ -554,9 +554,23 @@ class WebDatabase implements IDatabase {
                 lead.appointment_scheduled_at = params[21] || null;
                 lead.appointment_outcome = params[22] || null;
                 lead.appointment_completed_at = params[23] || null;
-                lead.updated_at = params[24] || new Date().toISOString();
+                if (s.includes('last_disposition = ?')) {
+                  lead.last_disposition = params[24] || lead.last_disposition || 'pending';
+                  lead.updated_at = params[25] || new Date().toISOString();
+                } else {
+                  lead.updated_at = params[24] || new Date().toISOString();
+                }
               } else {
                 lead.updated_at = params[21] || new Date().toISOString();
+              }
+              if (lead.is_client) {
+                if (!lead.appointment_outcome) lead.appointment_outcome = 'converted';
+                if (!lead.appointment_completed_at) lead.appointment_completed_at = new Date().toISOString();
+                if (lead.last_disposition === 'appointment_set') lead.last_disposition = 'connected';
+              } else if (lead.drip_track === 'prospect_nurture' && lead.last_disposition === 'appointment_set') {
+                if (!lead.appointment_outcome) lead.appointment_outcome = 'nurture_drip';
+                if (!lead.appointment_completed_at) lead.appointment_completed_at = new Date().toISOString();
+                lead.last_disposition = 'connected';
               }
             } else {
               lead.updated_at = params[10] || new Date().toISOString();
@@ -577,9 +591,15 @@ class WebDatabase implements IDatabase {
             if (params[7]) lead.list_id = params[7];
             lead.updated_at = params[8] || new Date().toISOString();
           }
-        } else if (s.includes('is_client = ?') || s.includes('is_client=')) {
-          lead.is_client = params[0] === 1 || params[0] === true;
+        } else if (s.includes('is_client = ?') || s.includes('is_client=') || s.includes('is_client = 1')) {
+          const isDirectConvert = s.includes('is_client = 1');
+          lead.is_client = isDirectConvert ? true : (params[0] === 1 || params[0] === true);
           lead.client_since = params[1] || lead.client_since || new Date().toISOString();
+          if (isDirectConvert) {
+            lead.appointment_outcome = 'converted';
+            lead.appointment_completed_at = lead.appointment_completed_at || new Date().toISOString();
+            if (lead.last_disposition === 'appointment_set') lead.last_disposition = 'connected';
+          }
           try {
             lead.products = typeof params[2] === 'string' ? JSON.parse(params[2]) : (params[2] || []);
           } catch { lead.products = []; }

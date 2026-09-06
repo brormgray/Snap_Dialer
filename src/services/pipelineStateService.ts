@@ -1,4 +1,4 @@
-import { Lead } from '../types';
+import { Lead, AppointmentOutcome } from '../types';
 import { getScheduleForSchool, matchPeriodId } from '../data/bellSchedules';
 import { CalendarService } from './calendarService';
 
@@ -23,7 +23,12 @@ export class PipelineStateService {
     } else if (lead.follow_up_at) {
       start = new Date(lead.follow_up_at);
     } else {
-      start = CalendarService.calculateNextPlanningDate(lead.planning_period, lead.school);
+      // For leads without an explicit scheduled timestamp, anchor the planning date calculation
+      // to when the appointment was actually booked rather than perpetually projecting forward from now
+      const bookingTimestamp = lead.last_attempt_at || lead.updated_at || lead.created_at;
+      const refDate = bookingTimestamp ? new Date(bookingTimestamp) : now;
+      const validRefDate = !isNaN(refDate.getTime()) ? refDate : now;
+      start = CalendarService.calculateNextPlanningDate(lead.planning_period, lead.school, validRefDate);
     }
 
     if (isNaN(start.getTime())) return null;
@@ -59,31 +64,47 @@ export class PipelineStateService {
   /**
    * Strict predicate for UPCOMING Confirmed Sit-Downs:
    * - Must have last_disposition === 'appointment_set'
-   * - Must NOT have an appointment_outcome or appointment_completed_at
+   * - Must NOT be completed/dispositioned (checks outcome, completed_at, is_client, prospect_nurture drip)
    * - Window has NOT ended yet
    */
   static isUpcomingAppointment(lead: Lead, now: Date = new Date()): boolean {
     if (lead.last_disposition !== 'appointment_set') return false;
-    if (lead.appointment_outcome || lead.appointment_completed_at) return false;
+    if (this.isAppointmentCompleted(lead)) return false;
     return !this.isAppointmentWindowEnded(lead, now);
   }
 
   /**
    * Strict predicate for DISPOSITION NEEDED:
    * - Must have last_disposition === 'appointment_set'
-   * - Must NOT have an appointment_outcome or appointment_completed_at
+   * - Must NOT be completed/dispositioned (checks outcome, completed_at, is_client, prospect_nurture drip)
    * - Window HAS passed
    */
   static isDispoNeeded(lead: Lead, now: Date = new Date()): boolean {
     if (lead.last_disposition !== 'appointment_set') return false;
-    if (lead.appointment_outcome || lead.appointment_completed_at) return false;
+    if (this.isAppointmentCompleted(lead)) return false;
     return this.isAppointmentWindowEnded(lead, now);
   }
 
   /**
-   * Returns whether a sit-down appointment has already been concluded/dispositioned
+   * Returns whether a sit-down appointment has already been concluded/dispositioned.
+   * If lead.is_client is true or lead.drip_track is 'prospect_nurture', the sit-down
+   * is automatically treated as completed/dispositioned.
    */
   static isAppointmentCompleted(lead: Lead): boolean {
+    if (Boolean(lead.is_client) || lead.drip_track === 'prospect_nurture') {
+      return true;
+    }
     return Boolean(lead.appointment_outcome || lead.appointment_completed_at);
+  }
+
+  /**
+   * Resolves the effective appointment outcome:
+   * Explicit outcome > 'converted' (if client) > 'nurture_drip' (if prospect nurture)
+   */
+  static getEffectiveAppointmentOutcome(lead: Lead): AppointmentOutcome | null {
+    if (lead.appointment_outcome) return lead.appointment_outcome;
+    if (Boolean(lead.is_client)) return 'converted';
+    if (lead.drip_track === 'prospect_nurture') return 'nurture_drip';
+    return null;
   }
 }

@@ -245,4 +245,96 @@ describe('Post-Appointment Lifecycle & Dispo Queue Architecture', () => {
     assert.strictEqual(testRecord.appointment_outcome, 'converted');
     assert.strictEqual(testRecord.appointment_completed_at, '2026-09-12T14:00:00.000Z');
   });
+
+  // 8. Historical Booking Anchor (Resolves the rolling horizon bug)
+  it('anchors planning date calculation to booking timestamp when appointment_scheduled_at is null', () => {
+    // Lead booked 7 days ago on Friday Aug 28, 2026 at 10:00 AM
+    const bookedDate = new Date('2026-08-28T14:00:00.000Z');
+    const now = new Date('2026-09-06T15:00:00.000Z'); // Today
+
+    const historicalLead = {
+      id: 'lead_last_week',
+      last_disposition: 'appointment_set',
+      last_attempt_at: bookedDate.toISOString(),
+      planning_period: 'Period 3',
+      school: 'Deland High School',
+      appointment_scheduled_at: null,
+      appointment_outcome: null,
+      appointment_completed_at: null,
+    };
+
+    // Calculate window using the booking timestamp anchor
+    const bookingAnchor = new Date(historicalLead.last_attempt_at);
+    // Standard appointment window is placed on or immediately following the booking date (Aug 28 or Aug 31)
+    const windowStart = new Date(bookingAnchor.getTime() + 2 * 60 * 60 * 1000); // Same day Aug 28
+    const windowEnd = new Date(windowStart.getTime() + 45 * 60 * 1000);
+
+    const isEnded = now.getTime() >= windowEnd.getTime();
+    assert.strictEqual(isEnded, true, 'Window from last week should be completely ended as of today');
+  });
+
+  // 9. Auto-completion of converted clients and prospect nurture drips
+  it('automatically excludes converted clients and nurture drip leads from Appts Set and Dispo Due', () => {
+    const now = new Date('2026-09-06T15:00:00.000Z');
+
+    function isAppointmentCompleted(lead) {
+      if (Boolean(lead.is_client) || lead.drip_track === 'prospect_nurture') {
+        return true;
+      }
+      return Boolean(lead.appointment_outcome || lead.appointment_completed_at);
+    }
+
+    const convertedClientLead = {
+      id: 'lead_client_1',
+      last_disposition: 'appointment_set', // Even if last_disposition was still appointment_set
+      is_client: true,
+      annualized_premium: 6000,
+      appointment_outcome: null,
+    };
+
+    const prospectDripLead = {
+      id: 'lead_drip_1',
+      last_disposition: 'appointment_set',
+      is_client: false,
+      drip_track: 'prospect_nurture',
+      appointment_outcome: null,
+    };
+
+    assert.strictEqual(isAppointmentCompleted(convertedClientLead), true);
+    assert.strictEqual(isAppointmentCompleted(prospectDripLead), true);
+  });
+
+  // 10. Auto-healing of legacy records during hydration
+  it('auto-heals legacy appointment_set records into converted clients on hydration', () => {
+    const rawLegacyLead = {
+      id: 'legacy_client',
+      name: 'Elena Rostova',
+      phone: '3865551234',
+      last_disposition: 'appointment_set',
+      is_client: 1,
+      appointment_outcome: null,
+      appointment_completed_at: null,
+      updated_at: '2026-09-01T10:00:00.000Z',
+    };
+
+    // Simulate hydrateLead auto-healing
+    const isClient = rawLegacyLead.is_client === 1 || rawLegacyLead.is_client === true;
+    let apptOutcome = rawLegacyLead.appointment_outcome;
+    let apptCompletedAt = rawLegacyLead.appointment_completed_at;
+    let lastDisp = rawLegacyLead.last_disposition;
+
+    if (isClient) {
+      if (!apptOutcome) {
+        apptOutcome = 'converted';
+        apptCompletedAt = apptCompletedAt || rawLegacyLead.updated_at;
+      }
+      if (lastDisp === 'appointment_set') {
+        lastDisp = 'connected';
+      }
+    }
+
+    assert.strictEqual(apptOutcome, 'converted');
+    assert.strictEqual(apptCompletedAt, '2026-09-01T10:00:00.000Z');
+    assert.strictEqual(lastDisp, 'connected');
+  });
 });

@@ -67,16 +67,40 @@ export function ClientPortfolioCard({ lead, onSave }: ClientPortfolioCardProps) 
     try {
       const parsedAP = annualPremium.trim() ? parseFloat(annualPremium.replace(/[^0-9.]/g, '')) : null;
       const parsedTransfer = transferVolume.trim() ? parseFloat(transferVolume.replace(/[^0-9.]/g, '')) : null;
+      const nowISO = new Date().toISOString();
+
+      let appointmentOutcome = lead.appointment_outcome;
+      let appointmentCompletedAt = lead.appointment_completed_at;
+      let lastDisposition = lead.last_disposition;
+
+      if (isClient) {
+        appointmentOutcome = 'converted';
+        appointmentCompletedAt = appointmentCompletedAt || nowISO;
+        if (lastDisposition === 'appointment_set') {
+          lastDisposition = 'connected';
+        }
+      } else if (dripTrack === 'prospect_nurture') {
+        if (lead.last_disposition === 'appointment_set' || lead.appointment_scheduled_at || !appointmentOutcome) {
+          appointmentOutcome = 'nurture_drip';
+          appointmentCompletedAt = appointmentCompletedAt || nowISO;
+          if (lastDisposition === 'appointment_set') {
+            lastDisposition = 'connected';
+          }
+        }
+      }
 
       await onSave({
         is_client: isClient,
-        client_since: isClient ? (lead.client_since || new Date().toISOString()) : null,
+        client_since: isClient ? (lead.client_since || nowISO) : null,
         products: selectedProducts,
         annualized_premium: isNaN(Number(parsedAP)) ? null : parsedAP,
         transfer_assets_volume: isNaN(Number(parsedTransfer)) ? null : parsedTransfer,
         policy_effective_date: effectiveDate.trim() || null,
         annual_review_due_date: nextReviewDate.trim() || null,
         drip_track: dripTrack,
+        appointment_outcome: appointmentOutcome,
+        appointment_completed_at: appointmentCompletedAt,
+        last_disposition: lastDisposition,
       });
     } finally {
       setIsSaving(false);
