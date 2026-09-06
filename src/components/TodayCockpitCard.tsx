@@ -233,18 +233,18 @@ export function TodayCockpitCard({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: '#0F172A',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1.5,
     borderColor: 'rgba(212, 160, 23, 0.35)',
-    padding: 14,
+    padding: 10,
     marginHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 6,
   },
   titleRow: {
     flexDirection: 'row',
@@ -253,24 +253,24 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     color: Colors.heavenlyGold,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.8,
   },
   todayDateText: {
     color: Colors.textMuted,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
   },
   triadContainer: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
   },
   triadBox: {
     flex: 1,
     backgroundColor: '#1E293B',
-    borderRadius: 12,
-    padding: 10,
+    borderRadius: 10,
+    padding: 8,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
   },
@@ -282,21 +282,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   triadNumber: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '900',
   },
   triadLabel: {
     color: Colors.textPrimary,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
   },
   triadSub: {
     color: Colors.textMuted,
     fontSize: 9,
-    marginTop: 2,
+    marginTop: 1,
   },
   dispatchActionBtn: {
     flexDirection: 'row',

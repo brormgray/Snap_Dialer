@@ -75,7 +75,10 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Lists'))}
+        >
           <ArrowLeft size={22} color="#FFFFFF" />
         </TouchableOpacity>
         <View style={{ flex: 1, marginHorizontal: 8 }}>

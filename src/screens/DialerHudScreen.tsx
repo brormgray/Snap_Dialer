@@ -14,6 +14,7 @@ import {
   PanResponder,
   ScrollView,
   Image,
+  Platform,
 } from 'react-native';
 import {
   PhoneCall,
@@ -1317,35 +1318,38 @@ export default function DialerHudScreen({ route, navigation }: any) {
             <Eye size={15} color={Colors.heavenlyGold} />
           </TouchableOpacity>
 
-          {/* Live Call Duration Meter */}
-          {isOnCall && (
-            <View style={styles.callDurationBox}>
-              <Clock size={16} color={Colors.statusSitDownText} />
-              <Text style={styles.callDurationText}>
-                Call in progress: {Math.floor(callDuration / 60)}:
-                {(callDuration % 60).toString().padStart(2, '0')}
-              </Text>
-            </View>
-          )}
-
-          {/* Big Dial Trigger Button */}
-          <TouchableOpacity
-            style={[
-              styles.mainDialButton,
-              isOnCall && { backgroundColor: Colors.callHangup, borderColor: Colors.callHangup },
-            ]}
-            onPress={handleDial}
-            activeOpacity={0.8}
-          >
-            <PhoneCall size={22} color="#FFFFFF" />
-            <Text style={styles.mainDialButtonText}>
-              {isOnCall ? `Active Call: ${currentLead.phone}` : `Dial ${currentLead.phone}`}
-            </Text>
-          </TouchableOpacity>
-
           {/* Gesture Hint */}
           <Text style={styles.gestureHint}>👉 Swipe right for Previous • Swipe left for Next 👈</Text>
         </Animated.View>
+      </ScrollView>
+
+      {/* Fixed Bottom Thumb Zone Calling & Disposition Dock */}
+      <View style={styles.fixedBottomDock}>
+        {/* Live Call Duration Meter */}
+        {isOnCall && (
+          <View style={styles.callDurationBox}>
+            <Clock size={16} color={Colors.badgeSuccessText} />
+            <Text style={styles.callDurationText}>
+              Call in progress: {Math.floor(callDuration / 60)}:
+              {(callDuration % 60).toString().padStart(2, '0')}
+            </Text>
+          </View>
+        )}
+
+        {/* Big Dial Trigger Button */}
+        <TouchableOpacity
+          style={[
+            styles.mainDialButton,
+            isOnCall && { backgroundColor: Colors.callHangup, borderColor: Colors.callHangup },
+          ]}
+          onPress={handleDial}
+          activeOpacity={0.8}
+        >
+          <PhoneCall size={20} color="#FFFFFF" />
+          <Text style={styles.mainDialButtonText}>
+            {isOnCall ? `Active Call: ${currentLead.phone}` : `Dial ${currentLead.phone}`}
+          </Text>
+        </TouchableOpacity>
 
         {/* 1-Tap Disposition Controls Dock */}
         <View style={styles.dispositionContainer}>
@@ -1367,7 +1371,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
               }}
               activeOpacity={0.75}
             >
-              <CheckCircle2 size={22} color={Colors.badgeSuccessText} />
+              <CheckCircle2 size={20} color={Colors.badgeSuccessText} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.apptSetHeroTitle}>🎯 APPOINTMENT SET</Text>
                 <Text style={styles.apptSetHeroSubtitle}>Book classroom sit-down & record details</Text>
@@ -1384,7 +1388,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
               }}
               activeOpacity={0.7}
             >
-              <CheckCircle2 size={18} color="#FFFFFF" />
+              <CheckCircle2 size={16} color="#FFFFFF" />
               <Text style={styles.dispositionButtonText}>💬 Spoke</Text>
               <Text style={styles.dispositionSubtext}>Connected on call</Text>
             </TouchableOpacity>
@@ -1395,7 +1399,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
               onPress={() => handleDisposition('no_answer')}
               activeOpacity={0.7}
             >
-              <PhoneOff size={18} color={Colors.badgeNeutralText} />
+              <PhoneOff size={16} color={Colors.badgeNeutralText} />
               <Text style={[styles.dispositionButtonText, { color: Colors.badgeNeutralText }]}>📞 No Answer</Text>
               <Text style={[styles.dispositionSubtext, { color: Colors.textMuted }]}>Advance & SMS</Text>
             </TouchableOpacity>
@@ -1406,7 +1410,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
               onPress={openSmsModal}
               activeOpacity={0.7}
             >
-              <MessageSquare size={18} color="#FFFFFF" />
+              <MessageSquare size={16} color="#FFFFFF" />
               <Text style={styles.dispositionButtonText}>✉️ AI SMS</Text>
               <Text style={styles.dispositionSubtext}>Personalized text</Text>
             </TouchableOpacity>
@@ -1420,7 +1424,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
               }}
               activeOpacity={0.7}
             >
-              <Calendar size={18} color={Colors.badgeWarningText} />
+              <Calendar size={16} color={Colors.badgeWarningText} />
               <Text style={[styles.dispositionButtonText, { color: Colors.badgeWarningText }]}>📅 Callback</Text>
               <Text style={[styles.dispositionSubtext, { color: Colors.badgeWarningText }]}>Set reminder</Text>
             </TouchableOpacity>
@@ -1429,26 +1433,26 @@ export default function DialerHudScreen({ route, navigation }: any) {
           {/* Bottom Actions Row */}
           <View style={styles.bottomActionsRow}>
             <TouchableOpacity style={styles.dncLinkButton} onPress={handleMarkDNC}>
-              <ShieldAlert size={15} color={Colors.badgeDangerText} />
+              <ShieldAlert size={14} color={Colors.badgeDangerText} />
               <Text style={styles.dncLinkText}>Block / DNC</Text>
             </TouchableOpacity>
 
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
               {currentIndex > 0 && (
                 <TouchableOpacity style={styles.skipButton} onPress={goToPreviousLead}>
-                  <SkipBack size={15} color={Colors.textMuted} />
+                  <SkipBack size={14} color={Colors.textMuted} />
                   <Text style={styles.skipButtonText}>Previous</Text>
                 </TouchableOpacity>
               )}
 
               <TouchableOpacity style={styles.skipButton} onPress={advanceNextLead}>
-                <SkipForward size={15} color={Colors.textMuted} />
+                <SkipForward size={14} color={Colors.textMuted} />
                 <Text style={styles.skipButtonText}>Skip Educator</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
-      </ScrollView>
+      </View>
 
       {/* Interactive Zoomable Report Card Photo Modal */}
       <ZoomableImageModal
@@ -2066,7 +2070,7 @@ const styles = StyleSheet.create<any>({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 36,
+    paddingBottom: 14,
   },
   contactCard: {
     backgroundColor: Colors.surfaceCard,
@@ -2306,34 +2310,47 @@ const styles = StyleSheet.create<any>({
     fontSize: 12,
     fontWeight: '700',
   },
+  fixedBottomDock: {
+    backgroundColor: Colors.bgApp,
+    borderTopWidth: 1.5,
+    borderTopColor: Colors.borderSubtle,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'ios' ? 22 : 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 8,
+  },
   callDurationBox: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.badgeSuccessBg,
-    paddingVertical: 6,
+    paddingVertical: 5,
     borderRadius: 8,
-    marginTop: 8,
+    marginBottom: 6,
     gap: 6,
   },
   callDurationText: {
     color: Colors.badgeSuccessText,
     fontWeight: '700',
-    fontSize: 13,
+    fontSize: 12,
   },
   mainDialButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.callActive,
-    paddingVertical: 14,
-    borderRadius: 14,
-    marginTop: 10,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginBottom: 6,
     gap: 8,
   },
   mainDialButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
   },
   gestureHint: {
@@ -2344,16 +2361,16 @@ const styles = StyleSheet.create<any>({
     fontWeight: '600',
   },
   dispositionContainer: {
-    paddingHorizontal: 14,
-    marginTop: 4,
-    paddingBottom: 16,
+    paddingHorizontal: 0,
+    marginTop: 0,
+    paddingBottom: 0,
   },
   dispositionHeading: {
     color: Colors.textSecondary,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
-    letterSpacing: 1,
-    marginBottom: 8,
+    letterSpacing: 0.8,
+    marginBottom: 6,
     textAlign: 'center',
   },
   apptSetHeroButton: {
@@ -2361,23 +2378,23 @@ const styles = StyleSheet.create<any>({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.badgeSuccessBg,
-    borderRadius: 14,
-    paddingVertical: 13,
-    paddingHorizontal: 16,
-    gap: 12,
-    marginBottom: 8,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    gap: 10,
+    marginBottom: 6,
     borderWidth: 1.5,
     borderColor: Colors.badgeSuccessText,
   },
   apptSetHeroTitle: {
     color: Colors.badgeSuccessText,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '900',
     letterSpacing: 0.5,
   },
   apptSetHeroSubtitle: {
     color: Colors.badgeSuccessText,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     marginTop: 1,
   },
@@ -2385,32 +2402,32 @@ const styles = StyleSheet.create<any>({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 6,
   },
   dispositionButton: {
-    width: '48.5%',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 12,
+    width: '48.8%',
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
   },
   dispositionButtonText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
   },
   dispositionSubtext: {
     color: 'rgba(255, 255, 255, 0.85)',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '600',
   },
   bottomActionsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 6,
   },
   dncLinkButton: {
     flexDirection: 'row',

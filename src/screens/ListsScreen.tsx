@@ -40,6 +40,7 @@ import {
   Download,
   MapPin,
   Award,
+  SlidersHorizontal,
 } from 'lucide-react-native';
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
@@ -50,6 +51,7 @@ import { Colors } from '../theme/colors';
 import ZoomableImageModal from '../components/ZoomableImageModal';
 import { TodayCockpitCard } from '../components/TodayCockpitCard';
 import { BatchDripDispatchModal } from '../components/BatchDripDispatchModal';
+import { FilterBottomSheet } from '../components/FilterBottomSheet';
 import { DripDispatcherService } from '../services/dripDispatcherService';
 import { PipelineStateService } from '../services/pipelineStateService';
 
@@ -70,6 +72,7 @@ export default function ListsScreen({ navigation }: any) {
   const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
   const [isDeduplicating, setIsDeduplicating] = useState<boolean>(false);
   const [dripModalVisible, setDripModalVisible] = useState<boolean>(false);
+  const [filterSheetVisible, setFilterSheetVisible] = useState<boolean>(false);
 
   // Calculate duplicates count across the current pipeline
   const duplicateCount = React.useMemo(() => {
@@ -437,31 +440,10 @@ export default function ListsScreen({ navigation }: any) {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.iconButton}
-            onPress={() => navigation.navigate('PlanningHeatmap')}
-            accessibilityLabel="Planning Heatmap"
-          >
-            <Calendar size={19} color="#FFFFFF" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.iconButton}
             onPress={handleExportCsv}
             accessibilityLabel="Export CSV"
           >
             <Download size={19} color="#FFFFFF" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.iconButton}
-            onPress={() => navigation.navigate('Analytics')}
-            accessibilityLabel="Analytics"
-          >
-            <BarChart3 size={19} color="#FFFFFF" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.iconButton}
-            onPress={() => navigation.navigate('Settings')}
-            accessibilityLabel="Settings"
-          >
-            <Settings size={19} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       </View>
@@ -496,138 +478,6 @@ export default function ListsScreen({ navigation }: any) {
         </View>
       </View>
 
-      {/* Main Start Power Dialer CTA */}
-      <View style={styles.ctaContainer}>
-        <TouchableOpacity
-          style={[styles.startQueueButton, callableCount === 0 && { backgroundColor: Colors.surfaceSubtle, borderColor: Colors.borderSubtle }]}
-          onPress={handleStartMasterQueue}
-          activeOpacity={0.8}
-        >
-          <View style={styles.phoneIconWrap}>
-            <PhoneCall size={20} color="#FFFFFF" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.startQueueTitle}>
-              {callableCount > 0 ? 'Start Power Dialing Queue' : 'Calling Queue Complete'}
-            </Text>
-            <Text style={styles.startQueueSubtitle}>
-              {callableCount > 0
-                ? `${callableCount} educator${callableCount > 1 ? 's' : ''} ready for planning sit-downs`
-                : 'All current leads contacted. Snap another card to add more.'}
-            </Text>
-          </View>
-          <ChevronRight size={22} color="#FFFFFF" />
-        </TouchableOpacity>
-
-        {unansweredCount > 0 && (
-          <TouchableOpacity style={styles.recycleButton} onPress={handleRecycleUnanswered}>
-            <RotateCcw size={15} color={Colors.badgeWarningText} />
-            <Text style={styles.recycleText}>
-              Recycle {unansweredCount} Unanswered / Voicemail Lead{unansweredCount > 1 ? 's' : ''}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Campaign List & Priority Selector Filter */}
-      <View style={styles.campaignFilterContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.campaignFilterScroll}>
-          <TouchableOpacity
-            style={[styles.campaignChip, selectedListId === 'all' && styles.campaignChipActive]}
-            onPress={() => {
-              HapticsService.tick();
-              setSelectedListId('all');
-            }}
-          >
-            <Layers size={13} color={selectedListId === 'all' ? '#FFFFFF' : Colors.brandAccent} />
-            <Text style={[styles.campaignChipText, selectedListId === 'all' && styles.campaignChipTextActive]}>
-              All Campaigns ({leads.length})
-            </Text>
-          </TouchableOpacity>
-
-          {availableLists.map((lst) => {
-            const count = leads.filter((l) => l.list_id === lst.id).length;
-            return (
-              <TouchableOpacity
-                key={lst.id}
-                style={[styles.campaignChip, selectedListId === lst.id && styles.campaignChipActive]}
-                onPress={() => {
-                  HapticsService.tick();
-                  setSelectedListId(lst.id);
-                }}
-              >
-                <Text style={[styles.campaignChipText, selectedListId === lst.id && styles.campaignChipTextActive]}>
-                  {lst.title} ({count})
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-
-          <View style={styles.dividerVertical} />
-
-          <TouchableOpacity
-            style={[styles.tierFilterChip, priorityFilter === 'fresh' && styles.tierFilterChipActiveFresh]}
-            onPress={() => {
-              HapticsService.tick();
-              setPriorityFilter(priorityFilter === 'fresh' ? 'all' : 'fresh');
-            }}
-          >
-            <Flame size={12} color={priorityFilter === 'fresh' ? '#FFFFFF' : Colors.badgeWarningText} />
-            <Text style={[styles.tierFilterChipText, priorityFilter === 'fresh' && styles.tierFilterChipTextActiveFresh]}>
-              Fresh Only
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tierFilterChip, priorityFilter === 'legacy' && styles.tierFilterChipActiveLegacy]}
-            onPress={() => {
-              HapticsService.tick();
-              setPriorityFilter(priorityFilter === 'legacy' ? 'all' : 'legacy');
-            }}
-          >
-            <Archive size={12} color={priorityFilter === 'legacy' ? '#FFFFFF' : Colors.textMuted} />
-            <Text style={[styles.tierFilterChipText, priorityFilter === 'legacy' && styles.tierFilterChipTextActiveLegacy]}>
-              Legacy Only
-            </Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </View>
-
-      {/* School Campus Quick-Filter */}
-      {availableSchools.length > 1 && (
-        <View style={styles.schoolFilterContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.schoolFilterScroll}>
-            <TouchableOpacity
-              style={[styles.schoolChip, selectedSchool === 'all' && styles.schoolChipActive]}
-              onPress={() => {
-                HapticsService.tick();
-                setSelectedSchool('all');
-              }}
-            >
-              <MapPin size={11} color={selectedSchool === 'all' ? '#FFFFFF' : Colors.brandAccent} />
-              <Text style={[styles.schoolChipText, selectedSchool === 'all' && styles.schoolChipTextActive]}>
-                All Campuses
-              </Text>
-            </TouchableOpacity>
-
-            {availableSchools.map((item) => (
-              <TouchableOpacity
-                key={item.school}
-                style={[styles.schoolChip, selectedSchool === item.school && styles.schoolChipActive]}
-                onPress={() => {
-                  HapticsService.tick();
-                  setSelectedSchool(selectedSchool === item.school ? 'all' : item.school);
-                }}
-              >
-                <Text style={[styles.schoolChipText, selectedSchool === item.school && styles.schoolChipTextActive]}>
-                  🏫 {item.school} ({item.count})
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
-
       {/* Duplicate Leads Notification Banner */}
       {duplicateCount > 0 && (
         <View style={styles.dedupBannerContainer}>
@@ -651,21 +501,66 @@ export default function ListsScreen({ navigation }: any) {
         </View>
       )}
 
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <Search size={18} color={Colors.textMuted} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search by teacher name, school (VOL), or room..."
-          placeholderTextColor={Colors.textMuted}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <X size={18} color={Colors.textMuted} />
+      {/* Recycle Unanswered Leads Pill if available */}
+      {unansweredCount > 0 && (
+        <View style={styles.recycleWrap}>
+          <TouchableOpacity style={styles.recycleButton} onPress={handleRecycleUnanswered}>
+            <RotateCcw size={14} color={Colors.badgeWarningText} />
+            <Text style={styles.recycleText}>
+              Recycle {unansweredCount} Unanswered / Voicemail Lead{unansweredCount > 1 ? 's' : ''}
+            </Text>
           </TouchableOpacity>
-        )}
+        </View>
+      )}
+
+      {/* Unified Search & Slide-Up Filter Trigger Bar */}
+      <View style={styles.searchFilterRow}>
+        <View style={styles.searchContainer}>
+          <Search size={16} color={Colors.textMuted} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search educator, school (VOL), room..."
+            placeholderTextColor={Colors.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <X size={16} color={Colors.textMuted} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <TouchableOpacity
+          style={[
+            styles.filterTriggerButton,
+            (selectedSchool !== 'all' || selectedListId !== 'all' || priorityFilter !== 'all') &&
+              styles.filterTriggerButtonActive,
+          ]}
+          onPress={() => {
+            HapticsService.tick();
+            setFilterSheetVisible(true);
+          }}
+          activeOpacity={0.8}
+        >
+          <SlidersHorizontal
+            size={16}
+            color={
+              selectedSchool !== 'all' || selectedListId !== 'all' || priorityFilter !== 'all'
+                ? '#FFFFFF'
+                : Colors.textSecondary
+            }
+          />
+          {(selectedSchool !== 'all' || selectedListId !== 'all' || priorityFilter !== 'all') && (
+            <View style={styles.filterDotBadge}>
+              <Text style={styles.filterDotBadgeText}>
+                {(selectedSchool !== 'all' ? 1 : 0) +
+                  (selectedListId !== 'all' ? 1 : 0) +
+                  (priorityFilter !== 'all' ? 1 : 0)}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
 
       {/* Filter Tabs */}
@@ -805,7 +700,7 @@ export default function ListsScreen({ navigation }: any) {
         <FlatList
           data={filteredLeads}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ padding: 16, paddingBottom: 60 }}
+          contentContainerStyle={{ padding: 16, paddingTop: 10, paddingBottom: 100 }}
           renderItem={({ item }) => {
             const badge = getStatusBadge(item);
             const dateAdded = item.created_at
@@ -995,6 +890,40 @@ export default function ListsScreen({ navigation }: any) {
         onClose={() => setDripModalVisible(false)}
         dueDrips={dueDrips}
         onDripSent={() => loadLeads()}
+      />
+
+      {/* Floating Action Button (FAB) for Start Power Dialing */}
+      {callableCount > 0 && (
+        <TouchableOpacity
+          style={styles.floatingDialFab}
+          onPress={handleStartMasterQueue}
+          activeOpacity={0.85}
+        >
+          <PhoneCall size={18} color="#FFFFFF" />
+          <Text style={styles.floatingDialFabText}>Start Dialing ({callableCount})</Text>
+          <ChevronRight size={18} color="#FFFFFF" />
+        </TouchableOpacity>
+      )}
+
+      {/* Slide-Up Filter Bottom Sheet */}
+      <FilterBottomSheet
+        visible={filterSheetVisible}
+        onClose={() => setFilterSheetVisible(false)}
+        availableSchools={availableSchools}
+        selectedSchool={selectedSchool}
+        onSelectSchool={setSelectedSchool}
+        availableLists={availableLists}
+        selectedListId={selectedListId}
+        onSelectCampaign={setSelectedListId}
+        priorityFilter={priorityFilter}
+        onSelectPriority={setPriorityFilter}
+        totalLeadsCount={leads.length}
+        filteredCount={filteredLeads.length}
+        onResetFilters={() => {
+          setSelectedSchool('all');
+          setSelectedListId('all');
+          setPriorityFilter('all');
+        }}
       />
     </SafeAreaView>
   );
@@ -1264,15 +1193,26 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
   },
+  recycleWrap: {
+    marginHorizontal: 16,
+    marginBottom: 6,
+  },
+  searchFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginTop: 6,
+    marginBottom: 4,
+    gap: 8,
+  },
   searchContainer: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.surfaceCard,
-    marginHorizontal: 16,
-    marginTop: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingVertical: 9,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
     gap: 8,
@@ -1280,7 +1220,65 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     color: Colors.textPrimary,
-    fontSize: 14,
+    fontSize: 13,
+  },
+  filterTriggerButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surfaceCard,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    position: 'relative',
+  },
+  filterTriggerButtonActive: {
+    backgroundColor: Colors.brandPrimary,
+    borderColor: Colors.brandPrimary,
+  },
+  filterDotBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: Colors.heavenlyGold,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.surfaceCard,
+  },
+  filterDotBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  floatingDialFab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 18,
+    backgroundColor: Colors.callActive,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 28,
+    gap: 8,
+    shadowColor: Colors.callActive,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 99,
+  },
+  floatingDialFabText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
   tabsContainer: {
     marginTop: 10,

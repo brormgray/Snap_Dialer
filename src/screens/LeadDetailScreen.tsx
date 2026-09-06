@@ -626,7 +626,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         </View>
       )}
 
-      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 85 }}>
         {/* Main Card */}
         <View style={styles.profileCard}>
           {!isEditing ? (
@@ -848,7 +848,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                         CONFIRMED SIT-DOWN • 1-TAP CALENDAR SYNC
                       </Text>
                     </View>
-                    <Text style={{ fontSize: 12, color: Colors.livingWhite, marginBottom: 10, lineHeight: 17 }}>
+                    <Text style={{ fontSize: 12, color: Colors.textPrimary, marginBottom: 10, lineHeight: 17 }}>
                       Target Window: <Text style={{ fontWeight: '800' }}>{dateStr} @ {timeStr}</Text> ({lead.planning_period || 'Planning Period'}) in Room {lead.room_number || 'Classroom'}.
                     </Text>
 
@@ -1094,42 +1094,6 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                 </View>
               </View>
 
-              {/* Quick Actions */}
-              <View style={styles.actionButtonsRow}>
-                <TouchableOpacity
-                  style={styles.callButton}
-                  onPress={handleCall}
-                >
-                  <PhoneCall size={18} color="#FFFFFF" />
-                  <Text style={styles.actionButtonText}>Call Now</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.smsButton}
-                  onPress={openSmsModal}
-                >
-                  <MessageSquare size={18} color="#FFFFFF" />
-                  <Text style={styles.actionButtonText}>Draft Text</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.dncActionButton, isDNC && styles.dncActionButtonRevert]}
-                  onPress={handleToggleDNC}
-                  activeOpacity={0.8}
-                >
-                  {isDNC ? (
-                    <>
-                      <RotateCcw size={14} color="#34D399" />
-                      <Text style={[styles.dncActionButtonText, { color: '#34D399' }]}>Reinstate</Text>
-                    </>
-                  ) : (
-                    <>
-                      <ShieldAlert size={14} color="#EF4444" />
-                      <Text style={[styles.dncActionButtonText, { color: '#EF4444' }]}>DNC</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </View>
 
               {/* Post-Call Outcome Logging Strip */}
               {showDispositionRow && (
@@ -1342,6 +1306,41 @@ export default function LeadDetailScreen({ route, navigation }: any) {
           <Text style={styles.deleteButtonText}>Delete Contact</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Sticky Bottom Communications Dock */}
+      {lead && !isEditing && (
+        <View style={styles.stickyBottomDock}>
+          <TouchableOpacity
+            style={styles.stickyCallButton}
+            onPress={handleCall}
+            activeOpacity={0.8}
+          >
+            <PhoneCall size={18} color="#FFFFFF" />
+            <Text style={styles.stickyCallButtonText}>Call Educator</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.stickySmsButton}
+            onPress={openSmsModal}
+            activeOpacity={0.8}
+          >
+            <MessageSquare size={18} color="#FFFFFF" />
+            <Text style={styles.stickySmsButtonText}>AI Messages</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.stickyDncButton, isDNC && styles.stickyDncButtonRevert]}
+            onPress={handleToggleDNC}
+            activeOpacity={0.8}
+          >
+            {isDNC ? (
+              <RotateCcw size={16} color="#34D399" />
+            ) : (
+              <ShieldAlert size={16} color="#EF4444" />
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* AI Draft SMS Modal */}
       <Modal visible={smsModalVisible} animationType="slide" transparent>
@@ -2319,5 +2318,65 @@ const styles = StyleSheet.create({
   detailDispBtnText: {
     fontSize: 13,
     fontWeight: '700',
+  },
+  stickyBottomDock: {
+    backgroundColor: Colors.bgApp,
+    borderTopWidth: 1.5,
+    borderTopColor: Colors.borderSubtle,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 8,
+  },
+  stickyCallButton: {
+    flex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.callActive,
+    paddingVertical: 13,
+    borderRadius: 12,
+    gap: 8,
+  },
+  stickyCallButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  stickySmsButton: {
+    flex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.brandAccent,
+    paddingVertical: 13,
+    borderRadius: 12,
+    gap: 8,
+  },
+  stickySmsButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  stickyDncButton: {
+    width: 46,
+    height: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surfaceSubtle,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.borderStrong,
+  },
+  stickyDncButtonRevert: {
+    backgroundColor: 'rgba(52, 211, 153, 0.15)',
+    borderColor: '#34D399',
   },
 });
