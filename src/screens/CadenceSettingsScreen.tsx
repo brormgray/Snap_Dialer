@@ -10,14 +10,18 @@ import {
   TextInput,
   Alert,
 } from 'react-native';
-import { ArrowLeft, MessageSquare, Save, Zap, Info } from 'lucide-react-native';
+import { ArrowLeft, MessageSquare, Save, Zap, Info, Sparkles, Award } from 'lucide-react-native';
 import { CadenceRepository } from '../db/cadenceRepository';
-import { CadenceRule, SMSTemplate } from '../types';
+import { TelephonyService } from '../services/telephonyService';
+import { CadenceRule, SMSTemplate, Lead } from '../types';
 import { Colors } from '../theme/colors';
+
+type TemplateCategory = 'all' | 'nurture' | 'client_review' | 'dialer';
 
 export default function CadenceSettingsScreen({ navigation }: any) {
   const [rules, setRules] = useState<CadenceRule[]>([]);
   const [templates, setTemplates] = useState<SMSTemplate[]>([]);
+  const [category, setCategory] = useState<TemplateCategory>('all');
   const [activeTemplate, setActiveTemplate] = useState<SMSTemplate | null>(null);
 
   useEffect(() => {
@@ -25,6 +29,7 @@ export default function CadenceSettingsScreen({ navigation }: any) {
   }, []);
 
   const loadData = async (preserveId?: string) => {
+    await CadenceRepository.seedDripTemplatesIfMissing();
     const loadedRules = await CadenceRepository.getAllRules();
     const loadedTemplates = await CadenceRepository.getAllTemplates();
     setRules(loadedRules);
@@ -42,6 +47,41 @@ export default function CadenceSettingsScreen({ navigation }: any) {
     loadData(activeTemplate.id);
   };
 
+  const filteredTemplates = templates.filter((tpl) => {
+    if (category === 'all') return true;
+    if (category === 'nurture') return tpl.id.startsWith('tpl_nurture_');
+    if (category === 'client_review') return tpl.id.startsWith('tpl_client_');
+    if (category === 'dialer') return !tpl.id.startsWith('tpl_nurture_') && !tpl.id.startsWith('tpl_client_');
+    return true;
+  });
+
+  // Sample lead for live preview
+  const sampleLead: Lead = {
+    id: 'sample_lead',
+    list_id: 'master_queue',
+    name: 'Sarah Jenkins',
+    phone: '3865551234',
+    school: 'Deltona High',
+    room_number: '4-102',
+    planning_period: '3rd Period (10:15 - 11:05 AM)',
+    years_in_frs: '14',
+    priority_tier: 1,
+    cadence_step: 1,
+    attempts_count: 1,
+    is_client: true,
+    products: ['flow_annuity'],
+    annualized_premium: 3600,
+    policy_effective_date: '2024-10-14',
+    annual_review_due_date: '2025-10-14',
+    meeting_preferences: ['Planning Period in classroom'],
+    created_at: '2024-10-14T08:00:00.000Z',
+    updated_at: '2024-10-14T08:00:00.000Z',
+  };
+
+  const previewText = activeTemplate
+    ? TelephonyService.interpolateTemplate(activeTemplate, sampleLead, 'Alex')
+    : '';
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={Colors.brandPrimary} />
@@ -50,7 +90,7 @@ export default function CadenceSettingsScreen({ navigation }: any) {
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <ArrowLeft size={22} color="#FFFFFF" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Cadence & Automation</Text>
+        <Text style={styles.headerTitle}>Cadence & SMS Drip Engine</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -58,7 +98,7 @@ export default function CadenceSettingsScreen({ navigation }: any) {
         <View style={styles.infoBox}>
           <Zap size={20} color={Colors.brandAccent} />
           <Text style={styles.infoText}>
-            Multi-touch outreach engine. When you mark a call as No Answer, the next step triggers automatically.
+            Dual-Track Touch Engine: Multi-touch outreach for active dialing, 4-stage prospect nurture, and client annual review reminders.
           </Text>
         </View>
 
@@ -83,9 +123,47 @@ export default function CadenceSettingsScreen({ navigation }: any) {
           </View>
         ))}
 
-        <Text style={[styles.sectionHeader, { marginTop: 24 }]}>SMS TEMPLATES</Text>
-        <View style={styles.templateTabs}>
-          {templates.map((tpl) => (
+        <Text style={[styles.sectionHeader, { marginTop: 24 }]}>SMS TEMPLATE LIBRARY</Text>
+
+        {/* Category Filter Pills */}
+        <View style={styles.categoryBar}>
+          <TouchableOpacity
+            style={[styles.catBtn, category === 'all' && styles.catBtnActive]}
+            onPress={() => setCategory('all')}
+          >
+            <Text style={[styles.catBtnText, category === 'all' && styles.catBtnTextActive]}>
+              All ({templates.length})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.catBtn, category === 'nurture' && styles.catBtnActive]}
+            onPress={() => setCategory('nurture')}
+          >
+            <Text style={[styles.catBtnText, category === 'nurture' && styles.catBtnTextActive]}>
+              Track A: Nurture
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.catBtn, category === 'client_review' && styles.catBtnActive]}
+            onPress={() => setCategory('client_review')}
+          >
+            <Text style={[styles.catBtnText, category === 'client_review' && styles.catBtnTextActive]}>
+              Track B: Clients
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.catBtn, category === 'dialer' && styles.catBtnActive]}
+            onPress={() => setCategory('dialer')}
+          >
+            <Text style={[styles.catBtnText, category === 'dialer' && styles.catBtnTextActive]}>
+              Dialer
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Template List Chips */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.templateTabs}>
+          {filteredTemplates.map((tpl) => (
             <TouchableOpacity
               key={tpl.id}
               style={[
@@ -104,7 +182,7 @@ export default function CadenceSettingsScreen({ navigation }: any) {
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
 
         {activeTemplate && (
           <View style={styles.templateForm}>
@@ -131,10 +209,25 @@ export default function CadenceSettingsScreen({ navigation }: any) {
               placeholderTextColor={Colors.textMuted}
             />
 
+            {/* Live Preview Box */}
+            <View style={styles.previewBox}>
+              <View style={styles.previewHeader}>
+                <Sparkles size={13} color={Colors.heavenlyGold} />
+                <Text style={styles.previewTitle}>LIVE PREVIEW (SAMPLE TEACHER)</Text>
+              </View>
+              <Text style={styles.previewText}>{previewText}</Text>
+            </View>
+
             <View style={styles.tokenGuide}>
               <Info size={14} color={Colors.textMuted} />
               <Text style={styles.tokenGuideText}>
-                Tags: <Text style={styles.tokenTag}>{'{name}'}</Text>, <Text style={styles.tokenTag}>{'{school}'}</Text>
+                Supported tags: <Text style={styles.tokenTag}>{'{{first_name}}'}</Text>,{' '}
+                <Text style={styles.tokenTag}>{'{{school}}'}</Text>,{' '}
+                <Text style={styles.tokenTag}>{'{{planning_period}}'}</Text>,{' '}
+                <Text style={styles.tokenTag}>{'{{room_number}}'}</Text>,{' '}
+                <Text style={styles.tokenTag}>{'{{product}}'}</Text>,{' '}
+                <Text style={styles.tokenTag}>{'{{anniversary_date}}'}</Text>,{' '}
+                <Text style={styles.tokenTag}>{'{{my_name}}'}</Text>
               </Text>
             </View>
 
@@ -144,6 +237,7 @@ export default function CadenceSettingsScreen({ navigation }: any) {
             </TouchableOpacity>
           </View>
         )}
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -236,9 +330,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 8,
   },
+  categoryBar: {
+    flexDirection: 'row',
+    backgroundColor: '#1E293B',
+    borderRadius: 10,
+    padding: 3,
+    marginBottom: 10,
+    gap: 2,
+  },
+  catBtn: {
+    flex: 1,
+    paddingVertical: 7,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  catBtnActive: {
+    backgroundColor: Colors.heavenlyGold,
+  },
+  catBtnText: {
+    color: Colors.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  catBtnTextActive: {
+    color: '#000000',
+    fontWeight: '800',
+  },
   templateTabs: {
     flexDirection: 'row',
-    gap: 8,
     marginBottom: 12,
   },
   tabButton: {
@@ -248,10 +367,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surfaceCard,
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
+    marginRight: 8,
   },
   activeTabButton: {
     backgroundColor: Colors.brandPrimary,
-    borderColor: Colors.brandPrimary,
+    borderColor: Colors.heavenlyGold,
   },
   tabButtonText: {
     color: Colors.textSecondary,
@@ -285,18 +405,45 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   textArea: {
-    height: 90,
+    height: 100,
     textAlignVertical: 'top',
+  },
+  previewBox: {
+    backgroundColor: '#0B132B',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 160, 23, 0.3)',
+    padding: 12,
+    marginTop: 12,
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  previewTitle: {
+    color: Colors.heavenlyGold,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  previewText: {
+    color: Colors.livingWhite,
+    fontSize: 13,
+    lineHeight: 18,
   },
   tokenGuide: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 6,
     marginTop: 10,
   },
   tokenGuideText: {
+    flex: 1,
     color: Colors.textMuted,
-    fontSize: 12,
+    fontSize: 11,
+    lineHeight: 16,
   },
   tokenTag: {
     color: Colors.brandAccent,

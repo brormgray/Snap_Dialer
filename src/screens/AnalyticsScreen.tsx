@@ -34,9 +34,12 @@ import {
 import { CallLogsRepository } from '../db/callLogsRepository';
 import { LeadsRepository } from '../db/leadsRepository';
 import { Colors } from '../theme/colors';
+import { Lead } from '../types';
+import { ProductionKpiSection } from '../components/ProductionKpiSection';
 
 export default function AnalyticsScreen({ navigation }: any) {
   const [data, setData] = useState<any>(null);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
@@ -45,8 +48,12 @@ export default function AnalyticsScreen({ navigation }: any) {
 
   const loadStats = async () => {
     try {
-      const res = await CallLogsRepository.getComprehensiveAnalytics();
+      const [res, allLeads] = await Promise.all([
+        CallLogsRepository.getComprehensiveAnalytics(),
+        LeadsRepository.getAllLeads(),
+      ]);
       setData(res);
+      setLeads(allLeads);
     } catch (e) {
       console.error('Error loading comprehensive analytics:', e);
     } finally {
@@ -128,6 +135,9 @@ export default function AnalyticsScreen({ navigation }: any) {
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 50 }}>
+        {/* Advisor Production Ledger (AP & Assets) */}
+        <ProductionKpiSection leads={leads} />
+
         {/* Main Sit-Down Conversion Ratio Card */}
         <View style={styles.heroCard}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>

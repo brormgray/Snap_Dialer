@@ -9,6 +9,17 @@ export type CallDisposition =
   | 'do_not_call'
   | 'callback_requested';
 
+export type ClientProduct =
+  | 'flow_annuity'       // 403(b) / 457(b) ongoing payroll deduction annuity
+  | 'annuity_transfer'   // Lump-sum pension DROP rollover / traditional IRA transfer
+  | 'life_insurance'     // Term, Whole Life, or Indexed Universal Life
+  | 'investments';       // Advisory accounts, mutual funds, or brokerage
+
+export type DripTrack =
+  | 'prospect_nurture'      // Periodic educational touchpoints for non-closing prospects
+  | 'client_annual_review'  // Post-conversion policy servicing and anniversary review cadence
+  | 'none';
+
 export interface Lead {
   id: string;
   list_id: string;
@@ -39,6 +50,21 @@ export interface Lead {
   tags?: string[] | null;
   created_at: string;
   updated_at: string;
+
+  // --- Client Conversion & Production Fields ---
+  is_client?: boolean;
+  client_since?: string | null;
+  products?: ClientProduct[] | null;
+  annualized_premium?: number | null; // Ongoing flow annual premium in USD
+  transfer_assets_volume?: number | null; // Lump sum rollover / transfer asset volume in USD
+  policy_effective_date?: string | null; // YYYY-MM-DD
+  annual_review_due_date?: string | null; // YYYY-MM-DD
+
+  // --- Automated Drip Tracking Fields ---
+  drip_track?: DripTrack | null;
+  drip_step?: number;
+  last_drip_sent_at?: string | null;
+  next_drip_scheduled_at?: string | null;
 }
 
 export interface LeadList {
@@ -103,6 +129,40 @@ export interface ExtractedLeadItem {
   list_id?: string;
   isDuplicate?: boolean;
   isValid: boolean;
+
+  // Optional client & drip fields
+  is_client?: boolean;
+  client_since?: string | null;
+  products?: ClientProduct[];
+  annualized_premium?: number | null;
+  transfer_assets_volume?: number | null;
+  policy_effective_date?: string | null;
+  annual_review_due_date?: string | null;
+  drip_track?: DripTrack | null;
+  drip_step?: number;
+  last_drip_sent_at?: string | null;
+  next_drip_scheduled_at?: string | null;
+}
+
+export interface ClientConversionPayload {
+  products: ClientProduct[];
+  annualized_premium?: number | null;
+  transfer_assets_volume?: number | null;
+  policy_effective_date?: string | null;
+  annual_review_due_date?: string | null;
+  notes?: string | null;
+  drip_track?: DripTrack | null;
+}
+
+export interface ClientProductionKPIs {
+  totalClients: number;
+  totalAnnualizedPremium: number;       // In USD
+  totalTransferVolume: number;          // In USD
+  averagePremiumPerClient: number;      // Across all clients in USD
+  averagePremiumPerActiveFlow: number;  // Across clients with annualized_premium > 0 in USD
+  clientsDueForReviewCount: number;
+  activeDripsCount: number;
+  productDistribution: Record<ClientProduct, number>;
 }
 
 export interface AppSettings {

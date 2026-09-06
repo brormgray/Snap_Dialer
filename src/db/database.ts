@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import { IndexedDbStorage, DatabaseState } from './indexedDbStorage';
 import { dexieDb } from './dexieDb';
+import { ALL_DRIP_TEMPLATES } from '../data/dripTemplates';
 
 export interface IDatabase {
   execAsync(sql: string): Promise<void>;
@@ -535,7 +536,24 @@ class WebDatabase implements IDatabase {
             if (params[7] !== undefined) lead.notes = params[7] || null;
             if (params[8] !== undefined) lead.priority_tier = Number(params[8]);
             if (params[9]) lead.list_id = params[9];
-            lead.updated_at = params[10] || new Date().toISOString();
+            if (s.includes('is_client = ?')) {
+              lead.is_client = params[10] === 1 || params[10] === true;
+              lead.client_since = params[11] || lead.client_since || null;
+              try {
+                lead.products = typeof params[12] === 'string' ? JSON.parse(params[12]) : (params[12] || []);
+              } catch { lead.products = []; }
+              lead.annualized_premium = params[13] !== undefined && params[13] !== null ? Number(params[13]) : null;
+              lead.transfer_assets_volume = params[14] !== undefined && params[14] !== null ? Number(params[14]) : null;
+              lead.policy_effective_date = params[15] || null;
+              lead.annual_review_due_date = params[16] || null;
+              lead.drip_track = params[17] || 'none';
+              lead.drip_step = params[18] !== undefined ? Number(params[18]) : 0;
+              lead.last_drip_sent_at = params[19] || null;
+              lead.next_drip_scheduled_at = params[20] || null;
+              lead.updated_at = params[21] || new Date().toISOString();
+            } else {
+              lead.updated_at = params[10] || new Date().toISOString();
+            }
           } else if (s.includes('email = ?')) {
             lead.email = params[3] || null;
             lead.planning_period = params[4] || null;
@@ -552,6 +570,26 @@ class WebDatabase implements IDatabase {
             if (params[7]) lead.list_id = params[7];
             lead.updated_at = params[8] || new Date().toISOString();
           }
+        } else if (s.includes('is_client = ?') || s.includes('is_client=')) {
+          lead.is_client = params[0] === 1 || params[0] === true;
+          lead.client_since = params[1] || lead.client_since || new Date().toISOString();
+          try {
+            lead.products = typeof params[2] === 'string' ? JSON.parse(params[2]) : (params[2] || []);
+          } catch { lead.products = []; }
+          lead.annualized_premium = params[3] !== undefined && params[3] !== null ? Number(params[3]) : null;
+          lead.transfer_assets_volume = params[4] !== undefined && params[4] !== null ? Number(params[4]) : null;
+          lead.policy_effective_date = params[5] || null;
+          lead.annual_review_due_date = params[6] || null;
+          lead.drip_track = params[7] || 'none';
+          lead.drip_step = params[8] !== undefined ? Number(params[8]) : 0;
+          lead.next_drip_scheduled_at = params[9] || null;
+          if (params[10] && s.includes('notes = ?')) lead.notes = params[10];
+          lead.updated_at = params[params.length - 2] || new Date().toISOString();
+        } else if (s.includes('drip_step = ?') || s.includes('last_drip_sent_at = ?')) {
+          lead.drip_step = Number(params[0]) || 0;
+          lead.last_drip_sent_at = params[1] || null;
+          lead.next_drip_scheduled_at = params[2] || null;
+          lead.updated_at = params[3] || new Date().toISOString();
         } else if (s.includes('priority_tier = ?') && s.includes('list_id = ?')) {
           lead.priority_tier = Number(params[0]);
           lead.list_id = params[1];
@@ -698,6 +736,15 @@ async function initWebDefaults(db: WebDatabase) {
       ]);
     }
   }
+
+  // Ensure the 8 FRS Educational Drip templates exist
+  const currentTemplates = await db.getAllAsync<any>('SELECT * FROM sms_templates');
+  for (const tpl of ALL_DRIP_TEMPLATES) {
+    const hasTpl = currentTemplates.some((t: any) => t.id === tpl.id);
+    if (!hasTpl) {
+      await db.runAsync('INSERT INTO sms_templates', [tpl.id, tpl.title, tpl.body]);
+    }
+  }
 }
 
 async function initNativeDatabase(db: any): Promise<void> {
@@ -743,6 +790,17 @@ async function initNativeDatabase(db: any): Promise<void> {
       last_disposition TEXT DEFAULT 'pending',
       follow_up_at TEXT,
       attempts_count INTEGER DEFAULT 0,
+      is_client INTEGER DEFAULT 0,
+      client_since TEXT,
+      products TEXT,
+      annualized_premium REAL DEFAULT 0,
+      transfer_assets_volume REAL DEFAULT 0,
+      policy_effective_date TEXT,
+      annual_review_due_date TEXT,
+      drip_track TEXT DEFAULT 'none',
+      drip_step INTEGER DEFAULT 0,
+      last_drip_sent_at TEXT,
+      next_drip_scheduled_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (list_id) REFERENCES lists(id) ON DELETE CASCADE
@@ -785,6 +843,9 @@ async function initNativeDatabase(db: any): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_leads_list_id ON leads(list_id);
     CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(last_disposition);
     CREATE INDEX IF NOT EXISTS idx_leads_priority ON leads(priority_tier);
+    CREATE INDEX IF NOT EXISTS idx_leads_is_client ON leads(is_client);
+    CREATE INDEX IF NOT EXISTS idx_leads_drip ON leads(drip_track, next_drip_scheduled_at);
+    CREATE INDEX IF NOT EXISTS idx_leads_annual_review ON leads(annual_review_due_date);
     CREATE INDEX IF NOT EXISTS idx_call_logs_lead ON call_logs(lead_id);
   `);
 
@@ -811,6 +872,17 @@ async function initNativeDatabase(db: any): Promise<void> {
     'last_disposition TEXT DEFAULT "pending"',
     'follow_up_at TEXT',
     'attempts_count INTEGER DEFAULT 0',
+    'is_client INTEGER DEFAULT 0',
+    'client_since TEXT',
+    'products TEXT',
+    'annualized_premium REAL DEFAULT 0',
+    'transfer_assets_volume REAL DEFAULT 0',
+    'policy_effective_date TEXT',
+    'annual_review_due_date TEXT',
+    'drip_track TEXT DEFAULT "none"',
+    'drip_step INTEGER DEFAULT 0',
+    'last_drip_sent_at TEXT',
+    'next_drip_scheduled_at TEXT',
   ];
   for (const col of columnsToAdd) {
     try {
@@ -848,5 +920,15 @@ async function initNativeDatabase(db: any): Promise<void> {
     } catch (e) {
       // Ignore if table not ready
     }
+  }
+
+  // Seed the 8 FRS Educational Drip templates in native SQLite
+  for (const tpl of ALL_DRIP_TEMPLATES) {
+    try {
+      await db.runAsync(
+        `INSERT OR IGNORE INTO sms_templates (id, title, body) VALUES (?, ?, ?)`,
+        [tpl.id, tpl.title, tpl.body]
+      );
+    } catch (e) {}
   }
 }

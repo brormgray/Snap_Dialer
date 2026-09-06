@@ -39,6 +39,7 @@ import {
   Layers,
   Download,
   MapPin,
+  Award,
 } from 'lucide-react-native';
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
@@ -47,6 +48,9 @@ import { CsvService } from '../services/csvService';
 import { Lead, LeadList, CallLog } from '../types';
 import { Colors } from '../theme/colors';
 import ZoomableImageModal from '../components/ZoomableImageModal';
+import { TodayCockpitCard } from '../components/TodayCockpitCard';
+import { BatchDripDispatchModal } from '../components/BatchDripDispatchModal';
+import { DripDispatcherService } from '../services/dripDispatcherService';
 
 export default function ListsScreen({ navigation }: any) {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -57,13 +61,14 @@ export default function ListsScreen({ navigation }: any) {
   const [selectedSchool, setSelectedSchool] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'fresh' | 'legacy'>('all');
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
-  const [filterTab, setFilterTab] = useState<'all' | 'pending' | 'appts' | 'connected' | 'callback' | 'unanswered'>('all');
+  const [filterTab, setFilterTab] = useState<'all' | 'pending' | 'appts' | 'connected' | 'callback' | 'unanswered' | 'clients'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
 
   // Original Card Image Proof Modal
   const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
   const [isDeduplicating, setIsDeduplicating] = useState<boolean>(false);
+  const [dripModalVisible, setDripModalVisible] = useState<boolean>(false);
 
   // Calculate duplicates count across the current pipeline
   const duplicateCount = React.useMemo(() => {
@@ -194,6 +199,8 @@ export default function ListsScreen({ navigation }: any) {
       });
     } else if (filterTab === 'unanswered') {
       result = result.filter((l) => ['no_answer', 'voicemail'].includes(l.last_disposition || ''));
+    } else if (filterTab === 'clients') {
+      result = result.filter((l) => Boolean(l.is_client));
     }
 
     // Filter by Search Query
@@ -378,10 +385,18 @@ export default function ListsScreen({ navigation }: any) {
     (l) => ['connected', 'spoke'].includes(l.last_disposition || '')
   ).length;
 
+  // 'Clients': Converted clients in this scope
+  const clientsCount = scopedLeads.filter((l) => Boolean(l.is_client)).length;
+
   // 'Callable' = all dialable leads (never called + unanswered/voicemail). Used to drive CTA button state.
   const callableCount = scopedLeads.filter(
     (l) => !l.last_disposition || ['pending', 'no_answer', 'voicemail'].includes(l.last_disposition)
   ).length;
+
+  // Due SMS Drips & Annual Reviews for today
+  const dueDrips = React.useMemo(() => {
+    return DripDispatcherService.getDueDrips(scopedLeads, 'Alex');
+  }, [scopedLeads]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -393,13 +408,12 @@ export default function ListsScreen({ navigation }: any) {
           <Text style={styles.appTitle} numberOfLines={1}>SnapDialer</Text>
           <Text style={styles.appSubtitle} numberOfLines={1} ellipsizeMode="tail">ValuTeachers • FRS Pipeline</Text>
         </View>
+
         <View style={styles.headerIcons}>
           <TouchableOpacity
             style={styles.snapHeaderButton}
-            onPress={() => {
-              HapticsService.medium();
-              navigation.navigate('ScanSheet');
-            }}
+            onPress={() => navigation.navigate('ScanSheet')}
+            accessibilityLabel="Scan report cards"
           >
             <Camera size={16} color={Colors.livingWhite} />
             <Text style={styles.snapHeaderButtonText}>Snap</Text>
@@ -434,6 +448,15 @@ export default function ListsScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Today's Advisor Action Cockpit */}
+      <TodayCockpitCard
+        leads={scopedLeads}
+        dueDripsCount={dueDrips.length}
+        onOpenDripModal={() => setDripModalVisible(true)}
+        onNavigateLead={(leadId) => navigation.navigate('LeadDetail', { leadId })}
+        onStartDialing={handleStartMasterQueue}
+      />
 
       {/* KPI Stats Strip */}
       <View style={styles.statsRow}>
@@ -680,6 +703,31 @@ export default function ListsScreen({ navigation }: any) {
               Unanswered ({unansweredCount})
             </Text>
           </TouchableOpacity>
+          {clientsCount > 0 && (
+            <TouchableOpacity
+              style={[
+                styles.tabChip,
+                filterTab === 'clients' && styles.tabChipActive,
+                { borderColor: '#10B981' },
+              ]}
+              onPress={() => setFilterTab('clients')}
+            >
+              <Award
+                size={12}
+                color={filterTab === 'clients' ? '#000000' : '#10B981'}
+                style={{ marginRight: 4 }}
+              />
+              <Text
+                style={[
+                  styles.tabChipText,
+                  filterTab === 'clients' && styles.tabChipTextActive,
+                  { color: filterTab === 'clients' ? '#000000' : '#10B981' },
+                ]}
+              >
+                Clients ({clientsCount})
+              </Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       </View>
 
@@ -747,6 +795,24 @@ export default function ListsScreen({ navigation }: any) {
                   </View>
 
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    {item.is_client && (
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          backgroundColor: 'rgba(16, 185, 129, 0.18)',
+                          borderColor: '#10B981',
+                          borderWidth: 1,
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          borderRadius: 8,
+                          gap: 3,
+                        }}
+                      >
+                        <Award size={10} color="#10B981" />
+                        <Text style={{ color: '#10B981', fontSize: 10, fontWeight: '800' }}>Client</Text>
+                      </View>
+                    )}
                     {item.priority_tier === 3 ? (
                       <View style={styles.legacyBadge}>
                         <Archive size={10} color="#94A3B8" />
@@ -792,6 +858,19 @@ export default function ListsScreen({ navigation }: any) {
                       <Calendar size={13} color={Colors.deepSkyBlueLight} />
                       <Text style={styles.detailText} numberOfLines={1}>
                         Preferred: <Text style={{ color: Colors.textPrimary }}>{item.meeting_preferences.join(', ')}</Text>
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {item.is_client && (item.annualized_premium || item.transfer_assets_volume) ? (
+                    <View style={styles.detailRow}>
+                      <Award size={13} color="#10B981" />
+                      <Text style={styles.detailText}>
+                        Portfolio: <Text style={{ color: '#10B981', fontWeight: '700' }}>
+                          {item.annualized_premium ? `$${Number(item.annualized_premium).toLocaleString()} AP` : ''}
+                          {item.annualized_premium && item.transfer_assets_volume ? ' • ' : ''}
+                          {item.transfer_assets_volume ? `$${Number(item.transfer_assets_volume).toLocaleString()} Assets` : ''}
+                        </Text>
                       </Text>
                     </View>
                   ) : null}
@@ -853,6 +932,14 @@ export default function ListsScreen({ navigation }: any) {
         title="Original ValuTeachers Report Card"
         subtitle="Pinch or use zoom controls to inspect handwriting"
         onClose={() => setPreviewImageUri(null)}
+      />
+
+      {/* 1-Tap Daily Drip Dispatcher Modal */}
+      <BatchDripDispatchModal
+        visible={dripModalVisible}
+        onClose={() => setDripModalVisible(false)}
+        dueDrips={dueDrips}
+        onDripSent={() => loadLeads()}
       />
     </SafeAreaView>
   );

@@ -100,6 +100,29 @@ export class TelephonyService {
     const firstName = lead.name ? lead.name.split(' ')[0] : 'there';
     const lastName = lead.name && lead.name.split(' ').length > 1 ? lead.name.split(' ').slice(1).join(' ') : '';
 
+    const PRODUCT_MAP: Record<string, string> = {
+      flow_annuity: '403(b) Flow Annuity',
+      annuity_transfer: 'Annuity Transfer-In',
+      life_insurance: 'Life Insurance plan',
+      investments: 'ValuTeachers retirement plan',
+    };
+    let productLabel = 'ValuTeachers retirement plan';
+    if (lead.products && lead.products.length > 0) {
+      productLabel = lead.products.map((p) => PRODUCT_MAP[p] || p).join(' & ');
+    }
+
+    let formattedAnniversary = 'your policy anniversary';
+    const targetDateStr = lead.annual_review_due_date || lead.policy_effective_date;
+    if (targetDateStr) {
+      try {
+        const normalized = targetDateStr.length === 10 ? `${targetDateStr}T12:00:00` : targetDateStr;
+        const d = new Date(normalized);
+        if (!isNaN(d.getTime())) {
+          formattedAnniversary = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+        }
+      } catch {}
+    }
+
     return template.body
       .replace(/{{name}}/gi, firstName)
       .replace(/{{first_name}}/gi, firstName)
@@ -113,6 +136,8 @@ export class TelephonyService {
       .replace(/{{company}}/gi, lead.company || 'ValuTeachers')
       .replace(/{{note}}/gi, lead.notes || '')
       .replace(/{{notes}}/gi, lead.notes || '')
+      .replace(/{{product}}/gi, productLabel)
+      .replace(/{{anniversary_date}}/gi, formattedAnniversary)
       .replace(/{{my_name}}/gi, myName);
   }
 }

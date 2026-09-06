@@ -42,6 +42,7 @@ import {
   RotateCcw,
   Edit3,
   Plus,
+  Award,
 } from 'lucide-react-native';
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
@@ -54,6 +55,7 @@ import { NotesService, NoteEntry, EDUCATOR_QUICK_TAGS } from '../services/notesS
 import { Lead, CallLog, CallDisposition, LeadList } from '../types';
 import { Colors } from '../theme/colors';
 import ZoomableImageModal from '../components/ZoomableImageModal';
+import { ClientPortfolioCard } from '../components/ClientPortfolioCard';
 
 export default function LeadDetailScreen({ route, navigation }: any) {
   const leadId = route.params?.leadId;
@@ -536,6 +538,26 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                   {lead.email ? <Text style={styles.emailText}>{lead.email}</Text> : null}
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                  {lead.is_client && (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: 'rgba(16, 185, 129, 0.18)',
+                        borderColor: '#10B981',
+                        borderWidth: 1,
+                        borderRadius: 12,
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        gap: 4,
+                      }}
+                    >
+                      <Award size={11} color="#10B981" />
+                      <Text style={{ color: '#10B981', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>
+                        ★ CLIENT
+                      </Text>
+                    </View>
+                  )}
                   <TouchableOpacity
                     style={lead.priority_tier === 3 ? styles.detailLegacyBadge : styles.detailFreshBadge}
                     onPress={handleTogglePriority}
@@ -798,6 +820,21 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                 <Text style={styles.proofButtonText}>View Original Report Card (Proof of Request)</Text>
                 <Eye size={16} color="#38BDF8" />
               </TouchableOpacity>
+
+              {/* Client Portfolio & Policy Card */}
+              <ClientPortfolioCard
+                lead={lead}
+                onSave={async (portfolioUpdates) => {
+                  await LeadsRepository.updateLeadDetails({
+                    id: lead.id,
+                    name: lead.name,
+                    phone: lead.phone,
+                    school: lead.school,
+                    ...portfolioUpdates,
+                  });
+                  await loadLeadData();
+                }}
+              />
 
               {/* Educator Structured Notes Card */}
               <View style={styles.detailNotesCard}>

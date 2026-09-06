@@ -50,4 +50,18 @@ export class CadenceRepository {
       [template.id, template.title, template.body]
     );
   }
+
+  static async seedDripTemplatesIfMissing(): Promise<void> {
+    const db = await getDatabase();
+    const { ALL_DRIP_TEMPLATES } = await import('../data/dripTemplates');
+    for (const tpl of ALL_DRIP_TEMPLATES) {
+      const existing = await db.getFirstAsync<SMSTemplate>(
+        'SELECT * FROM sms_templates WHERE id = ?',
+        [tpl.id]
+      );
+      if (!existing) {
+        await this.saveTemplate(tpl);
+      }
+    }
+  }
 }

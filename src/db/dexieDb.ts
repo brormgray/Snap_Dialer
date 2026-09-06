@@ -32,6 +32,29 @@ export class SnapDialerDexieDB extends Dexie {
       sms_templates: 'id',
       cadence_rules: 'id, step_number',
     });
+
+    this.version(2)
+      .stores({
+        leads: 'id, list_id, school, priority_tier, last_disposition, follow_up_at, is_client, drip_track, annual_review_due_date, next_drip_scheduled_at, created_at',
+      })
+      .upgrade(async (tx) => {
+        await tx.table('leads').toCollection().modify((lead: any) => {
+          if (lead.is_client === undefined || lead.is_client === null) {
+            lead.is_client = false;
+          }
+          if (lead.products === undefined || !Array.isArray(lead.products)) {
+            lead.products = [];
+          }
+          if (lead.annualized_premium === undefined) lead.annualized_premium = null;
+          if (lead.transfer_assets_volume === undefined) lead.transfer_assets_volume = null;
+          if (lead.policy_effective_date === undefined) lead.policy_effective_date = null;
+          if (lead.annual_review_due_date === undefined) lead.annual_review_due_date = null;
+          if (!lead.drip_track) lead.drip_track = 'none';
+          if (lead.drip_step === undefined) lead.drip_step = 0;
+          if (lead.last_drip_sent_at === undefined) lead.last_drip_sent_at = null;
+          if (lead.next_drip_scheduled_at === undefined) lead.next_drip_scheduled_at = null;
+        });
+      });
   }
 
   /**

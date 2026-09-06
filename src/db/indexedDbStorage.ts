@@ -1,4 +1,4 @@
-﻿/**
+/**
  * High-Capacity IndexedDB Storage Driver for Web Browsers
  * Solves the 5MB browser localStorage limit and provides multi-gigabyte, crash-proof persistence
  * for ValuTeachers leads, photos, call records, and notes.
@@ -155,14 +155,49 @@ export class IndexedDbStorage {
    * Normalizes fields for backwards compatibility
    */
   private static normalizeState(raw: any): DatabaseState {
-    const leads = (Array.isArray(raw?.leads) ? raw.leads : []).map((l: any) => ({
-      ...l,
-      priority_tier: l.priority_tier !== undefined && l.priority_tier !== null ? Number(l.priority_tier) : 1,
-      list_id: l.list_id || 'master_queue',
-      attempts_count: l.attempts_count || 0,
-      cadence_step: l.cadence_step || 1,
-      last_disposition: l.last_disposition || 'pending',
-    }));
+    const leads = (Array.isArray(raw?.leads) ? raw.leads : []).map((l: any) => {
+      let products: string[] = [];
+      if (Array.isArray(l.products)) {
+        products = l.products;
+      } else if (typeof l.products === 'string' && l.products.trim().startsWith('[')) {
+        try { products = JSON.parse(l.products); } catch { products = []; }
+      } else if (typeof l.products === 'string' && l.products.trim().length > 0) {
+        products = [l.products.trim()];
+      }
+
+      return {
+        ...l,
+        priority_tier: l.priority_tier !== undefined && l.priority_tier !== null ? Number(l.priority_tier) : 1,
+        list_id: l.list_id || 'master_queue',
+        attempts_count: l.attempts_count || 0,
+        cadence_step: l.cadence_step || 1,
+        last_disposition: l.last_disposition || 'pending',
+
+        // Client Conversion Defaults
+        is_client: l.is_client === 1 || l.is_client === true || l.is_client === 'true',
+        client_since: l.client_since || null,
+        products,
+        annualized_premium:
+          l.annualized_premium !== undefined && l.annualized_premium !== null && !isNaN(Number(l.annualized_premium))
+            ? Number(l.annualized_premium)
+            : null,
+        transfer_assets_volume:
+          l.transfer_assets_volume !== undefined && l.transfer_assets_volume !== null && !isNaN(Number(l.transfer_assets_volume))
+            ? Number(l.transfer_assets_volume)
+            : null,
+        policy_effective_date: l.policy_effective_date || null,
+        annual_review_due_date: l.annual_review_due_date || null,
+
+        // Drip Tracking Defaults
+        drip_track: l.drip_track || 'none',
+        drip_step:
+          l.drip_step !== undefined && l.drip_step !== null && !isNaN(Number(l.drip_step))
+            ? Number(l.drip_step)
+            : 0,
+        last_drip_sent_at: l.last_drip_sent_at || null,
+        next_drip_scheduled_at: l.next_drip_scheduled_at || null,
+      };
+    });
 
     return {
       lists: Array.isArray(raw?.lists) ? raw.lists : [],

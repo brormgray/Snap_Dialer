@@ -1,5 +1,13 @@
 import { getDatabase } from './database';
-import { Lead, LeadList, CallDisposition, ExtractedLeadItem } from '../types';
+import {
+  Lead,
+  LeadList,
+  CallDisposition,
+  ExtractedLeadItem,
+  ClientProduct,
+  DripTrack,
+  ClientConversionPayload,
+} from '../types';
 
 export function normalizePhoneKey(phone?: string | null): string {
   if (!phone) return '';
@@ -488,6 +496,17 @@ export class LeadsRepository {
     notes?: string | null;
     priority_tier?: number;
     list_id?: string;
+    is_client?: boolean;
+    client_since?: string | null;
+    products?: ClientProduct[] | null;
+    annualized_premium?: number | null;
+    transfer_assets_volume?: number | null;
+    policy_effective_date?: string | null;
+    annual_review_due_date?: string | null;
+    drip_track?: DripTrack | null;
+    drip_step?: number;
+    last_drip_sent_at?: string | null;
+    next_drip_scheduled_at?: string | null;
   }): Promise<void> {
     const targetPhoneKey = normalizePhoneKey(leadData.phone);
     if (targetPhoneKey.length < 10) {
@@ -504,11 +523,27 @@ export class LeadsRepository {
       );
     }
 
+    const current = all.find((l) => l.id === leadData.id);
     const db = await getDatabase();
     const now = new Date().toISOString();
+
+    const isClient = leadData.is_client !== undefined ? (leadData.is_client ? 1 : 0) : (current?.is_client ? 1 : 0);
+    const clientSince = leadData.client_since !== undefined ? leadData.client_since : (current?.client_since || (isClient ? now : null));
+    const products = leadData.products !== undefined ? JSON.stringify(leadData.products || []) : JSON.stringify(current?.products || []);
+    const annualizedPremium = leadData.annualized_premium !== undefined ? leadData.annualized_premium : (current?.annualized_premium || null);
+    const transferAssets = leadData.transfer_assets_volume !== undefined ? leadData.transfer_assets_volume : (current?.transfer_assets_volume || null);
+    const policyEffectiveDate = leadData.policy_effective_date !== undefined ? leadData.policy_effective_date : (current?.policy_effective_date || null);
+    const annualReviewDueDate = leadData.annual_review_due_date !== undefined ? leadData.annual_review_due_date : (current?.annual_review_due_date || null);
+    const dripTrack = leadData.drip_track !== undefined ? leadData.drip_track : (current?.drip_track || 'none');
+    const dripStep = leadData.drip_step !== undefined ? leadData.drip_step : (current?.drip_step || 0);
+    const lastDripSent = leadData.last_drip_sent_at !== undefined ? leadData.last_drip_sent_at : (current?.last_drip_sent_at || null);
+    const nextDripAt = leadData.next_drip_scheduled_at !== undefined ? leadData.next_drip_scheduled_at : (current?.next_drip_scheduled_at || null);
+
     await db.runAsync(
       `UPDATE leads 
-       SET name = ?, phone = ?, school = ?, email = ?, room_number = ?, planning_period = ?, years_in_frs = ?, notes = ?, priority_tier = ?, list_id = ?, updated_at = ? 
+       SET name = ?, phone = ?, school = ?, email = ?, room_number = ?, planning_period = ?, years_in_frs = ?, notes = ?, priority_tier = ?, list_id = ?,
+           is_client = ?, client_since = ?, products = ?, annualized_premium = ?, transfer_assets_volume = ?, policy_effective_date = ?, annual_review_due_date = ?,
+           drip_track = ?, drip_step = ?, last_drip_sent_at = ?, next_drip_scheduled_at = ?, updated_at = ? 
        WHERE id = ?`,
       [
         leadData.name.trim(),
@@ -521,9 +556,122 @@ export class LeadsRepository {
         leadData.notes || null,
         leadData.priority_tier !== undefined ? Number(leadData.priority_tier) : 1,
         leadData.list_id || 'master_queue',
+        isClient,
+        clientSince,
+        products,
+        annualizedPremium,
+        transferAssets,
+        policyEffectiveDate,
+        annualReviewDueDate,
+        dripTrack,
+        dripStep,
+        lastDripSent,
+        nextDripAt,
         now,
         leadData.id,
       ]
+    );
+  }
+
+  /**
+   * Converts an educator to an active client with policy details and sets up annual review
+   */
+  static async convertLeadToClient(leadId: string, payload: ClientConversionPayload): Promise<Lead> {
+    const db = await getDatabase();
+    const now = new Date().toISOString();
+    const effectiveDate = payload.policy_effective_date || now.split('T')[0];
+
+    // Default annual review to 1 year after effective date if not explicitly specified
+    let reviewDueDate = payload.annual_review_due_date;
+    if (!reviewDueDate) {
+      const d = new Date(effectiveDate);
+      d.setFullYear(d.getFullYear() + 1);
+      reviewDueDate = d.toISOString().split('T')[0];
+    }
+
+    const dripTrack: DripTrack = payload.drip_track || 'client_annual_review';
+    const dripStep = 0;
+    const dripDate = new Date(effectiveDate);
+    dripDate.setDate(dripDate.getDate() + 90); // Step 1: 90 days post-effective check-in
+    const nextDripAt = dripDate.toISOString();
+
+    await db.runAsync(
+      `UPDATE leads SET
+         is_client = 1,
+         client_since = COALESCE(client_since, ?),
+         products = ?,
+         annualized_premium = ?,
+         transfer_assets_volume = ?,
+         policy_effective_date = ?,
+         annual_review_due_date = ?,
+         drip_track = ?,
+         drip_step = ?,
+         next_drip_scheduled_at = ?,
+         notes = CASE WHEN ? IS NOT NULL THEN COALESCE(notes || '\n\n', '') || ? ELSE notes END,
+         updated_at = ?
+       WHERE id = ?`,
+      [
+        now,
+        JSON.stringify(payload.products || []),
+        payload.annualized_premium || 0,
+        payload.transfer_assets_volume || 0,
+        effectiveDate,
+        reviewDueDate,
+        dripTrack,
+        dripStep,
+        nextDripAt,
+        payload.notes || null,
+        payload.notes || null,
+        now,
+        leadId,
+      ]
+    );
+
+    const updated = await this.getLeadById(leadId);
+    return updated!;
+  }
+
+  /**
+   * Returns all converted clients
+   */
+  static async getAllClients(): Promise<Lead[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<any>(
+      'SELECT * FROM leads WHERE is_client = 1 ORDER BY client_since DESC'
+    );
+    return rows.map(this.hydrateLead);
+  }
+
+  /**
+   * Retrieves clients whose annual review is due within the specified lookahead window (default: 30 days)
+   */
+  static async getClientsDueForAnnualReview(daysAhead: number = 30): Promise<Lead[]> {
+    const all = await this.getAllClients();
+    const now = new Date();
+    const maxDate = new Date();
+    maxDate.setDate(now.getDate() + daysAhead);
+
+    const maxISO = maxDate.toISOString().split('T')[0];
+    return all.filter((c) => {
+      if (!c.annual_review_due_date) return false;
+      return c.annual_review_due_date <= maxISO;
+    }).sort((a, b) => (a.annual_review_due_date || '').localeCompare(b.annual_review_due_date || ''));
+  }
+
+  /**
+   * Advances a lead's automated drip step and reschedules the next touchpoint
+   */
+  static async advanceDripStep(leadId: string, nextStep: number, nextScheduledISO?: string | null): Promise<void> {
+    const db = await getDatabase();
+    const now = new Date().toISOString();
+    await db.runAsync(
+      `UPDATE leads SET
+         drip_step = ?,
+         last_drip_sent_at = ?,
+         next_drip_scheduled_at = ?,
+         updated_at = ?
+       WHERE id = ?`,
+      [nextStep, now, nextScheduledISO || null, now, leadId]
     );
   }
 
@@ -611,11 +759,46 @@ export class LeadsRepository {
         let frsKnowledge = master.frs_knowledge;
         let customQuestions = master.custom_questions;
 
+        let isClient = Boolean(master.is_client);
+        let clientSince = master.client_since;
+        let annualizedPremium = Number(master.annualized_premium) || null;
+        let transferVolume = Number(master.transfer_assets_volume) || null;
+        let policyEffectiveDate = master.policy_effective_date;
+        let annualReviewDueDate = master.annual_review_due_date;
+        let dripTrack = master.drip_track || 'none';
+        let dripStep = Number(master.drip_step) || 0;
+        let nextDripScheduledAt = master.next_drip_scheduled_at;
+        const productsSet = new Set<string>(master.products || []);
+
         const interestsSet = new Set<string>(master.frs_interests || []);
         const prefSet = new Set<string>(master.meeting_preferences || []);
 
         for (const dup of duplicates) {
           duplicatesRemoved++;
+
+          // Merge client and policy details
+          if (dup.is_client) {
+            isClient = true;
+            if (!clientSince || (dup.client_since && new Date(dup.client_since) < new Date(clientSince))) {
+              clientSince = dup.client_since;
+            }
+          }
+          if (dup.annualized_premium && (annualizedPremium === null || Number(dup.annualized_premium) > annualizedPremium)) {
+            annualizedPremium = Number(dup.annualized_premium);
+          }
+          if (dup.transfer_assets_volume && (transferVolume === null || Number(dup.transfer_assets_volume) > transferVolume)) {
+            transferVolume = Number(dup.transfer_assets_volume);
+          }
+          if (!policyEffectiveDate && dup.policy_effective_date) policyEffectiveDate = dup.policy_effective_date;
+          if (!annualReviewDueDate && dup.annual_review_due_date) annualReviewDueDate = dup.annual_review_due_date;
+          if (dup.products && Array.isArray(dup.products)) {
+            dup.products.forEach((item) => productsSet.add(item));
+          }
+          if ((!dripTrack || dripTrack === 'none') && dup.drip_track && dup.drip_track !== 'none') {
+            dripTrack = dup.drip_track;
+            dripStep = dup.drip_step || 0;
+            nextDripScheduledAt = dup.next_drip_scheduled_at;
+          }
 
           // Merge notes
           if (dup.notes && dup.notes.trim().length > 0) {
@@ -683,6 +866,16 @@ export class LeadsRepository {
              custom_questions = ?,
              frs_interests = ?,
              meeting_preferences = ?,
+             is_client = ?,
+             client_since = ?,
+             products = ?,
+             annualized_premium = ?,
+             transfer_assets_volume = ?,
+             policy_effective_date = ?,
+             annual_review_due_date = ?,
+             drip_track = ?,
+             drip_step = ?,
+             next_drip_scheduled_at = ?,
              updated_at = ?
            WHERE id = ?`,
           [
@@ -700,6 +893,16 @@ export class LeadsRepository {
             customQuestions || null,
             JSON.stringify(Array.from(interestsSet)),
             JSON.stringify(Array.from(prefSet)),
+            isClient ? 1 : 0,
+            clientSince || null,
+            JSON.stringify(Array.from(productsSet)),
+            annualizedPremium,
+            transferVolume,
+            policyEffectiveDate || null,
+            annualReviewDueDate || null,
+            dripTrack,
+            dripStep,
+            nextDripScheduledAt || null,
             new Date().toISOString(),
             master.id,
           ]
@@ -726,6 +929,7 @@ export class LeadsRepository {
   private static hydrateLead(raw: any): Lead {
     let interests: string[] = [];
     let preferences: string[] = [];
+    let products: ClientProduct[] = [];
 
     if (typeof raw.frs_interests === 'string') {
       try {
@@ -743,12 +947,52 @@ export class LeadsRepository {
       preferences = raw.meeting_preferences;
     }
 
+    if (Array.isArray(raw.products)) {
+      products = raw.products.filter(Boolean);
+    } else if (typeof raw.products === 'string') {
+      const trimmed = raw.products.trim();
+      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (Array.isArray(parsed)) products = parsed.filter(Boolean);
+        } catch {}
+      } else if (trimmed.length > 0) {
+        products = trimmed.split(',').map((p: string) => p.trim()).filter(Boolean) as any;
+      }
+    }
+
     return {
       ...raw,
       priority_tier: raw.priority_tier !== undefined && raw.priority_tier !== null ? Number(raw.priority_tier) : 1,
+      cadence_step: raw.cadence_step !== undefined && raw.cadence_step !== null ? Number(raw.cadence_step) : 1,
+      attempts_count: raw.attempts_count !== undefined && raw.attempts_count !== null ? Number(raw.attempts_count) : 0,
       text_ok: raw.text_ok === 1 || raw.text_ok === true,
       frs_interests: interests,
       meeting_preferences: preferences,
+
+      // Client Conversion Hydration
+      is_client: raw.is_client === 1 || raw.is_client === true || raw.is_client === 'true',
+      client_since: raw.client_since || null,
+      products,
+      annualized_premium:
+        raw.annualized_premium !== undefined && raw.annualized_premium !== null && !isNaN(Number(raw.annualized_premium))
+          ? Number(raw.annualized_premium)
+          : null,
+      transfer_assets_volume:
+        raw.transfer_assets_volume !== undefined && raw.transfer_assets_volume !== null && !isNaN(Number(raw.transfer_assets_volume))
+          ? Number(raw.transfer_assets_volume)
+          : null,
+      policy_effective_date: raw.policy_effective_date || null,
+      annual_review_due_date: raw.annual_review_due_date || null,
+
+      // Drip Tracking Hydration
+      drip_track: raw.drip_track || 'none',
+      drip_step:
+        raw.drip_step !== undefined && raw.drip_step !== null && !isNaN(Number(raw.drip_step))
+          ? Number(raw.drip_step)
+          : 0,
+      last_drip_sent_at: raw.last_drip_sent_at || null,
+      next_drip_scheduled_at: raw.next_drip_scheduled_at || null,
     };
   }
 }
