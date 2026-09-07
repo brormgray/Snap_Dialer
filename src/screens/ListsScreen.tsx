@@ -452,6 +452,7 @@ export default function ListsScreen({ navigation }: any) {
         onNavigateLead={(leadId) => navigation.navigate('LeadDetail', { leadId })}
         onStartDialing={handleStartMasterQueue}
         onFilterDispoDue={() => setFilterTab('dispo_needed')}
+        onFilterAppts={() => setFilterTab('appts')}
       />
 
       {/* KPI Stats Strip */}

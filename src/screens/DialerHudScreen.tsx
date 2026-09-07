@@ -64,7 +64,7 @@ import { AiSmsService } from '../services/aiSmsService';
 import { CalendarService } from '../services/calendarService';
 import { NotesService, NoteEntry, EDUCATOR_QUICK_TAGS } from '../services/notesService';
 import { FRS_OBJECTIONS, ObjectionCard } from '../data/objections';
-import { isTeacherInPlanningNow } from '../data/bellSchedules';
+import { isTeacherInPlanningNow, getScheduleForSchool, matchPeriodId } from '../data/bellSchedules';
 import { Lead, CallDisposition, SMSTemplate, AppSettings, CadenceRule } from '../types';
 import { Colors } from '../theme/colors';
 import ZoomableImageModal from '../components/ZoomableImageModal';
@@ -108,6 +108,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
   // Quick Notes modal for Connected calls / Appointments
   const [noteModalVisible, setNoteModalVisible] = useState<boolean>(false);
   const [isSettingAppt, setIsSettingAppt] = useState<boolean>(false);
+  const [selectedApptDate, setSelectedApptDate] = useState<Date | null>(null);
   const [callNote, setCallNote] = useState<string>('');
 
   // Live Objection Battlecards Modal
@@ -458,7 +459,12 @@ export default function DialerHudScreen({ route, navigation }: any) {
   };
 
   // Disposition Handlers
-  const handleDisposition = async (disposition: CallDisposition, note?: string, advanceImmediately: boolean = false) => {
+  const handleDisposition = async (
+    disposition: CallDisposition,
+    note?: string,
+    advanceImmediately: boolean = false,
+    scheduledDateOverride?: Date
+  ) => {
     if (!currentLead || isProcessingDispoRef.current) return;
     isProcessingDispoRef.current = true;
 
@@ -557,7 +563,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
           await LeadsRepository.updateLeadNotes(currentLead.id, updatedNotes || null);
         }
         if (disposition === 'appointment_set') {
-          const scheduledDate = CalendarService.calculateNextPlanningDate(
+          const scheduledDate = scheduledDateOverride || CalendarService.calculateNextPlanningDate(
             currentLead.planning_period,
             currentLead.school
           );
@@ -645,9 +651,11 @@ export default function DialerHudScreen({ route, navigation }: any) {
     setNoteModalVisible(false);
 
     const disposition: CallDisposition = isSettingAppt ? 'appointment_set' : 'connected';
-    await handleDisposition(disposition, callNote, true);
+    const apptDateToUse = isSettingAppt ? (selectedApptDate || undefined) : undefined;
+    await handleDisposition(disposition, callNote, true, apptDateToUse);
     setCallNote('');
     setIsSettingAppt(false);
+    setSelectedApptDate(null);
   };
 
   const openSmsModal = async () => {
@@ -1520,7 +1528,44 @@ export default function DialerHudScreen({ route, navigation }: any) {
 
             {/* 1-Tap Calendar Sync Buttons for Confirmed Appointments */}
             {isSettingAppt && (() => {
-              const scheduledDate = CalendarService.calculateNextPlanningDate(
+              const schedule = getScheduleForSchool(currentLead.school);
+              const periodId = matchPeriodId(currentLead.planning_period);
+              const period = schedule.find((p) => p.id === periodId) || schedule[2];
+              const [startH, startM] = (period.startTime || '09:00').split(':').map(Number);
+              const now = new Date();
+
+              const availableDays: { label: string; subLabel: string; date: Date }[] = [];
+              const dayOfWeek = now.getDay();
+              if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+                const todaySlot = new Date(now);
+                todaySlot.setHours(startH || 9, startM || 0, 0, 0);
+                if (todaySlot.getTime() > now.getTime()) {
+                  availableDays.push({
+                    label: 'Today',
+                    subLabel: todaySlot.toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' }),
+                    date: todaySlot,
+                  });
+                }
+              }
+
+              let checkD = new Date(now);
+              checkD.setDate(checkD.getDate() + 1);
+              while (availableDays.length < 5) {
+                const dow = checkD.getDay();
+                if (dow >= 1 && dow <= 5) {
+                  const d = new Date(checkD);
+                  d.setHours(startH || 9, startM || 0, 0, 0);
+                  const isTom = availableDays.length === 0 || (availableDays.length === 1 && availableDays[0].label === 'Today');
+                  availableDays.push({
+                    label: isTom ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'short' }),
+                    subLabel: d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }),
+                    date: d,
+                  });
+                }
+                checkD.setDate(checkD.getDate() + 1);
+              }
+
+              const scheduledDate = selectedApptDate || availableDays[0]?.date || CalendarService.calculateNextPlanningDate(
                 currentLead.planning_period,
                 currentLead.school
               );
@@ -1536,6 +1581,37 @@ export default function DialerHudScreen({ route, navigation }: any) {
 
               return (
                 <View style={{ marginTop: 10, marginBottom: 6 }}>
+                  <Text style={{ color: Colors.heavenlyGold, fontSize: 11, fontWeight: '700', marginBottom: 6 }}>
+                    SELECT SIT-DOWN DAY:
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      {availableDays.map((d, idx) => {
+                        const isSelected = scheduledDate.toDateString() === d.date.toDateString();
+                        return (
+                          <TouchableOpacity
+                            key={idx}
+                            style={[
+                              styles.dayPill,
+                              isSelected && styles.dayPillSelected,
+                            ]}
+                            onPress={() => {
+                              HapticsService.tick();
+                              setSelectedApptDate(d.date);
+                            }}
+                          >
+                            <Text style={[styles.dayPillLabel, isSelected && styles.dayPillLabelSelected]}>
+                              {d.label}
+                            </Text>
+                            <Text style={[styles.dayPillSub, isSelected && styles.dayPillSubSelected]}>
+                              {d.subLabel}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </ScrollView>
+
                   <Text style={{ color: Colors.heavenlyGold, fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
                     📅 1-TAP CALENDAR SYNC ({dateStr} @ {timeStr})
                   </Text>
@@ -3008,5 +3084,35 @@ const styles = StyleSheet.create<any>({
     paddingVertical: 10,
     fontSize: 14,
     color: Colors.textPrimary,
+  },
+  dayPill: {
+    backgroundColor: '#1E293B',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    minWidth: 70,
+  },
+  dayPillSelected: {
+    backgroundColor: 'rgba(16, 185, 129, 0.18)',
+    borderColor: '#10B981',
+  },
+  dayPillLabel: {
+    color: '#CBD5E1',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  dayPillLabelSelected: {
+    color: '#10B981',
+  },
+  dayPillSub: {
+    color: '#94A3B8',
+    fontSize: 9,
+    marginTop: 1,
+  },
+  dayPillSubSelected: {
+    color: '#34D399',
   },
 });

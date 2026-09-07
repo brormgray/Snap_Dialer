@@ -337,4 +337,96 @@ describe('Post-Appointment Lifecycle & Dispo Queue Architecture', () => {
     assert.strictEqual(apptCompletedAt, '2026-09-01T10:00:00.000Z');
     assert.strictEqual(lastDisp, 'connected');
   });
+
+  // 11. Today vs Later-This-Week Appointment Filtering
+  it('correctly distinguishes appointments scheduled for today vs later this week', () => {
+    // Current simulated time: Monday Sept 7, 2026 at 10:00 AM EDT
+    const now = new Date('2026-09-07T14:00:00.000Z');
+
+    // Appointment A: Today at 1:15 PM EDT
+    const apptToday = {
+      id: 'lead_appt_today',
+      name: 'Maria Gonzalez',
+      last_disposition: 'appointment_set',
+      appointment_scheduled_at: '2026-09-07T17:15:00.000Z',
+      appointment_outcome: null,
+      appointment_completed_at: null,
+    };
+
+    // Appointment B: Thursday at 1:15 PM EDT (later this week)
+    const apptLaterThisWeek = {
+      id: 'lead_appt_thursday',
+      name: 'David Miller',
+      last_disposition: 'appointment_set',
+      appointment_scheduled_at: '2026-09-10T17:15:00.000Z',
+      appointment_outcome: null,
+      appointment_completed_at: null,
+    };
+
+    function formatDateKey(d, timeZone = 'America/New_York') {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(d);
+    }
+
+    function isAppointmentToday(lead, refNow = now) {
+      if (!lead.appointment_scheduled_at) return false;
+      const apptDate = new Date(lead.appointment_scheduled_at);
+      return formatDateKey(apptDate) === formatDateKey(refNow);
+    }
+
+    function isUpcomingAppointmentToday(lead, refNow = now) {
+      if (lead.last_disposition !== 'appointment_set') return false;
+      if (lead.appointment_outcome || lead.appointment_completed_at) return false;
+      const apptDate = new Date(lead.appointment_scheduled_at);
+      // Window is 30 mins
+      const windowEnd = new Date(apptDate.getTime() + 30 * 60 * 1000);
+      if (refNow.getTime() >= windowEnd.getTime()) return false;
+      return isAppointmentToday(lead, refNow);
+    }
+
+    // Appointment A (Today) must return true
+    assert.strictEqual(isAppointmentToday(apptToday, now), true);
+    assert.strictEqual(isUpcomingAppointmentToday(apptToday, now), true);
+
+    // Appointment B (Thursday / later this week) must return FALSE for today!
+    assert.strictEqual(isAppointmentToday(apptLaterThisWeek, now), false);
+    assert.strictEqual(isUpcomingAppointmentToday(apptLaterThisWeek, now), false);
+
+    // But Appointment B is still an upcoming appointment overall for the pipeline!
+    assert.strictEqual(isUpcomingAppointment(apptLaterThisWeek, now), true);
+  });
+
+  // 12. Today's Advisor Playbook Triad & Preview List Parity
+  it('populates strictly today appointments in Today Playbook while keeping full week in Appts Set tab', () => {
+    const now = new Date('2026-09-07T14:00:00.000Z'); // Monday Sept 7
+
+    const pipelineLeads = [
+      { id: '1', name: 'Today Lead 1', last_disposition: 'appointment_set', appointment_scheduled_at: '2026-09-07T16:00:00.000Z' },
+      { id: '2', name: 'Wed Lead 2', last_disposition: 'appointment_set', appointment_scheduled_at: '2026-09-09T14:00:00.000Z' },
+      { id: '3', name: 'Thu Lead 3', last_disposition: 'appointment_set', appointment_scheduled_at: '2026-09-10T15:00:00.000Z' },
+      { id: '4', name: 'Fri Lead 4', last_disposition: 'appointment_set', appointment_scheduled_at: '2026-09-11T13:00:00.000Z' },
+    ];
+
+    function formatDateKey(d) {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    }
+
+    // Playbook Today's Sit-Downs: ONLY Sept 7 (count: 1)
+    const todaySitDowns = pipelineLeads.filter((l) => {
+      const apptDate = new Date(l.appointment_scheduled_at);
+      return formatDateKey(apptDate) === formatDateKey(now);
+    });
+    assert.strictEqual(todaySitDowns.length, 1);
+    assert.strictEqual(todaySitDowns[0].name, 'Today Lead 1');
+
+    // Pipeline Appts Set tab: ALL 4 upcoming appointments
+    const allUpcoming = pipelineLeads.filter((l) => {
+      return l.last_disposition === 'appointment_set' && new Date(l.appointment_scheduled_at).getTime() > now.getTime();
+    });
+    assert.strictEqual(allUpcoming.length, 4);
+  });
 });

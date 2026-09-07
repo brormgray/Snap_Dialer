@@ -74,6 +74,42 @@ export class PipelineStateService {
   }
 
   /**
+   * Checks if an appointment is scheduled on the exact same calendar day as `now`
+   * in Eastern timezone (America/New_York) by default.
+   */
+  static isAppointmentToday(lead: Lead, now: Date = new Date(), timeZone: string = 'America/New_York'): boolean {
+    const window = this.getAppointmentWindow(lead, now);
+    if (!window) return false;
+
+    const todayStr = this.formatDateKey(now, timeZone);
+    const apptStr = this.formatDateKey(window.startDate, timeZone);
+    return todayStr === apptStr;
+  }
+
+  /**
+   * Strict predicate for UPCOMING Confirmed Sit-Downs TODAY:
+   * - Must be an upcoming appointment (window has not ended yet, not completed/dispositioned)
+   * - Must be scheduled for TODAY
+   */
+  static isUpcomingAppointmentToday(lead: Lead, now: Date = new Date(), timeZone: string = 'America/New_York'): boolean {
+    if (!this.isUpcomingAppointment(lead, now)) return false;
+    return this.isAppointmentToday(lead, now, timeZone);
+  }
+
+  private static formatDateKey(d: Date, timeZone: string): string {
+    try {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(d);
+    } catch {
+      return d.toISOString().slice(0, 10);
+    }
+  }
+
+  /**
    * Strict predicate for DISPOSITION NEEDED:
    * - Must have last_disposition === 'appointment_set'
    * - Must NOT be completed/dispositioned (checks outcome, completed_at, is_client, prospect_nurture drip)

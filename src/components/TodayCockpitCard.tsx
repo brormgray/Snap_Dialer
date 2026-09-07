@@ -14,6 +14,7 @@ interface TodayCockpitCardProps {
   onNavigateLead: (leadId: string) => void;
   onStartDialing: () => void;
   onFilterDispoDue?: () => void;
+  onFilterAppts?: () => void;
 }
 
 export function TodayCockpitCard({
@@ -23,13 +24,19 @@ export function TodayCockpitCard({
   onNavigateLead,
   onStartDialing,
   onFilterDispoDue,
+  onFilterAppts,
 }: TodayCockpitCardProps) {
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   const now = useMemo(() => new Date(), [leads]);
 
-  // Strictly upcoming confirmed sit-downs (window not ended and not dispositioned)
-  const upcomingSitDowns = useMemo(() => {
+  // Strictly upcoming confirmed sit-downs scheduled for TODAY
+  const todaySitDowns = useMemo(() => {
+    return leads.filter((l) => PipelineStateService.isUpcomingAppointmentToday(l, now));
+  }, [leads, now]);
+
+  // All upcoming confirmed sit-downs across the pipeline
+  const allUpcomingSitDowns = useMemo(() => {
     return leads.filter((l) => PipelineStateService.isUpcomingAppointment(l, now));
   }, [leads, now]);
 
@@ -121,15 +128,30 @@ export function TodayCockpitCard({
           </Text>
         </TouchableOpacity>
 
-        {/* Metric 3: Upcoming Sit-Downs */}
-        <View style={styles.triadBox}>
+        {/* Metric 3: Upcoming Sit-Downs Today */}
+        <TouchableOpacity
+          style={styles.triadBox}
+          onPress={() => {
+            HapticsService.tick();
+            if (onFilterAppts) {
+              onFilterAppts();
+            }
+          }}
+          activeOpacity={0.8}
+        >
           <View style={styles.triadTop}>
             <Calendar size={14} color="#10B981" />
-            <Text style={[styles.triadNumber, { color: '#10B981' }]}>{upcomingSitDowns.length}</Text>
+            <Text style={[styles.triadNumber, { color: '#10B981' }]}>{todaySitDowns.length}</Text>
           </View>
           <Text style={styles.triadLabel}>Sit-Downs</Text>
-          <Text style={styles.triadSub}>Upcoming</Text>
-        </View>
+          <Text style={styles.triadSub}>
+            {todaySitDowns.length > 0
+              ? `${todaySitDowns.length} Today`
+              : allUpcomingSitDowns.length > 0
+              ? `${allUpcomingSitDowns.length} this week`
+              : 'None today'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Amber Alert Banner: When Sit-Downs Need Disposition */}
@@ -190,14 +212,19 @@ export function TodayCockpitCard({
         </TouchableOpacity>
       )}
 
-      {/* Confirmed Upcoming Sit-Downs Preview List if any */}
-      {upcomingSitDowns.length > 0 && (
+      {/* Confirmed Upcoming Sit-Downs Preview List (STRICTLY TODAY'S SCHEDULED APPOINTMENTS) */}
+      {todaySitDowns.length > 0 && (
         <View style={styles.sitDownsSection}>
-          <Text style={styles.sitDownsHeader}>UPCOMING SIT-DOWNS TODAY:</Text>
+          <Text style={styles.sitDownsHeader}>UPCOMING SIT-DOWNS TODAY ({todaySitDowns.length}):</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              {upcomingSitDowns.slice(0, 5).map((s) => {
+              {todaySitDowns.slice(0, 5).map((s) => {
                 const planningInfo = isTeacherInPlanningNow(s.planning_period, s.school);
+                const window = PipelineStateService.getAppointmentWindow(s, now);
+                const timeStr = window?.startDate
+                  ? window.startDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                  : null;
+
                 return (
                   <TouchableOpacity
                     key={s.id}
@@ -219,11 +246,9 @@ export function TodayCockpitCard({
                     <Text style={styles.sitDownSchool} numberOfLines={1}>
                       {s.school || 'VOL'}{s.room_number ? ` • Rm ${s.room_number}` : ''}
                     </Text>
-                    {s.planning_period ? (
-                      <Text style={styles.sitDownPlanning} numberOfLines={1}>
-                        {s.planning_period}
-                      </Text>
-                    ) : null}
+                    <Text style={styles.sitDownPlanning} numberOfLines={1}>
+                      {timeStr ? `⏰ ${timeStr}` : s.planning_period ? `Period ${s.planning_period}` : 'Planning'}
+                    </Text>
                   </TouchableOpacity>
                 );
               })}
@@ -294,7 +319,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   triadLabel: {
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     fontSize: 10,
     fontWeight: '700',
   },
@@ -327,7 +352,7 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255, 255, 255, 0.08)',
   },
   sitDownsHeader: {
-    color: Colors.textMuted,
+    color: '#94A3B8',
     fontSize: 9,
     fontWeight: '800',
     letterSpacing: 0.5,
@@ -338,24 +363,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: Colors.borderSubtle,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
     minWidth: 120,
   },
   sitDownChipInPlanning: {
     borderColor: '#22C55E',
-    backgroundColor: 'rgba(34, 197, 94, 0.12)',
+    backgroundColor: 'rgba(34, 197, 94, 0.16)',
   },
   sitDownName: {
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',
   },
   sitDownSchool: {
-    color: Colors.textMuted,
+    color: '#CBD5E1',
     fontSize: 10,
   },
   sitDownPlanning: {
-    color: Colors.heavenlyGold,
+    color: '#38BDF8',
     fontSize: 10,
     fontWeight: '600',
     marginTop: 2,
