@@ -40,12 +40,22 @@ export function BatchDripDispatchModal({
   dueDrips,
   onDripSent,
 }: BatchDripDispatchModalProps) {
+  const [localQueue, setLocalQueue] = useState<DueDripItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [isSending, setIsSending] = useState<boolean>(false);
   const [customMessage, setCustomMessage] = useState<string>('');
   const [editingMessage, setEditingMessage] = useState<boolean>(false);
 
-  const currentItem: DueDripItem | undefined = dueDrips[currentIndex];
+  React.useEffect(() => {
+    if (visible) {
+      setLocalQueue([...dueDrips]);
+      setCurrentIndex(0);
+      setCustomMessage('');
+      setEditingMessage(false);
+    }
+  }, [visible]);
+
+  const currentItem: DueDripItem | undefined = localQueue[currentIndex];
 
   const handleClose = () => {
     setCurrentIndex(0);
@@ -54,7 +64,7 @@ export function BatchDripDispatchModal({
   };
 
   const handleNext = () => {
-    if (currentIndex + 1 < dueDrips.length) {
+    if (currentIndex + 1 < localQueue.length) {
       setCurrentIndex((prev) => prev + 1);
       setEditingMessage(false);
       setCustomMessage('');
@@ -108,8 +118,8 @@ export function BatchDripDispatchModal({
             <View>
               <Text style={styles.headerTitle}>Daily Drip Dispatcher</Text>
               <Text style={styles.headerSubtitle}>
-                {dueDrips.length > 0
-                  ? `Educator ${currentIndex + 1} of ${dueDrips.length}`
+                {localQueue.length > 0
+                  ? `Educator ${currentIndex + 1} of ${localQueue.length}`
                   : 'All Caught Up'}
               </Text>
             </View>
@@ -120,7 +130,7 @@ export function BatchDripDispatchModal({
         </View>
 
         {/* Modal Body */}
-        {dueDrips.length === 0 || !currentItem ? (
+        {localQueue.length === 0 || !currentItem ? (
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIconCircle}>
               <CheckCircle2 size={44} color="#10B981" />

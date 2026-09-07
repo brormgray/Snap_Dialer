@@ -25,9 +25,16 @@ export class GeminiModelService {
       'gemini-1.5-pro',
     ];
 
+    if (!apiKey || apiKey.trim().length === 0) {
+      return fallbackList;
+    }
+
     try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey.trim()}`;
-      const response = await fetch(endpoint);
+      const response = await fetch(endpoint, { signal: controller.signal });
+      clearTimeout(timer);
       if (response.ok) {
         const data = await response.json();
         const available: string[] = (data?.models || [])

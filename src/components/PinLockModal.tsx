@@ -21,6 +21,8 @@ interface PinLockModalProps {
 export default function PinLockModal({ visible, onUnlocked }: PinLockModalProps) {
   const [pin, setPin] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [failedAttempts, setFailedAttempts] = useState<number>(0);
+  const [lockoutRemaining, setLockoutRemaining] = useState<number>(0);
 
   useEffect(() => {
     if (visible) {
@@ -29,7 +31,24 @@ export default function PinLockModal({ visible, onUnlocked }: PinLockModalProps)
     }
   }, [visible]);
 
+  useEffect(() => {
+    if (lockoutRemaining <= 0) return;
+    const timer = setInterval(() => {
+      setLockoutRemaining((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setErrorMsg(null);
+          setFailedAttempts(0);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lockoutRemaining]);
+
   const handleDigitPress = async (digit: string) => {
+    if (lockoutRemaining > 0) return;
     if (pin.length >= 4) return;
     await HapticsService.tick();
     const newPin = pin + digit;
@@ -41,10 +60,18 @@ export default function PinLockModal({ visible, onUnlocked }: PinLockModalProps)
       if (isValid) {
         await HapticsService.success();
         setPin('');
+        setFailedAttempts(0);
         onUnlocked();
       } else {
         await HapticsService.error();
-        setErrorMsg('Incorrect PIN. Please try again.');
+        const nextFailed = failedAttempts + 1;
+        setFailedAttempts(nextFailed);
+        if (nextFailed >= 5) {
+          setLockoutRemaining(30);
+          setErrorMsg('Too many attempts. Locked for 30 seconds.');
+        } else {
+          setErrorMsg(`Incorrect PIN. ${5 - nextFailed} attempts remaining.`);
+        }
         setTimeout(() => setPin(''), 400);
       }
     }
@@ -67,7 +94,7 @@ export default function PinLockModal({ visible, onUnlocked }: PinLockModalProps)
   if (!visible) return null;
 
   return (
-    <Modal visible={visible} animationType="fade" transparent={false}>
+    <Modal visible={visible} animationType="fade" transparent={false} onRequestClose={() => {}}>
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor={Colors.brandPrimary} />
 

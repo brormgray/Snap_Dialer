@@ -86,6 +86,13 @@ export class TelephonyService {
   }
 
   /**
+   * Semantic alias for makeCall
+   */
+  static async dialNumber(phone: string): Promise<boolean> {
+    return this.makeCall(phone);
+  }
+
+  /**
    * Replaces dynamic tokens ({{name}}, {{school}}, {{planning_period}}, {{room_number}}, {{years_in_frs}}, {{meeting_pref}}, {{my_name}}) with lead info
    */
   static interpolateTemplate(template: SMSTemplate, lead: Lead, myName: string = 'Alex'): string {
@@ -95,7 +102,9 @@ export class TelephonyService {
         : 'during your planning period';
 
     const planningPeriodText = lead.planning_period || 'your planning period';
-    const roomText = lead.room_number ? `Room ${lead.room_number}` : 'your classroom';
+    const roomText = lead.room_number
+      ? (/^room\b/i.test(lead.room_number.trim()) ? lead.room_number.trim() : `Room ${lead.room_number.trim()}`)
+      : 'your classroom';
 
     const firstName = lead.name ? lead.name.split(' ')[0] : 'there';
     const lastName = lead.name && lead.name.split(' ').length > 1 ? lead.name.split(' ').slice(1).join(' ') : '';
@@ -124,20 +133,20 @@ export class TelephonyService {
     }
 
     return template.body
-      .replace(/{{name}}/gi, firstName)
-      .replace(/{{first_name}}/gi, firstName)
-      .replace(/{{last_name}}/gi, lastName)
-      .replace(/{{full_name}}/gi, lead.name || 'there')
-      .replace(/{{school}}/gi, lead.school || 'your school')
-      .replace(/{{planning_period}}/gi, planningPeriodText)
-      .replace(/{{room_number}}/gi, roomText)
-      .replace(/{{years_in_frs}}/gi, lead.years_in_frs ? `${lead.years_in_frs} years` : 'your time')
-      .replace(/{{meeting_pref}}/gi, primaryMeetingPref)
-      .replace(/{{company}}/gi, lead.company || 'ValuTeachers')
-      .replace(/{{note}}/gi, lead.notes || '')
-      .replace(/{{notes}}/gi, lead.notes || '')
-      .replace(/{{product}}/gi, productLabel)
-      .replace(/{{anniversary_date}}/gi, formattedAnniversary)
-      .replace(/{{my_name}}/gi, myName);
+      .replace(/{{name}}/gi, () => firstName)
+      .replace(/{{first_name}}/gi, () => firstName)
+      .replace(/{{last_name}}/gi, () => lastName)
+      .replace(/{{full_name}}/gi, () => lead.name || 'there')
+      .replace(/{{school}}/gi, () => lead.school || 'your school')
+      .replace(/{{planning_period}}/gi, () => planningPeriodText)
+      .replace(/{{room_number}}/gi, () => roomText)
+      .replace(/{{years_in_frs}}/gi, () => (lead.years_in_frs ? `${lead.years_in_frs} years` : 'your time'))
+      .replace(/{{meeting_pref}}/gi, () => primaryMeetingPref)
+      .replace(/{{company}}/gi, () => lead.company || 'ValuTeachers')
+      .replace(/{{note}}/gi, () => lead.notes || '')
+      .replace(/{{notes}}/gi, () => lead.notes || '')
+      .replace(/{{product}}/gi, () => productLabel)
+      .replace(/{{anniversary_date}}/gi, () => formattedAnniversary)
+      .replace(/{{my_name}}/gi, () => myName);
   }
 }

@@ -21,7 +21,6 @@ import {
   Timer,
   Cloud,
   Download,
-  Share2,
   Trash2,
   Upload,
   Copy,
@@ -977,9 +976,36 @@ export default function SettingsScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-        {/* Data Management */}
-        <Text style={[styles.sectionHeader, { marginTop: 24 }]}>DATA MANAGEMENT</Text>
-        <TouchableOpacity style={styles.wipeButton} onPress={handleClearAllData}>
+        {/* Data Management & Persistence */}
+        <Text style={[styles.sectionHeader, { marginTop: 24 }]}>DATA MANAGEMENT & STORAGE PROTECTION</Text>
+        <View style={styles.card}>
+          <View style={styles.cardHeaderRow}>
+            <Database size={18} color={Colors.heavenlyGold} />
+            <Text style={styles.cardTitle}>Local Storage Health</Text>
+          </View>
+          <Text style={styles.cardDesc}>
+            {storageQuota
+              ? `Used: ${storageQuota.usedMb} MB / Total Quota: ${storageQuota.totalGb} GB • Status: ${
+                  storageQuota.isPersisted ? '✓ Protected (Persistent)' : 'Standard (Browser Managed)'
+                }`
+              : 'Multi-Gigabyte IndexedDB database safeguarding educator records, appointments, and call logs.'}
+          </Text>
+
+          <TouchableOpacity
+            style={[
+              styles.actionButtonSecondary,
+              { marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+            ]}
+            onPress={handleRequestStoragePersistence}
+          >
+            <ShieldCheck size={16} color={storageQuota?.isPersisted ? '#34D399' : Colors.brandAccent} />
+            <Text style={[styles.actionButtonText, { color: storageQuota?.isPersisted ? '#34D399' : Colors.brandAccent, fontWeight: '700' }]}>
+              {storageQuota?.isPersisted ? 'Storage Persistence Active' : 'Request Permanent Storage Lock'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity style={[styles.wipeButton, { marginTop: 14 }]} onPress={handleClearAllData}>
           <Trash2 size={18} color="#EF4444" />
           <Text style={styles.wipeButtonText}>Wipe All Leads & Start Fresh</Text>
         </TouchableOpacity>

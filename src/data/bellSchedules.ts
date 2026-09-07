@@ -128,14 +128,26 @@ export function isTeacherInPlanningNow(
   if (!matched) return { inPlanning: false };
 
   const now = new Date();
+  // Enforce Volusia County Florida Eastern Time (America/New_York)
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false,
+    weekday: 'short',
+  });
+  const parts = formatter.formatToParts(now);
+  const hourPart = parts.find((p) => p.type === 'hour')?.value;
+  const minutePart = parts.find((p) => p.type === 'minute')?.value;
+  const weekdayPart = parts.find((p) => p.type === 'weekday')?.value;
+
   // Check Monday through Friday only
-  const day = now.getDay();
-  if (day === 0 || day === 6) {
+  if (weekdayPart === 'Sat' || weekdayPart === 'Sun') {
     return { inPlanning: false, currentPeriodName: matched.name, displayTime: matched.displayTime };
   }
 
-  const currentHours = now.getHours();
-  const currentMinutes = now.getMinutes();
+  const currentHours = hourPart !== undefined ? parseInt(hourPart, 10) : now.getHours();
+  const currentMinutes = minutePart !== undefined ? parseInt(minutePart, 10) : now.getMinutes();
   const currentTotalMinutes = currentHours * 60 + currentMinutes;
 
   const [startH, startM] = matched.startTime.split(':').map(Number);

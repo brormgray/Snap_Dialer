@@ -1,5 +1,6 @@
+import { Platform } from 'react-native';
 import { getSupabaseClient, setSupabaseCredentials } from './supabaseClient';
-import { getDatabase, resetDatabase } from '../db/database';
+import { IDatabase, getDatabase, resetDatabase } from '../db/database';
 import { IndexedDbStorage, DatabaseState } from '../db/indexedDbStorage';
 
 export interface SyncResult {
@@ -173,6 +174,102 @@ function mapLogToSnapSchema(log: any): object {
   };
 }
 
+async function saveToNativeSqlite(db: IDatabase, lists: any[], leads: any[], logs: any[]): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    await db.withTransactionAsync(async () => {
+      for (const l of lists) {
+        await db.runAsync(
+          `INSERT OR REPLACE INTO lists (id, title, source_image_uri, total_leads, completed_leads, connected_leads, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            l.id,
+            l.title || '',
+            l.source_image_uri || null,
+            l.total_leads || 0,
+            l.completed_leads || 0,
+            l.connected_leads || 0,
+            l.created_at || new Date().toISOString(),
+            l.updated_at || new Date().toISOString(),
+          ]
+        );
+      }
+      for (const lead of leads) {
+        await db.runAsync(
+          `INSERT OR REPLACE INTO leads (
+            id, list_id, name, phone, school, email, age, planning_period, room_number, years_in_frs, text_ok,
+            frs_knowledge, frs_interests, custom_questions, meeting_preferences, annual_salary, present_403b_contribution,
+            source_image_uri, company, notes, cadence_step, last_attempt_at, last_disposition, follow_up_at, attempts_count,
+            is_client, client_since, products, annualized_premium, transfer_assets_volume, policy_effective_date, annual_review_due_date,
+            drip_track, drip_step, last_drip_sent_at, next_drip_scheduled_at, appointment_scheduled_at, appointment_outcome, appointment_completed_at,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            lead.id,
+            lead.list_id || '',
+            lead.name || '',
+            lead.phone || '',
+            lead.school || null,
+            lead.email || null,
+            lead.age || null,
+            lead.planning_period || null,
+            lead.room_number || null,
+            lead.years_in_frs || null,
+            lead.text_ok ? 1 : 0,
+            lead.frs_knowledge || null,
+            lead.frs_interests || null,
+            lead.custom_questions || null,
+            lead.meeting_preferences || null,
+            lead.annual_salary || null,
+            lead.present_403b_contribution || null,
+            lead.source_image_uri || null,
+            lead.company || null,
+            lead.notes || null,
+            lead.cadence_step || 1,
+            lead.last_attempt_at || null,
+            lead.last_disposition || 'pending',
+            lead.follow_up_at || null,
+            lead.attempts_count || 0,
+            lead.is_client ? 1 : 0,
+            lead.client_since || null,
+            typeof lead.products === 'string' ? lead.products : JSON.stringify(lead.products || []),
+            lead.annualized_premium || 0,
+            lead.transfer_assets_volume || 0,
+            lead.policy_effective_date || null,
+            lead.annual_review_due_date || null,
+            lead.drip_track || 'none',
+            lead.drip_step || 0,
+            lead.last_drip_sent_at || null,
+            lead.next_drip_scheduled_at || null,
+            lead.appointment_scheduled_at || null,
+            lead.appointment_outcome || null,
+            lead.appointment_completed_at || null,
+            lead.created_at || new Date().toISOString(),
+            lead.updated_at || new Date().toISOString(),
+          ]
+        );
+      }
+      for (const log of logs) {
+        await db.runAsync(
+          `INSERT OR REPLACE INTO call_logs (id, lead_id, list_id, timestamp, duration_seconds, disposition, note, sms_sent, sms_body) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            log.id,
+            log.lead_id || '',
+            log.list_id || '',
+            log.timestamp || new Date().toISOString(),
+            log.duration_seconds || 0,
+            log.disposition || 'unanswered',
+            log.note || null,
+            log.sms_sent ? 1 : 0,
+            log.sms_body || null,
+          ]
+        );
+      }
+    });
+  } catch (nativeErr) {
+    console.warn('Native SQLite sync note:', nativeErr);
+  }
+}
+
 export class SupabaseSyncService {
   private static isSyncing: boolean = false;
   private static debounceTimer: any = null;
@@ -314,7 +411,13 @@ export class SupabaseSyncService {
 
       await IndexedDbStorage.saveState(restoredState);
 
-      // Reset the in-memory singleton so next getDatabase() re-initializes from IndexedDB
+      // Persist to native SQLite if running on iOS/Android
+      if (Platform.OS !== 'web') {
+        const db = await getDatabase();
+        await saveToNativeSqlite(db, lists || [], leads || [], logs || []);
+      }
+
+      // Reset the in-memory singleton so next getDatabase() re-initializes from storage
       resetDatabase();
 
       if (typeof window !== 'undefined' && window.localStorage) {
@@ -401,24 +504,30 @@ export class SupabaseSyncService {
 
       // 1. RECONCILE LEADS
       const localLeadsMap = new Map<string, any>(localLeads.map((l: any) => [String(l.id).trim(), l]));
-      // Also index local leads by normalized phone to prevent duplicate rows across devices
+      // Also index local leads by normalized 10-digit phone to prevent duplicate rows across devices
       const localLeadsPhoneMap = new Map<string, any>();
       for (const l of localLeads) {
         const pKey = (l.phone || '').replace(/\D/g, '').replace(/^1/, '');
-        if (pKey.length >= 7) localLeadsPhoneMap.set(pKey, l);
+        if (pKey.length >= 10) localLeadsPhoneMap.set(pKey.slice(-10), l);
       }
 
       const cloudLeadsMap = new Map<string, any>((cloudLeads || []).map((l: any) => [String(l.id).trim(), l]));
       const leadsToPush: any[] = [];
+      const matchedLocalLeadIds = new Set<string>();
       let localLeadsMutated = false;
 
       for (const [id, cLead] of cloudLeadsMap.entries()) {
         let lLead = localLeadsMap.get(id);
         if (!lLead) {
           const cPhoneKey = (cLead.phone || '').replace(/\D/g, '').replace(/^1/, '');
-          if (cPhoneKey.length >= 7) {
-            lLead = localLeadsPhoneMap.get(cPhoneKey);
+          if (cPhoneKey.length >= 10) {
+            lLead = localLeadsPhoneMap.get(cPhoneKey.slice(-10));
+            if (lLead) {
+              matchedLocalLeadIds.add(String(lLead.id).trim());
+            }
           }
+        } else {
+          matchedLocalLeadIds.add(id);
         }
 
         if (!lLead) {
@@ -441,7 +550,7 @@ export class SupabaseSyncService {
       }
 
       for (const [id, lLead] of localLeadsMap.entries()) {
-        if (!cloudLeadsMap.has(id)) {
+        if (!cloudLeadsMap.has(id) && !matchedLocalLeadIds.has(id)) {
           leadsToPush.push(mapLeadToSnapSchema(lLead));
           cloudCreated++;
         }
@@ -534,6 +643,12 @@ export class SupabaseSyncService {
         };
 
         await IndexedDbStorage.saveState(updatedState);
+
+        // Persist to native SQLite if running on iOS/Android
+        if (Platform.OS !== 'web') {
+          await saveToNativeSqlite(db, localLists, localLeads, localLogs);
+        }
+
         resetDatabase();
       }
 

@@ -87,7 +87,9 @@ try {
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="SnapDialer" />
-    <meta name="theme-color" content="#0B3B60" />
+    <meta name="theme-color" content="#0B3B60" />`;
+
+      const pwaScript = `
     <script id="snapdialer-pwa-sw">
       if ('serviceWorker' in navigator) {
         var refreshing = false;
@@ -122,9 +124,9 @@ try {
     </script>`;
 
       if (!indexHtml.includes('rel="manifest"')) {
-        indexHtml = indexHtml.replace('</head>', `${pwaMetaTags}\n  </head>`);
+        indexHtml = indexHtml.replace('</head>', `${pwaMetaTags}\n${pwaScript}\n  </head>`);
       } else {
-        indexHtml = indexHtml.replace('</head>', `${pwaMetaTags}\n  </head>`);
+        indexHtml = indexHtml.replace('</head>', `${pwaScript}\n  </head>`);
       }
       fs.writeFileSync(indexHtmlPath, indexHtml, 'utf8');
       console.log('[PWA] Injected updated iOS PWA tags & auto-update script into dist/index.html');
@@ -154,7 +156,21 @@ try {
   console.warn('PWA build preparation note:', e);
 }
 
-const surge = require('C:/Users/brorm/AppData/Local/npm-cache/_npx/23158936acd5c32d/node_modules/surge')({
-  endpoint: 'https://surge.surge.sh'
-});
-surge(['./dist', 'valuteachers-dialer.surge.sh', '--endpoint', 'https://surge.surge.sh']);
+let surge;
+try {
+  surge = require('surge');
+} catch (e) {
+  try {
+    surge = require('C:/Users/brorm/AppData/Local/npm-cache/_npx/23158936acd5c32d/node_modules/surge');
+  } catch (err2) {
+    const { execSync } = require('child_process');
+    console.log('[Surge] Deploying via npx surge ./dist valuteachers-dialer.surge.sh...');
+    execSync('npx surge ./dist valuteachers-dialer.surge.sh --endpoint https://surge.surge.sh', { stdio: 'inherit' });
+    process.exit(0);
+  }
+}
+
+if (typeof surge === 'function') {
+  const surgeClient = surge({ endpoint: 'https://surge.surge.sh' });
+  surgeClient(['./dist', 'valuteachers-dialer.surge.sh', '--endpoint', 'https://surge.surge.sh']);
+}

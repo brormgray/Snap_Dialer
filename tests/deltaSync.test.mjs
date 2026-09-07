@@ -102,4 +102,119 @@ describe('Two-Way Delta Sync with Last-Write-Wins (LWW) Conflict Resolution', ()
     assert.strictEqual(itemsToPushToCloud.length, 1);
     assert.strictEqual(itemsToPushToCloud[0].id, 'lead_local_only');
   });
+
+  test('prevents duplicate cloud lead push when local lead matches cloud lead by 10-digit phone', () => {
+    const localLeads = [
+      { id: 'local_lead_123', name: 'Sarah Jenkins', phone: '(386) 555-1234', updated_at: '2026-09-01T10:00:00Z' }
+    ];
+    const cloudLeads = [
+      { id: 'cloud_lead_999', name: 'Sarah Jenkins', phone: '+1 386-555-1234', updated_at: '2026-09-01T11:00:00Z' }
+    ];
+
+    const localLeadsMap = new Map(localLeads.map((l) => [l.id, l]));
+    const localLeadsPhoneMap = new Map();
+    for (const l of localLeads) {
+      const pKey = (l.phone || '').replace(/\D/g, '').replace(/^1/, '');
+      if (pKey.length >= 10) localLeadsPhoneMap.set(pKey.slice(-10), l);
+    }
+
+    const cloudLeadsMap = new Map(cloudLeads.map((c) => [c.id, c]));
+    const leadsToPush = [];
+    const matchedLocalLeadIds = new Set();
+    let localCreated = 0;
+    let localUpdated = 0;
+
+    for (const [id, cLead] of cloudLeadsMap.entries()) {
+      let lLead = localLeadsMap.get(id);
+      if (!lLead) {
+        const cPhoneKey = (cLead.phone || '').replace(/\D/g, '').replace(/^1/, '');
+        if (cPhoneKey.length >= 10) {
+          lLead = localLeadsPhoneMap.get(cPhoneKey.slice(-10));
+          if (lLead) {
+            matchedLocalLeadIds.add(String(lLead.id).trim());
+          }
+        }
+      } else {
+        matchedLocalLeadIds.add(id);
+      }
+
+      if (!lLead) {
+        localCreated++;
+      } else {
+        const cTime = new Date(cLead.updated_at).getTime();
+        const lTime = new Date(lLead.updated_at).getTime();
+        if (cTime > lTime) {
+          Object.assign(lLead, cLead);
+          localUpdated++;
+        }
+      }
+    }
+
+    for (const [id, lLead] of localLeadsMap.entries()) {
+      if (!cloudLeadsMap.has(id) && !matchedLocalLeadIds.has(id)) {
+        leadsToPush.push(lLead);
+      }
+    }
+
+    assert.strictEqual(localUpdated, 1);
+    assert.strictEqual(localCreated, 0);
+    // matchedLocalLeadIds prevented pushing local_lead_123 as a new cloud lead
+    assert.strictEqual(leadsToPush.length, 0);
+  });
+
+  test('pin lock security rate limits with 30-second lockout after 5 failed attempts', () => {
+    let failedCount = 0;
+    let lockoutUntil = 0;
+
+    function handleFailedPin(nowMs) {
+      if (nowMs < lockoutUntil) {
+        return { lockedOut: true, remainingSec: Math.ceil((lockoutUntil - nowMs) / 1000) };
+      }
+      if (lockoutUntil > 0) {
+        failedCount = 0;
+        lockoutUntil = 0;
+      }
+      failedCount++;
+      if (failedCount >= 5) {
+        lockoutUntil = nowMs + 30000;
+        return { lockedOut: true, remainingSec: 30 };
+      }
+      return { lockedOut: false, remainingAttempts: 5 - failedCount };
+    }
+
+    const t0 = 1000000;
+    for (let i = 0; i < 4; i++) {
+      const res = handleFailedPin(t0);
+      assert.strictEqual(res.lockedOut, false);
+    }
+    // 5th attempt triggers lockout
+    const res5 = handleFailedPin(t0);
+    assert.strictEqual(res5.lockedOut, true);
+    assert.strictEqual(res5.remainingSec, 30);
+
+    // Attempt at +10s is rejected
+    const res10s = handleFailedPin(t0 + 10000);
+    assert.strictEqual(res10s.lockedOut, true);
+    assert.strictEqual(res10s.remainingSec, 20);
+
+    // Attempt at +31s is allowed
+    const res31s = handleFailedPin(t0 + 31000);
+    assert.strictEqual(res31s.lockedOut, false);
+  });
+
+  test('vision AI strips markdown code fences cleanly before JSON parsing', () => {
+    const rawFencedResponse = '```json\n[\n  {\n    "name": "Jane Doe",\n    "phone": "3865551234",\n    "school": "University High"\n  }\n]\n```';
+    const cleaned = rawFencedResponse
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/```\s*$/i, '')
+      .trim();
+
+    const parsed = JSON.parse(cleaned);
+    assert.strictEqual(Array.isArray(parsed), true);
+    assert.strictEqual(parsed.length, 1);
+    assert.strictEqual(parsed[0].name, 'Jane Doe');
+    assert.strictEqual(parsed[0].phone, '3865551234');
+  });
 });
+

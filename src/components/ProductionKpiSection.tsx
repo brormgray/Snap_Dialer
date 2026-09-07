@@ -46,7 +46,8 @@ export function ProductionKpiSection({ leads }: ProductionKpiSectionProps) {
       // Prioritize client_since, then policy_effective_date, then created_at
       const dateStr = c.client_since || c.policy_effective_date || c.created_at;
       if (!dateStr) return false;
-      const parsedMs = new Date(dateStr).getTime();
+      const normalizedStr = dateStr.length === 10 ? `${dateStr}T12:00:00` : dateStr;
+      const parsedMs = new Date(normalizedStr).getTime();
       return !isNaN(parsedMs) && parsedMs >= cutoffMs;
     });
   }, [leads, horizon]);

@@ -80,6 +80,8 @@ export default function DialerHudScreen({ route, navigation }: any) {
   currentIndexRef.current = currentIndex;
   const queueRef = useRef<Lead[]>([]);
   queueRef.current = queue;
+  const isProcessingDispoRef = useRef<boolean>(false);
+  const smsAlreadyLoggedRef = useRef<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState<number | null>(null);
   const [isAutoPaused, setIsAutoPaused] = useState<boolean>(false);
@@ -227,12 +229,14 @@ export default function DialerHudScreen({ route, navigation }: any) {
     loadQueue();
     const unsubscribe = navigation.addListener('focus', async () => {
       // Re-hydrate queue in case a lead was edited on LeadDetailScreen
-      if (queue.length > 0 && queue[currentIndex]) {
-        const fresh = await LeadsRepository.getLeadById(queue[currentIndex].id);
+      const q = queueRef.current;
+      const idx = currentIndexRef.current;
+      if (q.length > 0 && q[idx]) {
+        const fresh = await LeadsRepository.getLeadById(q[idx].id);
         if (fresh) {
           setQueue((prev) => {
             const next = [...prev];
-            if (next[currentIndex]) next[currentIndex] = { ...fresh };
+            if (next[idx]) next[idx] = { ...fresh };
             return next;
           });
         }
@@ -331,99 +335,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
     ? TimeZoneService.getProspectTimeInfo(currentLead.phone)
     : null;
 
-  // Web & Native Universal Swipe Engine
-  const touchStartX = useRef<number | null>(null);
-  const touchStartY = useRef<number | null>(null);
-  const isSwipingHorizontally = useRef<boolean>(false);
-
-  const onGestureStart = (clientX: number, clientY: number) => {
-    touchStartX.current = clientX;
-    touchStartY.current = clientY;
-    isSwipingHorizontally.current = false;
-  };
-
-  const onGestureMove = (clientX: number, clientY: number) => {
-    if (touchStartX.current === null) return;
-    const dx = clientX - touchStartX.current;
-    const dy = clientY - (touchStartY.current || clientY);
-
-    if (!isSwipingHorizontally.current) {
-      if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
-        isSwipingHorizontally.current = true;
-      } else if (Math.abs(dy) > 10) {
-        touchStartX.current = null;
-        return;
-      }
-    }
-
-    if (isSwipingHorizontally.current) {
-      pan.setValue({ x: dx, y: 0 });
-      if (dx > 50) {
-        setSwipeActionText(currentIndex > 0 ? '⏮️ RELEASE FOR PREVIOUS' : '🚫 FIRST LEAD');
-      } else if (dx < -50) {
-        setSwipeActionText('⏭️ RELEASE FOR NEXT LEAD');
-      } else {
-        setSwipeActionText(null);
-      }
-    }
-  };
-
-  const onGestureEnd = () => {
-    if (touchStartX.current === null) return;
-    const wasSwiping = isSwipingHorizontally.current;
-    touchStartX.current = null;
-    touchStartY.current = null;
-    isSwipingHorizontally.current = false;
-
-    if (!wasSwiping) return;
-
-    const currentX = (pan.x as any)._value || 0;
-
-    if (currentX > 50) {
-      if (currentIndex > 0) {
-        HapticsService.medium();
-        goToPreviousLead();
-        Animated.timing(pan, {
-          toValue: { x: 350, y: 0 },
-          duration: 160,
-          useNativeDriver: false,
-        }).start(() => {
-          pan.setValue({ x: 0, y: 0 });
-          setSwipeActionText(null);
-        });
-      } else {
-        HapticsService.tick();
-        Animated.spring(pan, {
-          toValue: { x: 0, y: 0 },
-          friction: 6,
-          tension: 50,
-          useNativeDriver: false,
-        }).start();
-        setSwipeActionText(null);
-      }
-    } else if (currentX < -50) {
-      HapticsService.tick();
-      advanceNextLead();
-      Animated.timing(pan, {
-        toValue: { x: -350, y: 0 },
-        duration: 160,
-        useNativeDriver: false,
-      }).start(() => {
-        pan.setValue({ x: 0, y: 0 });
-        setSwipeActionText(null);
-      });
-    } else {
-      Animated.spring(pan, {
-        toValue: { x: 0, y: 0 },
-        friction: 6,
-        tension: 50,
-        useNativeDriver: false,
-      }).start();
-      setSwipeActionText(null);
-    }
-  };
-
-  // Swipe Gesture Controller (Native fallback)
+  // PanResponder Swipe Controller (Two-way thumb navigation)
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
@@ -504,7 +416,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
 
   // Trigger outbound call via zero-cost native SIM bridge
   const handleDial = async () => {
-    if (!currentLead) return;
+    if (!currentLead || isOnCall) return;
     await HapticsService.medium();
     setSessionDials((prev) => prev + 1);
     setIsOnCall(true);
@@ -523,129 +435,135 @@ export default function DialerHudScreen({ route, navigation }: any) {
 
   // Disposition Handlers
   const handleDisposition = async (disposition: CallDisposition, note?: string, advanceImmediately: boolean = false) => {
-    if (!currentLead) return;
+    if (!currentLead || isProcessingDispoRef.current) return;
+    isProcessingDispoRef.current = true;
 
-    if (disposition === 'appointment_set') {
-      await HapticsService.success();
-      setSessionAppointments((prev) => prev + 1);
-    } else if (disposition === 'connected' || disposition === 'spoke') {
-      await HapticsService.success();
-      setSessionConnects((prev) => prev + 1);
-    } else if (disposition === 'callback_requested') {
-      await HapticsService.tick();
-      setSessionCallbacks((prev) => prev + 1);
-    } else if (disposition === 'bad_number') {
-      await HapticsService.heavy();
-    } else {
-      await HapticsService.tick();
-    }
-
-    if (callTimerRef.current) clearInterval(callTimerRef.current);
-    setIsOnCall(false);
-
-    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-    setAutoAdvanceCountdown(null);
-
-    // 1. Immediate SMS Dispatch for No Answer / Voicemail (Preserves iOS Safari Gesture Token)
-    let smsDispatched = false;
-    let interpolatedSms = '';
-    const attemptNum = (currentLead.attempts_count || 0) + 1;
-
-    if ((disposition === 'no_answer' || disposition === 'voicemail') && currentLead.text_ok !== false) {
-      // Find template according to configured Cadence rule for this step, or fallback
-      const stepRule = cadenceRules.find((r) => r.step_number === attemptNum);
-      const ruleTemplateId = stepRule?.sms_template_id;
-      const matchingTemplate =
-        (ruleTemplateId ? templates.find((t) => t.id === ruleTemplateId) : null) ||
-        templates.find((t) => t.id === 'tpl_just_called') ||
-        templates[0] || {
-          id: 'tpl_just_called',
-          title: 'No Answer - Just Called Follow-up',
-          body: 'Hi {{name}}, this is {{my_name}} with ValuTeachers! I just tried giving you a quick call regarding your FRS Report Card from {{school}}. Feel free to call me back, or text me a good time during your planning period to connect!',
-        };
-
-      interpolatedSms = TelephonyService.interpolateTemplate(
-        matchingTemplate,
-        currentLead,
-        appSettings?.user_name || 'Alex'
-      );
-
-      setSelectedTemplate(matchingTemplate);
-      setCustomSmsBody(interpolatedSms);
-      setSmsModalVisible(true);
-
-      // Trigger native SMS app IMMEDIATELY without waiting for DB promises
-      TelephonyService.sendSMS(currentLead.phone, interpolatedSms);
-      smsDispatched = true;
-    }
-
-    // 2. Build and append timestamped structured note for this outreach attempt
-    const defaultNote =
-      disposition === 'no_answer'
-        ? `Call attempt #${attemptNum}: No Answer / Voicemail. Sent follow-up SMS.`
-        : disposition === 'spoke' || disposition === 'connected'
-        ? `Call attempt #${attemptNum}: Connected / Spoke on phone.`
-        : disposition === 'appointment_set'
-        ? `Call attempt #${attemptNum}: Appointment Set.`
-        : undefined;
-
-    const noteToRecord = note || defaultNote;
-    let updatedNotes = currentLead.notes;
-    if (noteToRecord) {
-      updatedNotes = NotesService.addNote(currentLead.notes, noteToRecord);
-      currentLead.notes = updatedNotes;
-      setQueue((prev) => {
-        const next = [...prev];
-        if (next[currentIndex]) {
-          next[currentIndex] = { ...next[currentIndex], notes: updatedNotes };
-        }
-        return next;
-      });
-    }
-
-    // 3. Save to Database
     try {
-      if (noteToRecord) {
-        await LeadsRepository.updateLeadNotes(currentLead.id, updatedNotes || null);
-      }
       if (disposition === 'appointment_set') {
-        const scheduledDate = CalendarService.calculateNextPlanningDate(
-          currentLead.planning_period,
-          currentLead.school
-        );
-        await LeadsRepository.scheduleAppointment(
-          currentLead.id,
-          scheduledDate.toISOString(),
-          updatedNotes || undefined
-        );
-      }
-      await LeadsRepository.updateLeadDisposition(currentLead.id, disposition, updatedNotes || undefined);
-      const actualDuration = callStartTimeRef.current
-        ? Math.max(callDuration, Math.floor((Date.now() - callStartTimeRef.current) / 1000))
-        : callDuration;
-      callStartTimeRef.current = null;
-
-      await CallLogsRepository.logCall({
-        leadId: currentLead.id,
-        listId: currentLead.list_id,
-        durationSeconds: actualDuration,
-        disposition,
-        note: noteToRecord,
-        smsSent: smsDispatched,
-        smsBody: smsDispatched ? interpolatedSms : undefined,
-      });
-    } catch (e) {
-      console.warn('Disposition DB save error:', e);
-    }
-
-    if (advanceImmediately) {
-      advanceNextLead();
-    } else if (!smsDispatched) {
-      if (appSettings?.auto_advance_enabled && !isAutoPaused) {
-        startAutoAdvanceTimer();
+        await HapticsService.success();
+        setSessionAppointments((prev) => prev + 1);
+      } else if (disposition === 'connected' || disposition === 'spoke') {
+        await HapticsService.success();
+        setSessionConnects((prev) => prev + 1);
+      } else if (disposition === 'callback_requested') {
+        await HapticsService.tick();
+        setSessionCallbacks((prev) => prev + 1);
+      } else if (disposition === 'bad_number') {
+        await HapticsService.heavy();
       } else {
-        advanceNextLead();
+        await HapticsService.tick();
       }
+
+      if (callTimerRef.current) clearInterval(callTimerRef.current);
+      setIsOnCall(false);
+
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      setAutoAdvanceCountdown(null);
+
+      // 1. Immediate SMS Dispatch for No Answer / Voicemail (Preserves iOS Safari Gesture Token)
+      let smsDispatched = false;
+      let interpolatedSms = '';
+      const attemptNum = (currentLead.attempts_count || 0) + 1;
+
+      if ((disposition === 'no_answer' || disposition === 'voicemail') && currentLead.text_ok !== false) {
+        // Find template according to configured Cadence rule for this step, or fallback
+        const stepRule = cadenceRules.find((r) => r.step_number === attemptNum);
+        const ruleTemplateId = stepRule?.sms_template_id;
+        const matchingTemplate =
+          (ruleTemplateId ? templates.find((t) => t.id === ruleTemplateId) : null) ||
+          templates.find((t) => t.id === 'tpl_just_called') ||
+          templates[0] || {
+            id: 'tpl_just_called',
+            title: 'No Answer - Just Called Follow-up',
+            body: 'Hi {{name}}, this is {{my_name}} with ValuTeachers! I just tried giving you a quick call regarding your FRS Report Card from {{school}}. Feel free to call me back, or text me a good time during your planning period to connect!',
+          };
+
+        interpolatedSms = TelephonyService.interpolateTemplate(
+          matchingTemplate,
+          currentLead,
+          appSettings?.user_name || 'Alex'
+        );
+
+        setSelectedTemplate(matchingTemplate);
+        setCustomSmsBody(interpolatedSms);
+        setSmsModalVisible(true);
+
+        // Trigger native SMS app IMMEDIATELY without waiting for DB promises
+        TelephonyService.sendSMS(currentLead.phone, interpolatedSms);
+        smsDispatched = true;
+        smsAlreadyLoggedRef.current = true;
+      }
+
+      // 2. Build and append timestamped structured note for this outreach attempt
+      const defaultNote =
+        disposition === 'no_answer'
+          ? `Call attempt #${attemptNum}: No Answer / Voicemail. Sent follow-up SMS.`
+          : disposition === 'spoke' || disposition === 'connected'
+          ? `Call attempt #${attemptNum}: Connected / Spoke on phone.`
+          : disposition === 'appointment_set'
+          ? `Call attempt #${attemptNum}: Appointment Set.`
+          : undefined;
+
+      const noteToRecord = note || defaultNote;
+      let updatedNotes = currentLead.notes;
+      if (noteToRecord) {
+        updatedNotes = NotesService.addNote(currentLead.notes, noteToRecord);
+        currentLead.notes = updatedNotes;
+        setQueue((prev) => {
+          const next = [...prev];
+          if (next[currentIndex]) {
+            next[currentIndex] = { ...next[currentIndex], notes: updatedNotes };
+          }
+          return next;
+        });
+      }
+
+      // 3. Save to Database
+      try {
+        if (noteToRecord) {
+          await LeadsRepository.updateLeadNotes(currentLead.id, updatedNotes || null);
+        }
+        if (disposition === 'appointment_set') {
+          const scheduledDate = CalendarService.calculateNextPlanningDate(
+            currentLead.planning_period,
+            currentLead.school
+          );
+          await LeadsRepository.scheduleAppointment(
+            currentLead.id,
+            scheduledDate.toISOString(),
+            updatedNotes || undefined
+          );
+        }
+        await LeadsRepository.updateLeadDisposition(currentLead.id, disposition, updatedNotes || undefined);
+        const actualDuration = callStartTimeRef.current
+          ? Math.max(callDuration, Math.floor((Date.now() - callStartTimeRef.current) / 1000))
+          : callDuration;
+        callStartTimeRef.current = null;
+
+        await CallLogsRepository.logCall({
+          leadId: currentLead.id,
+          listId: currentLead.list_id,
+          durationSeconds: actualDuration,
+          disposition,
+          note: noteToRecord,
+          smsSent: smsDispatched,
+          smsBody: smsDispatched ? interpolatedSms : undefined,
+        });
+      } catch (e) {
+        console.warn('Disposition DB save error:', e);
+      }
+
+      if (advanceImmediately) {
+        advanceNextLead();
+      } else if (!smsDispatched) {
+        if (appSettings?.auto_advance_enabled && !isAutoPaused) {
+          startAutoAdvanceTimer();
+        } else {
+          advanceNextLead();
+        }
+      }
+    } finally {
+      isProcessingDispoRef.current = false;
     }
   };
 
@@ -697,20 +615,10 @@ export default function DialerHudScreen({ route, navigation }: any) {
     setIsSettingAppt(false);
   };
 
-  const promptCadenceSMS = (lead: Lead, template: SMSTemplate) => {
-    setSelectedTemplate(template);
-    const interpolated = TelephonyService.interpolateTemplate(
-      template,
-      lead,
-      appSettings?.user_name || 'Alex'
-    );
-    setCustomSmsBody(interpolated);
-    setSmsModalVisible(true);
-  };
-
   const openSmsModal = async () => {
     if (!currentLead) return;
     cancelAutoAdvanceTimer();
+    smsAlreadyLoggedRef.current = false;
     await HapticsService.tick();
 
     if (currentLead.text_ok === false || currentLead.text_ok === (0 as any)) {
@@ -761,17 +669,6 @@ export default function DialerHudScreen({ route, navigation }: any) {
     } finally {
       setIsGeneratingAi(false);
     }
-  };
-
-  const handleSelectTemplate = (template: SMSTemplate) => {
-    if (!currentLead) return;
-    setSelectedTemplate(template);
-    const interpolated = TelephonyService.interpolateTemplate(
-      template,
-      currentLead,
-      appSettings?.user_name || 'Alex'
-    );
-    setCustomSmsBody(interpolated);
   };
 
   // Structured Notes CRUD Handlers
@@ -840,21 +737,19 @@ export default function DialerHudScreen({ route, navigation }: any) {
     await HapticsService.medium();
     setSmsModalVisible(false);
     await TelephonyService.sendSMS(currentLead.phone, customSmsBody);
-    // Log the SMS event using the lead's current/actual disposition so it doesn't
-    // falsely inflate the Callbacks KPI counter.
-    const smsLogDisposition: CallDisposition =
-      currentLead.last_disposition && currentLead.last_disposition !== 'pending'
-        ? currentLead.last_disposition
-        : 'no_answer';
-    await CallLogsRepository.logCall({
-      leadId: currentLead.id,
-      listId: currentLead.list_id,
-      durationSeconds: 0,
-      disposition: smsLogDisposition,
-      note: 'Sent persuasive ValuTeachers SMS',
-      smsSent: true,
-      smsBody: customSmsBody,
-    });
+    // Only log if not already logged during handleDisposition
+    if (!smsAlreadyLoggedRef.current) {
+      await CallLogsRepository.logCall({
+        leadId: currentLead.id,
+        listId: currentLead.list_id,
+        durationSeconds: 0,
+        disposition: 'sms_sent',
+        note: 'Sent persuasive ValuTeachers SMS',
+        smsSent: true,
+        smsBody: customSmsBody,
+      });
+    }
+    smsAlreadyLoggedRef.current = false;
     advanceNextLead();
   };
 
@@ -875,6 +770,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
       secondsLeft -= 1;
       if (secondsLeft <= 0) {
         if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
         setAutoAdvanceCountdown(null);
         advanceNextLead();
       } else {
@@ -909,7 +805,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
     if (cur + 1 < q.length) {
       setCurrentIndex(cur + 1);
     } else {
-      loadQueue();
+      setCurrentIndex(q.length);
     }
   };
 
@@ -946,9 +842,10 @@ export default function DialerHudScreen({ route, navigation }: any) {
     await HapticsService.tick();
     if (countdownTimerRef.current) {
       clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
       setAutoAdvanceCountdown(null);
     }
-    setIsAutoPaused(!isAutoPaused);
+    setIsAutoPaused((prev) => !prev);
   };
 
   if (loading) {
@@ -1673,12 +1570,18 @@ export default function DialerHudScreen({ route, navigation }: any) {
               onChangeText={setFollowUpNote}
             />
 
-            <View style={styles.modalButtons}>
+            <View style={[styles.modalButtons, { gap: 10, marginTop: 14 }]}>
               <TouchableOpacity
                 style={styles.modalCancelButton}
                 onPress={() => setFollowUpModalVisible(false)}
               >
                 <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSaveButton, { flex: 1 }]}
+                onPress={() => handleScheduleFollowUp(24)}
+              >
+                <Text style={styles.modalSaveText}>Schedule Callback</Text>
               </TouchableOpacity>
             </View>
           </View>

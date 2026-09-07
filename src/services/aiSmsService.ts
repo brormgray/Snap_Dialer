@@ -1,4 +1,4 @@
-import { Lead, CallLog, AppSettings } from '../types';
+import { Lead, CallLog } from '../types';
 import { SettingsRepository } from '../db/settingsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
 import { GeminiModelService } from './geminiModelService';
@@ -13,7 +13,7 @@ export class AiSmsService {
     lead: Lead,
     currentDisposition?: string,
     providedApiKey?: string,
-    toneFocus?: 'meeting_confirmation' | 'unanswered_followup' | 'drop_bonus_focus' | 'planning_period'
+    toneFocus?: 'meeting_confirmation' | 'unanswered_followup' | 'drop_bonus_focus' | 'planning_period' | 'address_question'
   ): Promise<string> {
     const settings = await SettingsRepository.getSettings();
     const agentName = settings.user_name || 'Alex';

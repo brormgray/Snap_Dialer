@@ -10,7 +10,7 @@ import {
   TextInput,
   Alert,
 } from 'react-native';
-import { ArrowLeft, MessageSquare, Save, Zap, Info, Sparkles, Award } from 'lucide-react-native';
+import { ArrowLeft, Save, Zap, Info, Sparkles } from 'lucide-react-native';
 import { CadenceRepository } from '../db/cadenceRepository';
 import { TelephonyService } from '../services/telephonyService';
 import { CadenceRule, SMSTemplate, Lead } from '../types';
@@ -87,7 +87,10 @@ export default function CadenceSettingsScreen({ navigation }: any) {
       <StatusBar barStyle="light-content" backgroundColor={Colors.brandPrimary} />
 
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Lists'))}
+        >
           <ArrowLeft size={22} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Cadence & SMS Drip Engine</Text>

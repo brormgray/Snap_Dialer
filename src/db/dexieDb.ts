@@ -1,5 +1,5 @@
 import Dexie, { Table } from 'dexie';
-import { Lead, LeadList, CallLog, AppSettings, CadenceRule, SMSTemplate } from '../types';
+import { Lead, LeadList, CallLog, CadenceRule, SMSTemplate } from '../types';
 import { IndexedDbStorage, DatabaseState } from './indexedDbStorage';
 
 export interface LeadPhotoRecord {
@@ -42,7 +42,13 @@ export class SnapDialerDexieDB extends Dexie {
           if (lead.is_client === undefined || lead.is_client === null) {
             lead.is_client = false;
           }
-          if (lead.products === undefined || !Array.isArray(lead.products)) {
+          if (typeof lead.products === 'string') {
+            try {
+              lead.products = JSON.parse(lead.products);
+            } catch {
+              lead.products = [];
+            }
+          } else if (!Array.isArray(lead.products)) {
             lead.products = [];
           }
           if (lead.annualized_premium === undefined) lead.annualized_premium = null;

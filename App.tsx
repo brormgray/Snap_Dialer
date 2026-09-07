@@ -1,9 +1,11 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, AppState, AppStateStatus, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation/AppNavigator';
 import { getDatabase } from './src/db/database';
 import { Colors } from './src/theme/colors';
+import { SecurityService } from './src/services/securityService';
+import PinLockModal from './src/components/PinLockModal';
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -33,9 +35,6 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-import { SecurityService } from './src/services/securityService';
-import PinLockModal from './src/components/PinLockModal';
-
 export default function App() {
   const [isLocked, setIsLocked] = React.useState<boolean>(() => SecurityService.isSessionLocked());
 
@@ -52,6 +51,30 @@ export default function App() {
       SecurityService.recordActivity();
     };
 
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        if (SecurityService.isSessionLocked()) {
+          setIsLocked(true);
+        }
+      } else if (nextAppState === 'active') {
+        if (SecurityService.isSessionLocked()) {
+          setIsLocked(true);
+        }
+      }
+    };
+    const appStateSub = AppState.addEventListener('change', handleAppStateChange);
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        if (SecurityService.isSessionLocked()) {
+          setIsLocked(true);
+        }
+      }
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
     if (typeof window !== 'undefined') {
       window.addEventListener('touchstart', handleUserActivity, { passive: true });
       window.addEventListener('mousedown', handleUserActivity, { passive: true });
@@ -59,8 +82,8 @@ export default function App() {
     }
 
     // Register PWA Service Worker on Web for 100% Offline Resilience & Auto-Updates
-    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      const registerSW = () => {
         navigator.serviceWorker
           .register('/sw.js')
           .then((reg) => {
@@ -79,11 +102,21 @@ export default function App() {
           .catch((err) => {
             console.log('PWA Service Worker registration note:', err);
           });
-      });
+      };
+
+      if (typeof document !== 'undefined' && document.readyState === 'complete') {
+        registerSW();
+      } else {
+        window.addEventListener('load', registerSW);
+      }
     }
 
     return () => {
       clearInterval(checkLockInterval);
+      appStateSub.remove();
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
       if (typeof window !== 'undefined') {
         window.removeEventListener('touchstart', handleUserActivity);
         window.removeEventListener('mousedown', handleUserActivity);

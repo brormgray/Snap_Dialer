@@ -30,12 +30,9 @@ import { getScheduleForSchool, matchPeriodId } from '../data/bellSchedules';
 import { Lead } from '../types';
 import { Colors } from '../theme/colors';
 
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-
 export default function PlanningHeatmapScreen({ navigation }: any) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [selectedSchool, setSelectedSchool] = useState<string>('All');
 
   useEffect(() => {

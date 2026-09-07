@@ -191,8 +191,13 @@ class WebDatabase implements IDatabase {
       if (s.includes('follow_up_at is not null')) {
         filtered = filtered.filter((l) => !!l.follow_up_at);
       }
+      if (s.includes('where is_client = 1') || s.includes('where is_client = true')) {
+        filtered = filtered.filter((l) => l.is_client === true || l.is_client === 1 || String(l.is_client) === 'true');
+      }
       if (s.includes('order by')) {
-        if (s.includes('priority_tier asc, created_at asc')) {
+        if (s.includes('client_since desc')) {
+          filtered.sort((a, b) => (b.client_since || '').localeCompare(a.client_since || ''));
+        } else if (s.includes('priority_tier asc, created_at asc')) {
           filtered.sort((a, b) => {
             const tierA = a.priority_tier !== undefined ? Number(a.priority_tier) : 1;
             const tierB = b.priority_tier !== undefined ? Number(b.priority_tier) : 1;
@@ -252,9 +257,16 @@ class WebDatabase implements IDatabase {
       }
       return (this.sms_templates[0] || null) as any;
     }
-    if (s.includes('from cadence_rules where step_number = ?')) {
-      const match = this.cadence_rules.find((r) => r.step_number === params[0]);
-      return (match || null) as any;
+    if (s.includes('from cadence_rules')) {
+      if (s.includes('where step_number = ?')) {
+        const match = this.cadence_rules.find((r) => r.step_number === params[0]);
+        return (match || null) as any;
+      }
+      if (s.includes('where id = ?')) {
+        const match = this.cadence_rules.find((r) => r.id === params[0]);
+        return (match || null) as any;
+      }
+      return (this.cadence_rules[0] || null) as any;
     }
     if (s.includes('from call_logs')) {
       if (s.includes('count(*)') || s.includes('sum(')) {
@@ -334,7 +346,7 @@ class WebDatabase implements IDatabase {
 
   async runAsync(sql: string, params: any[] = []): Promise<any> {
     const s = sql.toLowerCase().replace(/\s+/g, ' ').trim();
-    if (s.includes('insert into lists')) {
+    if (s.includes('insert into lists') || s.includes('insert or replace into lists')) {
       let listId = params[0];
       let title = params[1] || 'Campaign List';
       let sourceImageUri: string | null = null;
@@ -381,7 +393,7 @@ class WebDatabase implements IDatabase {
       } else {
         this.lists.push(listObj);
       }
-    } else if (s.includes('insert into leads')) {
+    } else if (s.includes('insert into leads') || s.includes('insert or replace into leads')) {
       let interests: string[] = [];
       let preferences: string[] = [];
       try {
@@ -439,7 +451,7 @@ class WebDatabase implements IDatabase {
       } else {
         this.leads.push(leadObj);
       }
-    } else if (s.includes('insert into call_logs')) {
+    } else if (s.includes('insert into call_logs') || s.includes('insert or replace into call_logs')) {
       const logId = params[0] || `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const logObj = {
         id: logId,
@@ -458,22 +470,28 @@ class WebDatabase implements IDatabase {
       } else {
         this.call_logs.push(logObj);
       }
-    } else if (s.includes('insert into sms_templates')) {
+    } else if (s.includes('insert into sms_templates') || s.includes('insert or replace into sms_templates')) {
       const existingIdx = this.sms_templates.findIndex((t) => t.id === params[0]);
       if (existingIdx >= 0) {
         this.sms_templates[existingIdx] = { id: params[0], title: params[1], body: params[2] };
       } else {
         this.sms_templates.push({ id: params[0], title: params[1], body: params[2] });
       }
-    } else if (s.includes('insert into cadence_rules')) {
-      this.cadence_rules.push({
+    } else if (s.includes('insert into cadence_rules') || s.includes('insert or replace into cadence_rules')) {
+      const existingIdx = this.cadence_rules.findIndex((r) => r.id === params[0]);
+      const ruleObj = {
         id: params[0],
         step_number: params[1],
         condition_disposition: params[2],
         action_type: params[3],
         sms_template_id: params[4],
         delay_hours: params[5],
-      });
+      };
+      if (existingIdx >= 0) {
+        this.cadence_rules[existingIdx] = ruleObj;
+      } else {
+        this.cadence_rules.push(ruleObj);
+      }
     } else if (s.includes("set last_disposition = 'pending'") || s.includes("where last_disposition in ('no_answer', 'voicemail')")) {
       for (const lead of this.leads) {
         if (['no_answer', 'voicemail'].includes(lead.last_disposition)) {
@@ -500,25 +518,62 @@ class WebDatabase implements IDatabase {
       const lead = this.leads.find((l) => String(l.id).trim() === String(leadId).trim());
       if (lead) {
         if (s.includes('notes = ?') && s.includes('attempts_count = ?') && s.includes('last_disposition = ?') && s.includes('room_number = ?')) {
-          lead.notes = params[0] || null;
-          lead.attempts_count = Number(params[1]) || 0;
-          lead.last_disposition = params[2] || 'pending';
-          lead.last_attempt_at = params[3] || null;
-          lead.follow_up_at = params[4] || null;
-          lead.source_image_uri = params[5] || null;
-          lead.room_number = params[6] || null;
-          lead.planning_period = params[7] || null;
-          lead.email = params[8] || null;
-          lead.years_in_frs = params[9] || null;
-          lead.frs_knowledge = params[10] || null;
-          lead.custom_questions = params[11] || null;
-          try {
-            lead.frs_interests = typeof params[12] === 'string' ? JSON.parse(params[12]) : (params[12] || []);
-          } catch { lead.frs_interests = []; }
-          try {
-            lead.meeting_preferences = typeof params[13] === 'string' ? JSON.parse(params[13]) : (params[13] || []);
-          } catch { lead.meeting_preferences = []; }
-          lead.updated_at = params[14] || new Date().toISOString();
+          if (s.includes('meeting_preferences = ?') && s.includes('is_client = ?') && s.includes('annualized_premium = ?')) {
+            lead.notes = params[0] || null;
+            lead.attempts_count = Number(params[1]) || 0;
+            lead.last_disposition = params[2] || 'pending';
+            lead.last_attempt_at = params[3] || null;
+            lead.follow_up_at = params[4] || null;
+            lead.source_image_uri = params[5] || null;
+            lead.room_number = params[6] || null;
+            lead.planning_period = params[7] || null;
+            lead.email = params[8] || null;
+            lead.years_in_frs = params[9] || null;
+            lead.frs_knowledge = params[10] || null;
+            lead.custom_questions = params[11] || null;
+            try {
+              lead.frs_interests = typeof params[12] === 'string' ? JSON.parse(params[12]) : (params[12] || []);
+            } catch { lead.frs_interests = []; }
+            try {
+              lead.meeting_preferences = typeof params[13] === 'string' ? JSON.parse(params[13]) : (params[13] || []);
+            } catch { lead.meeting_preferences = []; }
+            lead.is_client = params[14] === 1 || params[14] === true;
+            lead.client_since = params[15] || null;
+            try {
+              lead.products = typeof params[16] === 'string' ? JSON.parse(params[16]) : (params[16] || []);
+            } catch { lead.products = []; }
+            lead.annualized_premium = params[17] !== undefined && params[17] !== null ? Number(params[17]) : null;
+            lead.transfer_assets_volume = params[18] !== undefined && params[18] !== null ? Number(params[18]) : null;
+            lead.policy_effective_date = params[19] || null;
+            lead.annual_review_due_date = params[20] || null;
+            lead.drip_track = params[21] || 'none';
+            lead.drip_step = params[22] !== undefined ? Number(params[22]) : 0;
+            lead.next_drip_scheduled_at = params[23] || null;
+            lead.appointment_scheduled_at = params[24] || null;
+            lead.appointment_outcome = params[25] || null;
+            lead.appointment_completed_at = params[26] || null;
+            lead.updated_at = params[27] || new Date().toISOString();
+          } else {
+            lead.notes = params[0] || null;
+            lead.attempts_count = Number(params[1]) || 0;
+            lead.last_disposition = params[2] || 'pending';
+            lead.last_attempt_at = params[3] || null;
+            lead.follow_up_at = params[4] || null;
+            lead.source_image_uri = params[5] || null;
+            lead.room_number = params[6] || null;
+            lead.planning_period = params[7] || null;
+            lead.email = params[8] || null;
+            lead.years_in_frs = params[9] || null;
+            lead.frs_knowledge = params[10] || null;
+            lead.custom_questions = params[11] || null;
+            try {
+              lead.frs_interests = typeof params[12] === 'string' ? JSON.parse(params[12]) : (params[12] || []);
+            } catch { lead.frs_interests = []; }
+            try {
+              lead.meeting_preferences = typeof params[13] === 'string' ? JSON.parse(params[13]) : (params[13] || []);
+            } catch { lead.meeting_preferences = []; }
+            lead.updated_at = params[14] || new Date().toISOString();
+          }
         } else if (s.includes('follow_up_at = ?')) {
           lead.follow_up_at = params[0];
           lead.last_disposition = 'callback_requested';
@@ -591,26 +646,33 @@ class WebDatabase implements IDatabase {
             if (params[7]) lead.list_id = params[7];
             lead.updated_at = params[8] || new Date().toISOString();
           }
-        } else if (s.includes('is_client = ?') || s.includes('is_client=') || s.includes('is_client = 1')) {
+        } else if (s.includes('is_client = 1') || s.includes('is_client = ?') || s.includes('is_client=')) {
           const isDirectConvert = s.includes('is_client = 1');
-          lead.is_client = isDirectConvert ? true : (params[0] === 1 || params[0] === true);
-          lead.client_since = params[1] || lead.client_since || new Date().toISOString();
+          const offset = isDirectConvert ? 0 : 1;
+          lead.is_client = true;
+          lead.client_since = params[offset] || lead.client_since || new Date().toISOString();
           if (isDirectConvert) {
             lead.appointment_outcome = 'converted';
-            lead.appointment_completed_at = lead.appointment_completed_at || new Date().toISOString();
+            lead.appointment_completed_at = params[9] || lead.appointment_completed_at || new Date().toISOString();
             if (lead.last_disposition === 'appointment_set') lead.last_disposition = 'connected';
           }
           try {
-            lead.products = typeof params[2] === 'string' ? JSON.parse(params[2]) : (params[2] || []);
+            lead.products = typeof params[offset + 1] === 'string' ? JSON.parse(params[offset + 1]) : (params[offset + 1] || []);
           } catch { lead.products = []; }
-          lead.annualized_premium = params[3] !== undefined && params[3] !== null ? Number(params[3]) : null;
-          lead.transfer_assets_volume = params[4] !== undefined && params[4] !== null ? Number(params[4]) : null;
-          lead.policy_effective_date = params[5] || null;
-          lead.annual_review_due_date = params[6] || null;
-          lead.drip_track = params[7] || 'none';
-          lead.drip_step = params[8] !== undefined ? Number(params[8]) : 0;
-          lead.next_drip_scheduled_at = params[9] || null;
-          if (params[10] && s.includes('notes = ?')) lead.notes = params[10];
+          lead.annualized_premium = params[offset + 2] !== undefined && params[offset + 2] !== null ? Number(params[offset + 2]) : null;
+          lead.transfer_assets_volume = params[offset + 3] !== undefined && params[offset + 3] !== null ? Number(params[offset + 3]) : null;
+          lead.policy_effective_date = params[offset + 4] || null;
+          lead.annual_review_due_date = params[offset + 5] || null;
+          lead.drip_track = params[offset + 6] || 'none';
+          lead.drip_step = params[offset + 7] !== undefined ? Number(params[offset + 7]) : 0;
+          lead.next_drip_scheduled_at = params[offset + 8] || null;
+          if (isDirectConvert) {
+            if (params[10]) {
+              lead.notes = lead.notes ? `${lead.notes}\n\n${params[10]}` : params[10];
+            }
+          } else if (params[offset + 9] && s.includes('notes = ?')) {
+            lead.notes = params[offset + 9];
+          }
           lead.updated_at = params[params.length - 2] || new Date().toISOString();
         } else if (s.includes('appointment_outcome') || s.includes('appointment_scheduled_at')) {
           if (s.includes("appointment_outcome = 'converted'")) {
@@ -646,6 +708,11 @@ class WebDatabase implements IDatabase {
             lead.last_disposition = 'appointment_set';
             if (s.includes('planning_period = coalesce(?, planning_period)')) {
               if (params[1]) lead.planning_period = params[1];
+              if (params[2]) lead.notes = lead.notes ? `${lead.notes}\n\n${params[2]}` : params[2];
+            } else if (s.includes('notes = coalesce(?, notes)')) {
+              if (params[1]) lead.notes = params[1];
+            } else if (params[1]) {
+              lead.notes = lead.notes ? `${lead.notes}\n\n${params[1]}` : params[1];
             }
             lead.updated_at = params[params.length - 2] || new Date().toISOString();
           }
@@ -683,7 +750,7 @@ class WebDatabase implements IDatabase {
         list.connected_leads = params[1];
         list.updated_at = params[2];
       }
-    } else if (s.includes('insert into settings')) {
+    } else if (s.includes('insert into settings') || s.includes('insert or replace into settings')) {
       const existingIdx = this.settings.findIndex((st) => st.key === params[0]);
       if (existingIdx >= 0) {
         this.settings[existingIdx] = { key: params[0], value: params[1] };
@@ -694,18 +761,37 @@ class WebDatabase implements IDatabase {
       const leadId = params[0];
       this.leads = this.leads.filter((l) => l.id !== leadId);
       this.call_logs = this.call_logs.filter((c) => c.lead_id !== leadId);
+      try {
+        dexieDb.leads.delete(leadId).catch(() => {});
+        dexieDb.call_logs.where('lead_id').equals(leadId).delete().catch(() => {});
+      } catch {}
     } else if (s.includes('delete from leads')) {
       this.leads = [];
       this.call_logs = [];
+      try {
+        dexieDb.leads.clear().catch(() => {});
+        dexieDb.call_logs.clear().catch(() => {});
+      } catch {}
     } else if (s.includes('delete from lists where id = ?')) {
       const listId = params[0];
       this.lists = this.lists.filter((l) => l.id !== listId);
       this.leads = this.leads.filter((l) => l.list_id !== listId);
       this.call_logs = this.call_logs.filter((c) => c.list_id !== listId);
+      try {
+        dexieDb.lists.delete(listId).catch(() => {});
+        dexieDb.leads.where('list_id').equals(listId).delete().catch(() => {});
+        dexieDb.call_logs.where('list_id').equals(listId).delete().catch(() => {});
+      } catch {}
     } else if (s.includes('delete from lists')) {
       this.lists = [];
+      try {
+        dexieDb.lists.clear().catch(() => {});
+      } catch {}
     } else if (s.includes('delete from call_logs')) {
       this.call_logs = [];
+      try {
+        dexieDb.call_logs.clear().catch(() => {});
+      } catch {}
     }
     if (!this.inTransaction) {
       await this.saveToStorage();

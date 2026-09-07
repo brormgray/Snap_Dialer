@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
-import { Calendar, PhoneCall, MessageSquare, Clock, MapPin, ChevronRight, Zap, CheckCircle2 } from 'lucide-react-native';
+import { Calendar, PhoneCall, MessageSquare, Clock, MapPin, ChevronRight, Zap } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
 import { HapticsService } from '../services/hapticsService';
 import { Lead } from '../types';
@@ -38,12 +38,17 @@ export function TodayCockpitCard({
     return leads.filter((l) => PipelineStateService.isDispoNeeded(l, now));
   }, [leads, now]);
 
-  // Callbacks scheduled for today or priority callbacks
+  // Callbacks scheduled for today or past due
   const callbacksDue = useMemo(() => {
     return leads.filter((l) => {
       if (['connected', 'spoke', 'do_not_call', 'bad_number'].includes(l.last_disposition || '')) return false;
-      if (l.follow_up_at && l.follow_up_at.slice(0, 10) <= todayStr) return true;
-      return l.last_disposition === 'callback_requested';
+      if (l.last_disposition === 'callback_requested' || l.follow_up_at) {
+        if (l.follow_up_at) {
+          return l.follow_up_at.slice(0, 10) <= todayStr;
+        }
+        return l.last_disposition === 'callback_requested';
+      }
+      return false;
     });
   }, [leads, todayStr]);
 

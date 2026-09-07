@@ -861,13 +861,13 @@ export class LeadsRepository {
       };
     }
 
-    // Group leads by normalized key
+    // Group leads by normalized key (require 10-digit phone key or fallback to name + school)
     const groups = new Map<string, Lead[]>();
     for (const lead of allLeads) {
       const phoneKey = normalizePhoneKey(lead.phone);
       const key =
-        phoneKey.length >= 7
-          ? `phone_${phoneKey}`
+        phoneKey.length >= 10
+          ? `phone_${phoneKey.slice(-10)}`
           : `name_${lead.name.toLowerCase().trim()}_${(lead.school || 'VOL').toLowerCase().trim()}`;
 
       if (!groups.has(key)) {
@@ -884,12 +884,17 @@ export class LeadsRepository {
 
         // Rank the group to pick the "master / keeper" lead:
         // Prioritize:
-        // 1. Confirmed appointment
-        // 2. Connected / spoke disposition
-        // 3. Highest attempts count
-        // 4. Most detailed notes length
-        // 5. Earlier created_at
+        // 1. Converted client (highest value relationship)
+        // 2. Confirmed appointment
+        // 3. Connected / spoke disposition
+        // 4. Highest attempts count
+        // 5. Most detailed notes length
+        // 6. Earlier created_at
         group.sort((a, b) => {
+          const isClientA = a.is_client ? 1 : 0;
+          const isClientB = b.is_client ? 1 : 0;
+          if (isClientA !== isClientB) return isClientB - isClientA;
+
           const isApptA = a.last_disposition === 'appointment_set' ? 1 : 0;
           const isApptB = b.last_disposition === 'appointment_set' ? 1 : 0;
           if (isApptA !== isApptB) return isApptB - isApptA;
@@ -1177,30 +1182,11 @@ export class LeadsRepository {
       needsHealing = true;
     }
 
-    // In-memory normalization and background persistence
+    // In-memory normalization without spawning hundreds of concurrent background writes on every read
     if (needsHealing) {
       raw.appointment_outcome = apptOutcome;
       raw.appointment_completed_at = apptCompletedAt;
       raw.last_disposition = lastDisp;
-
-      if (raw.id) {
-        setTimeout(async () => {
-          try {
-            const db = await getDatabase();
-            await db.runAsync(
-              `UPDATE leads 
-               SET appointment_outcome = ?, 
-                   appointment_completed_at = ?, 
-                   last_disposition = ?, 
-                   updated_at = ? 
-               WHERE id = ?`,
-              [apptOutcome, apptCompletedAt, lastDisp, new Date().toISOString(), raw.id]
-            );
-          } catch {
-            // Non-fatal auto-healing persistence
-          }
-        }, 0);
-      }
     }
 
     return {

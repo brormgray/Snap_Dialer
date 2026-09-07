@@ -7,7 +7,9 @@ export type CallDisposition =
   | 'voicemail'
   | 'bad_number'
   | 'do_not_call'
-  | 'callback_requested';
+  | 'callback_requested'
+  | 'sms_sent'
+  | 'drip_sent';
 
 export type ClientProduct =
   | 'flow_annuity'       // 403(b) / 457(b) ongoing payroll deduction annuity

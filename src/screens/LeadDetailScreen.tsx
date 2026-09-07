@@ -932,6 +932,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
 
               {/* Client Portfolio & Policy Card */}
               <ClientPortfolioCard
+                key={`portfolio_${lead.id}_${lead.is_client ? 1 : 0}_${lead.appointment_outcome || ''}_${lead.updated_at || ''}`}
                 lead={lead}
                 onSave={async (portfolioUpdates) => {
                   const isNowClient = Boolean(portfolioUpdates.is_client);
@@ -1332,6 +1333,8 @@ export default function LeadDetailScreen({ route, navigation }: any) {
             style={[styles.stickyDncButton, isDNC && styles.stickyDncButtonRevert]}
             onPress={handleToggleDNC}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={isDNC ? 'Remove from Do Not Call list' : 'Mark educator as Do Not Call'}
           >
             {isDNC ? (
               <RotateCcw size={16} color="#34D399" />

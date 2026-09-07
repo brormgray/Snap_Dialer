@@ -19,7 +19,6 @@ import {
   Camera,
   Image as ImageIcon,
   Check,
-  Trash2,
   Sparkles,
   ArrowLeft,
   Clipboard,
@@ -38,9 +37,11 @@ import { SettingsRepository } from '../db/settingsRepository';
 import { HapticsService } from '../services/hapticsService';
 import { ExtractedLeadItem, LeadList, Lead } from '../types';
 import { Colors } from '../theme/colors';
+import ZoomableImageModal from '../components/ZoomableImageModal';
 
 export default function ScanSheetScreen({ navigation }: any) {
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [isZoomModalVisible, setIsZoomModalVisible] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [processingStatusText, setProcessingStatusText] = useState<string>('Analyzing Report Card with Gemini AI...');
   const [extractedLeads, setExtractedLeads] = useState<ExtractedLeadItem[]>([]);
@@ -335,7 +336,10 @@ export default function ScanSheetScreen({ navigation }: any) {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Lists'))}
+        >
           <ArrowLeft size={22} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
@@ -413,13 +417,17 @@ export default function ScanSheetScreen({ navigation }: any) {
           <View style={styles.reviewSection}>
             {/* Scanned Photo Preview Strip */}
             {imageUri && (
-              <View style={styles.photoPreviewCard}>
+              <TouchableOpacity
+                style={styles.photoPreviewCard}
+                onPress={() => setIsZoomModalVisible(true)}
+                activeOpacity={0.8}
+              >
                 <Image source={{ uri: imageUri }} style={styles.thumbnailImage} resizeMode="cover" />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.photoPreviewTitle}>Proof of Request Photo Attached</Text>
-                  <Text style={styles.photoPreviewDesc}>Saved permanently in device sandbox for 1-tap handwriting verification during calls.</Text>
+                  <Text style={styles.photoPreviewDesc}>Tap to zoom and inspect card. Saved in device sandbox for 1-tap handwriting verification during calls.</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             )}
 
             {/* Priority Tier & List Destination Card */}
@@ -768,6 +776,14 @@ export default function ScanSheetScreen({ navigation }: any) {
           </SafeAreaView>
         </View>
       </Modal>
+
+      <ZoomableImageModal
+        visible={isZoomModalVisible}
+        imageUri={imageUri}
+        title="Scanned Report Card Preview"
+        subtitle="1-tap zoom & verify handwriting"
+        onClose={() => setIsZoomModalVisible(false)}
+      />
     </SafeAreaView>
   );
 }

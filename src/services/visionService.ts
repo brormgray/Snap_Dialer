@@ -4,7 +4,6 @@ import { ExtractedLeadItem } from '../types';
 import { SettingsRepository } from '../db/settingsRepository';
 import { DocumentScannerService } from './documentScannerService';
 import { GeminiModelService } from './geminiModelService';
-import { CsvService } from './csvService';
 
 export class VisionService {
   /**
@@ -198,7 +197,11 @@ Never output conversational text. Output pure JSON adhering to the schema.`;
         const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!rawText) throw new Error('Empty response from vision model');
 
-        const parsedRaw: any = JSON.parse(rawText);
+        const sanitized = rawText
+          .replace(/```json\s*/gi, '')
+          .replace(/```\s*$/gi, '')
+          .trim();
+        const parsedRaw: any = JSON.parse(sanitized);
         const parsed: any[] = Array.isArray(parsedRaw)
           ? parsedRaw
           : (parsedRaw && typeof parsedRaw === 'object' ? [parsedRaw] : []);
@@ -251,31 +254,6 @@ Never output conversational text. Output pure JSON adhering to the schema.`;
     }
 
     throw lastError || new Error('Could not analyze card with Gemini Vision.');
-  }
-
-  public static parseCsvLeads(csvText: string): ExtractedLeadItem[] {
-    const partials = CsvService.parseCsvToLeads(csvText);
-    return partials.map((p, index) => ({
-      id: `csv_${Date.now()}_${index}`,
-      name: p.name || 'Educator',
-      phone: this.cleanPhone(p.phone || ''),
-      school: p.school || 'VOL',
-      email: p.email || '',
-      age: '',
-      planning_period: p.planning_period || '',
-      room_number: p.room_number || '',
-      years_in_frs: p.years_in_frs || '',
-      text_ok: true,
-      frs_knowledge: 'I know a little',
-      frs_interests: [],
-      custom_questions: '',
-      meeting_preferences: [],
-      annual_salary: '',
-      present_403b_contribution: '',
-      company: 'ValuTeachers',
-      notes: p.notes || '',
-      isValid: Boolean(p.isValid),
-    }));
   }
 
   /**

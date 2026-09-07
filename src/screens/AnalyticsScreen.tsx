@@ -109,16 +109,6 @@ export default function AnalyticsScreen({ navigation }: any) {
     ? [...hoursWithCalls].sort((a: any, b: any) => b.contactRate - a.contactRate)[0]
     : null;
 
-  const unansweredRate =
-    summary.totalDials > 0
-      ? Math.round(((summary.noAnswerCount + summary.voicemailCount) / summary.totalDials) * 100)
-      : 0;
-
-  const badNumberRate =
-    summary.totalDials > 0
-      ? Math.round((summary.badNumberCount / summary.totalDials) * 100)
-      : 0;
-
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={Colors.brandPrimary} />

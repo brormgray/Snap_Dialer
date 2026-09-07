@@ -37,6 +37,33 @@ export function ClientPortfolioCard({ lead, onSave }: ClientPortfolioCardProps) 
   );
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
+  React.useEffect(() => {
+    setIsClient(lead.is_client || false);
+    setSelectedProducts(lead.products || []);
+    setAnnualPremium(
+      lead.annualized_premium !== undefined && lead.annualized_premium !== null
+        ? String(lead.annualized_premium)
+        : ''
+    );
+    setTransferVolume(
+      lead.transfer_assets_volume !== undefined && lead.transfer_assets_volume !== null
+        ? String(lead.transfer_assets_volume)
+        : ''
+    );
+    setEffectiveDate(lead.policy_effective_date || '');
+    setNextReviewDate(lead.annual_review_due_date || '');
+    setDripTrack(lead.drip_track || (lead.is_client ? 'client_annual_review' : 'none'));
+  }, [
+    lead.id,
+    lead.is_client,
+    lead.products,
+    lead.annualized_premium,
+    lead.transfer_assets_volume,
+    lead.policy_effective_date,
+    lead.annual_review_due_date,
+    lead.drip_track,
+  ]);
+
   const toggleProduct = (productId: ClientProduct) => {
     HapticsService.tick();
     setSelectedProducts((prev) =>

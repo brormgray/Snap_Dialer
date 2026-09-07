@@ -9,9 +9,8 @@ import {
   ScrollView,
   SafeAreaView,
   Dimensions,
-  Platform,
 } from 'react-native';
-import { X, ZoomIn, ZoomOut, RotateCcw, FileCheck, ShieldCheck } from 'lucide-react-native';
+import { X, ZoomIn, ZoomOut, ShieldCheck } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
 import { HapticsService } from '../services/hapticsService';
 

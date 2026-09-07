@@ -90,7 +90,7 @@ export class CallLogsRepository {
         smsSentCount++;
       }
       // Only count as an outbound call dial if it was a voice attempt, not a standalone SMS log
-      const isStandaloneSms = (r.sms_sent === 1 || r.sms_sent === true) && Number(r.duration_seconds || 0) === 0;
+      const isStandaloneSms = (r.sms_sent === 1 || r.sms_sent === true) && (r.disposition === 'sms_sent' || r.disposition === 'drip_sent' || !r.disposition);
       const isVoiceDial = !isStandaloneSms && Boolean(r.disposition);
       if (isVoiceDial) {
         totalDials++;
@@ -199,9 +199,9 @@ export class CallLogsRepository {
     let apptsThisWeek = 0;
     let apptsLastWeek = 0;
 
-    // Hourly buckets: 7 AM to 6 PM (7 through 18)
+    // Hourly buckets: 7 AM to 7 PM (7 through 19)
     const hourlyMap = new Map<number, { dials: number; connected: number }>();
-    for (let h = 7; h <= 18; h++) {
+    for (let h = 7; h <= 19; h++) {
       hourlyMap.set(h, { dials: 0, connected: 0 });
     }
 
@@ -209,7 +209,7 @@ export class CallLogsRepository {
       if (r.sms_sent === 1 || r.sms_sent === true) {
         smsSentCount++;
       }
-      const isStandaloneSms = (r.sms_sent === 1 || r.sms_sent === true) && Number(r.duration_seconds || 0) === 0;
+      const isStandaloneSms = (r.sms_sent === 1 || r.sms_sent === true) && (r.disposition === 'sms_sent' || r.disposition === 'drip_sent' || !r.disposition);
       const isVoiceDial = !isStandaloneSms && Boolean(r.disposition);
       if (isVoiceDial) {
         totalDials++;
