@@ -21,10 +21,25 @@ export class TelephonyService {
 
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       try {
-        window.location.href = url;
+        const link = document.createElement('a');
+        link.href = url;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+          try {
+            document.body.removeChild(link);
+          } catch {}
+        }, 150);
         return true;
       } catch (e) {
-        console.warn('Web tel navigation error:', e);
+        console.warn('Web tel link click error, trying location.href fallback:', e);
+        try {
+          window.location.href = url;
+          return true;
+        } catch (err) {
+          console.warn('Web tel location.href error:', err);
+        }
       }
     }
 
@@ -63,10 +78,25 @@ export class TelephonyService {
 
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       try {
-        window.location.href = url;
+        const link = document.createElement('a');
+        link.href = url;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+          try {
+            document.body.removeChild(link);
+          } catch {}
+        }, 150);
         return true;
       } catch (e) {
-        console.warn('Web SMS location.href error:', e);
+        console.warn('Web SMS link click error, trying location.href fallback:', e);
+        try {
+          window.location.href = url;
+          return true;
+        } catch (err) {
+          console.warn('Web SMS location.href error:', err);
+        }
       }
     }
 

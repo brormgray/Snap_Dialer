@@ -264,6 +264,19 @@ export default function DialerHudScreen({ route, navigation }: any) {
     }
   };
 
+  const handleBackToDashboard = () => {
+    cancelAutoAdvanceTimer();
+    if (callTimerRef.current) {
+      clearInterval(callTimerRef.current);
+      callTimerRef.current = null;
+    }
+    if (navigation && typeof navigation.canGoBack === 'function' && navigation.canGoBack()) {
+      navigation.goBack();
+    } else if (navigation && typeof navigation.navigate === 'function') {
+      (navigation as any).navigate('MainTabs', { screen: 'Lists' });
+    }
+  };
+
   const openEditLeadModal = () => {
     if (!currentLead) return;
     cancelAutoAdvanceTimer();
@@ -989,7 +1002,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
 
           <TouchableOpacity
             style={styles.returnButton}
-            onPress={() => navigation.navigate('Lists')}
+            onPress={handleBackToDashboard}
           >
             <Text style={styles.returnButtonText}>Back to Lead Pipeline</Text>
           </TouchableOpacity>
@@ -1005,7 +1018,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
       {/* Top Header */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => navigation.navigate('Lists')}
+          onPress={handleBackToDashboard}
           style={styles.backButton}
         >
           <ArrowLeft size={22} color="#FFFFFF" />

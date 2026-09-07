@@ -45,6 +45,7 @@ import {
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
 import { HapticsService } from '../services/hapticsService';
+import { TelephonyService } from '../services/telephonyService';
 import { CsvService } from '../services/csvService';
 import { Lead, LeadList, CallLog } from '../types';
 import { Colors } from '../theme/colors';
@@ -263,6 +264,12 @@ export default function ListsScreen({ navigation }: any) {
 
   const handleDialSingle = async (lead: Lead) => {
     await HapticsService.medium();
+    navigation.navigate('LeadDetail', { leadId: lead.id });
+  };
+
+  const handleDirectCall = async (lead: Lead) => {
+    await HapticsService.medium();
+    TelephonyService.makeCall(lead.phone);
     navigation.navigate('LeadDetail', { leadId: lead.id });
   };
 
@@ -697,7 +704,7 @@ export default function ListsScreen({ navigation }: any) {
               <TouchableOpacity
                 style={styles.leadCard}
                 activeOpacity={0.75}
-                onPress={() => handleDialSingle(item)}
+                onPress={() => navigation.navigate('LeadDetail', { leadId: item.id })}
               >
                 {/* Top Row: Name + Status */}
                 <View style={styles.cardHeaderRow}>
@@ -817,7 +824,7 @@ export default function ListsScreen({ navigation }: any) {
 
                   <TouchableOpacity
                     style={styles.cardActionBtn}
-                    onPress={() => handleDialSingle(item)}
+                    onPress={() => navigation.navigate('LeadDetail', { leadId: item.id, autoOpenSms: true })}
                   >
                     <MessageSquare size={15} color={Colors.brandAccent} />
                     <Text style={[styles.cardActionBtnText, { color: Colors.brandAccent }]}>AI Text</Text>
@@ -837,7 +844,7 @@ export default function ListsScreen({ navigation }: any) {
 
                   <TouchableOpacity
                     style={[styles.cardActionBtn, styles.callActionBtn]}
-                    onPress={() => handleDialSingle(item)}
+                    onPress={() => handleDirectCall(item)}
                   >
                     <PhoneCall size={15} color="#FFFFFF" />
                     <Text style={[styles.cardActionBtnText, { color: '#FFFFFF', fontWeight: '800' }]}>

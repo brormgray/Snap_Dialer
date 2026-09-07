@@ -95,10 +95,14 @@ export default function LeadDetailScreen({ route, navigation }: any) {
   const [listIdVal, setListIdVal] = useState<string>('master_queue');
 
   useEffect(() => {
-    loadLeadData();
+    loadLeadData().then((loadedLead) => {
+      if (route.params?.autoOpenSms && loadedLead) {
+        openSmsModal(loadedLead);
+      }
+    });
   }, [leadId]);
 
-  const loadLeadData = async () => {
+  const loadLeadData = async (): Promise<Lead | null> => {
     const [l, lists] = await Promise.all([
       LeadsRepository.getLeadById(leadId),
       LeadsRepository.getAllLists(),
@@ -121,6 +125,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
 
     const history = await CallLogsRepository.getLogsForLead(leadId);
     setLogs(history);
+    return l || null;
   };
 
   const handleTogglePriority = async () => {
@@ -383,49 +388,67 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     showToast(outcome === 'no_show' ? 'Marked as No-Show' : 'Marked as Declined');
   };
 
-  const openSmsModal = async () => {
-    if (!lead) return;
+  const openSmsModal = async (targetLead?: Lead | any) => {
+    const l = (targetLead && typeof targetLead.id === 'string') ? targetLead : lead;
+    if (!l) return;
     await HapticsService.tick();
 
-    if (lead.text_ok === false || lead.text_ok === (0 as any)) {
-      Alert.alert(
-        'SMS Consent Notice',
-        `"${lead.name}" has marked Text OK: NO on their card. Do you still wish to open the SMS composer?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Proceed to SMS',
-            style: 'destructive',
-            onPress: () => {
-              setSmsModalVisible(true);
-              handleGenerateAiSms();
+    if (l.text_ok === false || l.text_ok === (0 as any)) {
+      if (Platform.OS === 'web') {
+        const proceed =
+          typeof window !== 'undefined' && window.confirm
+            ? window.confirm(
+                `SMS Consent Notice: "${l.name}" has marked Text OK: NO on their card. Do you still wish to open the SMS composer?`
+              )
+            : true;
+        if (!proceed) return;
+      } else {
+        Alert.alert(
+          'SMS Consent Notice',
+          `"${l.name}" has marked Text OK: NO on their card. Do you still wish to open the SMS composer?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Proceed to SMS',
+              style: 'destructive',
+              onPress: () => {
+                launchSmsComposer(l);
+              },
             },
-          },
-        ]
-      );
-      return;
+          ]
+        );
+        return;
+      }
     }
 
-    setSmsModalVisible(true);
-    handleGenerateAiSms();
+    launchSmsComposer(l);
   };
 
-  const handleGenerateAiSms = async (toneFocus?: any) => {
-    if (!lead) return;
+  const launchSmsComposer = (targetLead: Lead) => {
+    const firstName = (targetLead.name || 'Educator').split(' ')[0];
+    const defaultTemplate = `Hi ${firstName}, this is with ValuTeachers following up on your FRS Report Card from ${targetLead.school || 'your school'}. When is a good time to connect?`;
+    setSmsBody(defaultTemplate);
+    setSmsModalVisible(true);
+    handleGenerateAiSms(undefined, targetLead);
+  };
+
+  const handleGenerateAiSms = async (toneFocus?: any, targetLead?: Lead) => {
+    const l = targetLead || lead;
+    if (!l) return;
     setIsGeneratingAi(true);
     try {
       const generated = await AiSmsService.generatePersuasiveSMS(
-        lead,
-        lead.last_disposition || 'follow_up',
+        l,
+        l.last_disposition || 'follow_up',
         undefined,
         toneFocus
       );
-      setSmsBody(generated);
+      if (generated && generated.trim().length > 0) {
+        setSmsBody(generated.trim().replace(/^"|"$/g, ''));
+      }
       await HapticsService.success();
-    } catch {
-      setSmsBody(
-        `Hi ${lead.name.split(' ')[0]}, this is with ValuTeachers following up on your FRS Report Card from ${lead.school || 'your school'}. When is a good time to connect?`
-      );
+    } catch (e) {
+      console.warn('AI SMS generation fallback:', e);
     } finally {
       setIsGeneratingAi(false);
     }
@@ -433,9 +456,14 @@ export default function LeadDetailScreen({ route, navigation }: any) {
 
   const handleSendSms = async () => {
     if (!lead) return;
-    await HapticsService.medium();
+    const phone = lead.phone;
+    const body = smsBody;
+
+    // Launch telephony immediately to preserve iOS Safari touch gesture token
+    TelephonyService.sendSMS(phone, body);
+    HapticsService.medium().catch(() => {});
     setSmsModalVisible(false);
-    await TelephonyService.sendSMS(lead.phone, smsBody);
+
     // Log the SMS event as an outreach touchpoint without re-registering an appointment booking
     const smsLogDisposition: CallDisposition =
       lead.last_disposition === 'appointment_set'
@@ -450,7 +478,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       disposition: smsLogDisposition,
       note: lead.last_disposition === 'appointment_set' ? 'Sent appointment confirmation SMS' : 'Sent persuasive ValuTeachers SMS',
       smsSent: true,
-      smsBody: smsBody,
+      smsBody: body,
     });
     loadLeadData();
   };
@@ -1322,7 +1350,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
 
           <TouchableOpacity
             style={styles.stickySmsButton}
-            onPress={openSmsModal}
+            onPress={() => openSmsModal()}
             activeOpacity={0.8}
           >
             <MessageSquare size={18} color="#FFFFFF" />
