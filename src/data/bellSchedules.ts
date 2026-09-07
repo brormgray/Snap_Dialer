@@ -55,6 +55,8 @@ export const KNOWN_SCHOOL_SCHEDULES: Record<string, BellPeriod[]> = {
   'deland high school': VOLUSIA_HIGH_STANDARD,
   'pine ridge high': VOLUSIA_HIGH_STANDARD,
   'seabreeze high': VOLUSIA_HIGH_STANDARD,
+  'atlantic high': VOLUSIA_HIGH_STANDARD,
+  'atlantic high school': VOLUSIA_HIGH_STANDARD,
   'vol': VOLUSIA_HIGH_STANDARD,
   'heritage middle': VOLUSIA_MIDDLE_STANDARD,
   'deltona middle': VOLUSIA_MIDDLE_STANDARD,
@@ -77,20 +79,20 @@ export function getScheduleForSchool(schoolName?: string | null): BellPeriod[] {
 }
 
 /**
- * Parse an educator's planning period string (e.g., "3rd", "Period 3", "P3", "3")
+ * Parse an educator's planning period string (e.g., "3rd", "Period 3", "P3", "3", "Planning 3", "Block 3")
  * and match it to a period ID ('p1' through 'p7', or 'after').
  */
 export function matchPeriodId(planningString?: string | null): string | null {
   if (!planningString) return null;
   const p = planningString.toLowerCase().trim();
 
-  if (/\b(period\s*1|1st(\s*period)?|p1|per\s*1)\b/i.test(p) || p === '1' || p === '1st') return 'p1';
-  if (/\b(period\s*2|2nd(\s*period)?|p2|per\s*2)\b/i.test(p) || p === '2' || p === '2nd') return 'p2';
-  if (/\b(period\s*3|3rd(\s*period)?|p3|per\s*3)\b/i.test(p) || p === '3' || p === '3rd') return 'p3';
-  if (/\b(period\s*4|4th(\s*period)?|p4|per\s*4)\b/i.test(p) || p === '4' || p === '4th') return 'p4';
-  if (/\b(period\s*5|5th(\s*period)?|p5|per\s*5)\b/i.test(p) || p === '5' || p === '5th') return 'p5';
-  if (/\b(period\s*6|6th(\s*period)?|p6|per\s*6)\b/i.test(p) || p === '6' || p === '6th') return 'p6';
-  if (/\b(period\s*7|7th(\s*period)?|p7|per\s*7)\b/i.test(p) || p === '7' || p === '7th') return 'p7';
+  if (/\b(period\s*1|1st(\s*period)?|p1|per\s*1|plan(ning)?\s*1|block\s*1)\b/i.test(p) || p === '1' || p === '1st') return 'p1';
+  if (/\b(period\s*2|2nd(\s*period)?|p2|per\s*2|plan(ning)?\s*2|block\s*2)\b/i.test(p) || p === '2' || p === '2nd') return 'p2';
+  if (/\b(period\s*3|3rd(\s*period)?|p3|per\s*3|plan(ning)?\s*3|block\s*3)\b/i.test(p) || p === '3' || p === '3rd') return 'p3';
+  if (/\b(period\s*4|4th(\s*period)?|p4|per\s*4|plan(ning)?\s*4|block\s*4)\b/i.test(p) || p === '4' || p === '4th') return 'p4';
+  if (/\b(period\s*5|5th(\s*period)?|p5|per\s*5|plan(ning)?\s*5|block\s*5)\b/i.test(p) || p === '5' || p === '5th') return 'p5';
+  if (/\b(period\s*6|6th(\s*period)?|p6|per\s*6|plan(ning)?\s*6|block\s*6)\b/i.test(p) || p === '6' || p === '6th') return 'p6';
+  if (/\b(period\s*7|7th(\s*period)?|p7|per\s*7|plan(ning)?\s*7|block\s*7)\b/i.test(p) || p === '7' || p === '7th') return 'p7';
   if (p.includes('after') || p.includes('dismissal') || /\b(3:[3-5]\d|[4-5]:\d\d|[4-5]\s*pm)\b/i.test(p)) return 'after';
 
   return null;
@@ -163,4 +165,38 @@ export function isTeacherInPlanningNow(
     currentPeriodName: matched.name,
     displayTime: matched.displayTime,
   };
+}
+
+/**
+ * Returns the currently active period ID (e.g. 'p1', 'p2', 'p3')
+ * based on current Florida Eastern Time, or null if outside instructional periods.
+ */
+export function getCurrentlyActivePeriodId(schoolName?: string | null): string | null {
+  const schedule = getScheduleForSchool(schoolName);
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false,
+    weekday: 'short',
+  });
+  const parts = formatter.formatToParts(now);
+  const weekdayPart = parts.find((p) => p.type === 'weekday')?.value;
+  if (weekdayPart === 'Sat' || weekdayPart === 'Sun') return null;
+
+  const hourPart = parts.find((p) => p.type === 'hour')?.value;
+  const minutePart = parts.find((p) => p.type === 'minute')?.value;
+  const currentTotalMinutes =
+    (hourPart !== undefined ? parseInt(hourPart, 10) : now.getHours()) * 60 +
+    (minutePart !== undefined ? parseInt(minutePart, 10) : now.getMinutes());
+
+  for (const period of schedule) {
+    const [startH, startM] = period.startTime.split(':').map(Number);
+    const [endH, endM] = period.endTime.split(':').map(Number);
+    if (currentTotalMinutes >= startH * 60 + startM && currentTotalMinutes <= endH * 60 + endM) {
+      return period.id;
+    }
+  }
+  return null;
 }

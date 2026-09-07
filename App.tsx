@@ -53,7 +53,8 @@ export default function App() {
 
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
       if (nextAppState === 'background' || nextAppState === 'inactive') {
-        if (SecurityService.isSessionLocked()) {
+        if (SecurityService.isPinConfigured()) {
+          SecurityService.lockSession();
           setIsLocked(true);
         }
       } else if (nextAppState === 'active') {
@@ -65,9 +66,16 @@ export default function App() {
     const appStateSub = AppState.addEventListener('change', handleAppStateChange);
 
     const handleVisibilityChange = () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        if (SecurityService.isSessionLocked()) {
-          setIsLocked(true);
+      if (typeof document !== 'undefined') {
+        if (document.visibilityState === 'hidden') {
+          if (SecurityService.isPinConfigured()) {
+            SecurityService.lockSession();
+            setIsLocked(true);
+          }
+        } else if (document.visibilityState === 'visible') {
+          if (SecurityService.isSessionLocked()) {
+            setIsLocked(true);
+          }
         }
       }
     };

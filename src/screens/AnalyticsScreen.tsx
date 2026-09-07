@@ -106,7 +106,10 @@ export default function AnalyticsScreen({ navigation }: any) {
   // Find peak hour
   const hoursWithCalls = hourlyStats.filter((h: any) => h.dials > 0);
   const peakHour = hoursWithCalls.length > 0
-    ? [...hoursWithCalls].sort((a: any, b: any) => b.contactRate - a.contactRate)[0]
+    ? [...hoursWithCalls].sort((a: any, b: any) => {
+        if (b.contactRate !== a.contactRate) return b.contactRate - a.contactRate;
+        return b.dials - a.dials;
+      })[0]
     : null;
 
   return (

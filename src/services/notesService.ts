@@ -120,7 +120,7 @@ export class NotesService {
       raw: `[${newTimestamp}] ${trimmed}`,
     };
 
-    return entries.map((e) => `[${e.timestamp}] ${e.text}`).join('\n\n');
+    return entries.map((e) => (e.timestamp !== 'Note' ? `[${e.timestamp}] ${e.text}` : e.text)).join('\n\n');
   }
 
   /**

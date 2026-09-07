@@ -41,7 +41,7 @@ export function TodayCockpitCard({
   // Callbacks scheduled for today or past due
   const callbacksDue = useMemo(() => {
     return leads.filter((l) => {
-      if (['connected', 'spoke', 'do_not_call', 'bad_number'].includes(l.last_disposition || '')) return false;
+      if (['connected', 'spoke', 'do_not_call', 'bad_number', 'appointment_set'].includes(l.last_disposition || '')) return false;
       if (l.last_disposition === 'callback_requested' || l.follow_up_at) {
         if (l.follow_up_at) {
           return l.follow_up_at.slice(0, 10) <= todayStr;

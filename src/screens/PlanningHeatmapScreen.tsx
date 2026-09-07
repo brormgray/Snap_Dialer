@@ -26,7 +26,7 @@ import { LeadsRepository } from '../db/leadsRepository';
 import { CalendarService } from '../services/calendarService';
 import { HapticsService } from '../services/hapticsService';
 import { TelephonyService } from '../services/telephonyService';
-import { getScheduleForSchool, matchPeriodId } from '../data/bellSchedules';
+import { getScheduleForSchool, matchPeriodId, getCurrentlyActivePeriodId } from '../data/bellSchedules';
 import { Lead } from '../types';
 import { Colors } from '../theme/colors';
 
@@ -52,6 +52,7 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
 
   const schoolOptions = ['All', ...Array.from(new Set(leads.map((l) => l.school || 'VOL').filter(Boolean)))];
   const periods = getScheduleForSchool(selectedSchool === 'All' ? null : selectedSchool);
+  const activePeriodId = getCurrentlyActivePeriodId(selectedSchool === 'All' ? null : selectedSchool);
 
   // Find educators matching a given planning period
   const getLeadsForPeriod = (periodId: string) => {
@@ -63,8 +64,9 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
     });
   };
 
-  const apptLeads = leads.filter((l) => l.last_disposition === 'appointment_set');
-  const totalSlotsCount = leads.filter((l) => Boolean(l.planning_period)).length;
+  const scopedLeads = selectedSchool === 'All' ? leads : leads.filter((l) => (l.school || 'VOL') === selectedSchool);
+  const apptLeads = scopedLeads.filter((l) => l.last_disposition === 'appointment_set');
+  const totalSlotsCount = scopedLeads.filter((l) => Boolean(l.planning_period)).length;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -149,10 +151,15 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
             return (
               <View key={period.id} style={styles.periodCard}>
                 <View style={styles.periodHeader}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, flexWrap: 'wrap' }}>
                     <Clock size={16} color={Colors.brandAccent} />
                     <Text style={styles.periodTitle}>{period.name}</Text>
                     <Text style={styles.periodTime}>({period.displayTime})</Text>
+                    {activePeriodId === period.id && (
+                      <View style={styles.activePeriodBadge}>
+                        <Text style={styles.activePeriodBadgeText}>⚡ PLANNING NOW</Text>
+                      </View>
+                    )}
                   </View>
                   <View style={[styles.countBadge, confirmedInPeriod.length > 0 && styles.countBadgeConfirmed]}>
                     <Text style={[styles.countBadgeText, confirmedInPeriod.length > 0 && { color: Colors.badgeSuccessText }]}>
@@ -190,6 +197,7 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
                           <TouchableOpacity
                             style={styles.quickDialPill}
                             onPress={async () => {
+                              if (!lead.phone) return;
                               await HapticsService.medium();
                               await TelephonyService.makeCall(lead.phone);
                               navigation.navigate('LeadDetail', { leadId: lead.id });
@@ -387,6 +395,19 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 20,
     marginLeft: 8,
+  },
+  activePeriodBadge: {
+    backgroundColor: '#10B981',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginLeft: 4,
+  },
+  activePeriodBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
 });
 

@@ -592,16 +592,16 @@ export class LeadsRepository {
            appointment_scheduled_at = ?, appointment_outcome = ?, appointment_completed_at = ?, last_disposition = ?, updated_at = ? 
        WHERE id = ?`,
       [
-        leadData.name.trim(),
-        leadData.phone.trim(),
-        leadData.school?.trim() || 'VOL',
-        leadData.email?.trim() || null,
-        leadData.room_number?.trim() || null,
-        leadData.planning_period?.trim() || null,
-        leadData.years_in_frs?.trim() || null,
-        leadData.notes || null,
-        leadData.priority_tier !== undefined ? Number(leadData.priority_tier) : 1,
-        leadData.list_id || 'master_queue',
+        leadData.name !== undefined ? leadData.name.trim() : (current?.name || ''),
+        leadData.phone !== undefined ? leadData.phone.trim() : (current?.phone || ''),
+        leadData.school !== undefined ? (leadData.school?.trim() || 'VOL') : (current?.school || 'VOL'),
+        leadData.email !== undefined ? (leadData.email?.trim() || null) : (current?.email || null),
+        leadData.room_number !== undefined ? (leadData.room_number?.trim() || null) : (current?.room_number || null),
+        leadData.planning_period !== undefined ? (leadData.planning_period?.trim() || null) : (current?.planning_period || null),
+        leadData.years_in_frs !== undefined ? (leadData.years_in_frs?.trim() || null) : (current?.years_in_frs || null),
+        leadData.notes !== undefined ? leadData.notes : (current?.notes || null),
+        leadData.priority_tier !== undefined ? Number(leadData.priority_tier) : (current?.priority_tier ?? 1),
+        leadData.list_id !== undefined ? leadData.list_id : (current?.list_id || 'master_queue'),
         isClient,
         clientSince,
         products,
@@ -894,6 +894,15 @@ export class LeadsRepository {
           const isClientA = a.is_client ? 1 : 0;
           const isClientB = b.is_client ? 1 : 0;
           if (isClientA !== isClientB) return isClientB - isClientA;
+
+          if (isClientA === 1 && isClientB === 1) {
+            const premA = Number(a.annualized_premium) || 0;
+            const premB = Number(b.annualized_premium) || 0;
+            if (premA !== premB) return premB - premA;
+            const assetA = Number(a.transfer_assets_volume) || 0;
+            const assetB = Number(b.transfer_assets_volume) || 0;
+            if (assetA !== assetB) return assetB - assetA;
+          }
 
           const isApptA = a.last_disposition === 'appointment_set' ? 1 : 0;
           const isApptB = b.last_disposition === 'appointment_set' ? 1 : 0;

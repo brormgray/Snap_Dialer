@@ -134,3 +134,42 @@ Whenever the codebase is modified:
 ## 7. KaTeX Formatting Standard
 - **NEVER** place dollar signs (`$` or `\$`) inside LaTeX delimiters `\( ... \)` or `\[ ... \]`.
 - Outside LaTeX blocks, currency values must be escaped as `\$500`, `\$25`, or written as `USD 500`.
+
+---
+
+## 8. Multi-Specialist Codebase Audit & Architectural Resolutions (v2.5.0)
+
+### 8.1 Database, Storage & Deduplication Engine (`src/db/`)
+- **Dexie Photo & Call Log Cascading**: Synchronized `dexieDb.lead_photos.delete` on lead and list deletion. Reparented `call_logs` during deduplication (`dexieDb.call_logs.where('lead_id').equals(oldLeadId).modify({ lead_id: masterLeadId })`).
+- **Client Status Master Ranking**: Enhanced `deduplicateLeads` to prioritize master records by converted client status, highest annualized premium (`annualized_premium`), and transfer assets volume (`transfer_assets_volume`).
+- **Defensive Detail Updates**: In `LeadsRepository.updateLeadDetails`, added defensive `current?.field` fallbacks to prevent partial background updates (such as drip dispatch or quick notes) from erasing room number, planning period, email, or salary.
+- **Auto-Healing Ingestion**: In `IndexedDbStorage.normalizeState` and `hydrateLead`, automatically heals legacy records where `is_client === true` but `appointment_outcome === null` to `'converted'`, preventing completed sit-downs from lingering in pending appointment queues.
+
+### 8.2 Dialer HUD & Active Telephony Cockpit (`src/screens/DialerHudScreen.tsx`)
+- **Active Call Auto-Advance Lock**: Added `cancelAutoAdvanceTimer()` on `handleDial` to ensure active calls are never interrupted by countdown timers.
+- **Fixed Thumb-Zone Dock**: Extracted Call Duration meter, Main Dial action, and Disposition buttons out of `ScrollView` into an anchored sticky bottom dock, leaving full swipe gestures intact on the educator dossier card.
+- **Double-Tap Guards**: Wrapped `handleScheduleFollowUp`, `handleSaveNote`, and `handleDisposition` in `isProcessingDispoRef` locks.
+- **Standalone SMS Disposition**: In `handleSendCustomSms`, correctly persists `disposition: 'sms_sent'` to `LeadsRepository` and call logs to preserve accurate dial-to-connect metrics.
+- **Modal Back-Button Safety**: Added explicit `onRequestClose` handlers to all HUD modals (`noteModalVisible`, `objectionsModalVisible`, `followUpModalVisible`, `notesModalVisible`, `editLeadModalVisible`).
+
+### 8.3 Educator Dossier & Post-Appointment Wrap-Up (`src/screens/LeadDetailScreen.tsx`)
+- **Universal Calendar Sync**: Targets confirmed appointment date/time (`lead.appointment_scheduled_at ? new Date(lead.appointment_scheduled_at) : CalendarService.calculateNextPlanningDate(...)`) instead of current timestamp for 1-tap Apple, Google, and Outlook calendar export.
+- **Non-Destructive DNC Logging**: Preserves existing educator notes via `NotesService.addNote(lead.notes, ...)` when toggling Do Not Call.
+- **Bi-Directional Client Portfolio Sync**: Fully syncs `is_client`, product checkboxes, Annualized Premium (`$ AP`), Assets Volume (`$ Assets`), effective date, and review due date with `updateLeadDetails` and `convertLeadToClient`.
+
+### 8.4 Pipeline Dashboard & Automated Drips (`src/screens/ListsScreen.tsx` & `src/services/dripDispatcherService.ts`)
+- **Clean Telephony Attribution**: Automated and batch drips log `disposition: 'drip_sent'` with `smsSent: true`, preventing automated texts from falsely inflating voice dial analytics.
+- **Template Hygiene**: Cleaned `src/data/dripTemplates.ts` to eliminate redundant "Room" tokens (preventing "Room Room 204" output).
+- **KPI Parity & Filtering**: Aligned status bar strip counts ("Unanswered", "Callable", "Appts Set") with filter bottom sheet multi-select filters and active list views.
+
+### 8.5 Analytics, Florida Compliance & Bell Schedules (`src/screens/AnalyticsScreen.tsx` & `src/data/bellSchedules.ts`)
+- **Florida Telemarketing Hours**: Restricted hourly response bins to 8:00 AM – 7:00 PM Eastern (`8 <= h <= 19`) using `America/New_York` timezone parsing with 24-hour cycle (`hourCycle: 'h23'`).
+- **Peak Hour Tie-Breaker**: Added dial volume weighting to peak hour calculation when contact rates are identical.
+- **Planning Now Live Badge**: In `PlanningHeatmapScreen.tsx`, added `⚡ PLANNING NOW` badge for schools with active planning periods, matching against natural expressions (`plan(ning)?`, `block`) across Florida school schedules.
+
+### 8.6 AI Scanner, Cloud Delta Sync & Security (`src/services/`)
+- **Resilient AI Vision Parsing**: Added bracket/brace boundary extraction (`indexOf('[')` / `lastIndexOf(']')`) in `visionService.ts` to cleanly extract JSON even if LLM outputs preface text or markdown wrappers.
+- **Cloud Delta Sync Preservation**: In `supabaseSyncService.ts`, cloud-newer updates now defensively preserve local proof card image URIs (`source_image_uri`), FRS interests, text consent, and client portfolio fields.
+- **Persistent PIN Lockout**: In `securityService.ts` and `PinLockModal.tsx`, persisted 30-second lockout timestamp across page reloads in `localStorage` (`snap_pin_lockout_until`).
+- **Immediate Background Lock**: In `App.tsx`, app state changes to `background`/`inactive` or document visibility to `hidden` immediately trigger `SecurityService.lockSession()`.
+

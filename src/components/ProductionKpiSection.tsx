@@ -22,19 +22,25 @@ export function ProductionKpiSection({ leads }: ProductionKpiSectionProps) {
     let cutoff: Date;
 
     switch (horizon) {
-      case 'today':
-        cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      case 'today': {
+        try {
+          const nyDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(now);
+          cutoff = new Date(`${nyDateStr}T00:00:00`);
+        } catch {
+          cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+        }
         break;
+      }
       case 'this_week': {
-        const day = now.getDay(); // 0 is Sunday
-        cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day);
+        const dayOfWeek = (now.getDay() + 6) % 7; // Monday = 0
+        cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek, 0, 0, 0);
         break;
       }
       case 'this_month':
-        cutoff = new Date(now.getFullYear(), now.getMonth(), 1);
+        cutoff = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
         break;
       case 'ytd':
-        cutoff = new Date(now.getFullYear(), 0, 1);
+        cutoff = new Date(now.getFullYear(), 0, 1, 0, 0, 0);
         break;
       default:
         return clients;

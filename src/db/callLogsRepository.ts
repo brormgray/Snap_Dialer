@@ -199,9 +199,9 @@ export class CallLogsRepository {
     let apptsThisWeek = 0;
     let apptsLastWeek = 0;
 
-    // Hourly buckets: 7 AM to 7 PM (7 through 19)
+    // Hourly buckets: 8 AM to 7 PM (8 through 19 - Florida calling compliance)
     const hourlyMap = new Map<number, { dials: number; connected: number }>();
-    for (let h = 7; h <= 19; h++) {
+    for (let h = 8; h <= 19; h++) {
       hourlyMap.set(h, { dials: 0, connected: 0 });
     }
 
@@ -233,8 +233,20 @@ export class CallLogsRepository {
             if (isAppt) apptsLastWeek++;
           }
 
-          // Hourly attribution
-          const hour = logDate.getHours();
+          // Hourly attribution in America/New_York
+          let hour = logDate.getHours();
+          try {
+            const nyHourStr = new Intl.DateTimeFormat('en-US', {
+              timeZone: 'America/New_York',
+              hour: 'numeric',
+              hourCycle: 'h23',
+            }).format(logDate);
+            const parsedHour = parseInt(nyHourStr, 10);
+            if (!isNaN(parsedHour)) {
+              hour = parsedHour;
+            }
+          } catch {}
+
           if (hourlyMap.has(hour)) {
             const hStats = hourlyMap.get(hour)!;
             hStats.dials++;

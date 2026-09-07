@@ -199,8 +199,10 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       // Reinstating lead to queue
       const doReinstate = async () => {
         await HapticsService.success();
-        setLead((prev) => (prev ? { ...prev, last_disposition: 'pending' } : null));
-        await LeadsRepository.updateLeadDisposition(lead.id, 'pending', 'DNC removed / Reinstated to Queue');
+        const noteText = 'DNC removed / Reinstated to Queue';
+        const updatedNotes = NotesService.addNote(lead.notes, noteText);
+        setLead((prev) => (prev ? { ...prev, last_disposition: 'pending', notes: updatedNotes } : null));
+        await LeadsRepository.updateLeadDisposition(lead.id, 'pending', updatedNotes);
         await loadLeadData();
         showToast('✓ Lead reinstated to active calling queue.');
       };
@@ -223,8 +225,10 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       // Flagging lead as DNC
       const doFlagDNC = async () => {
         await HapticsService.heavy();
-        setLead((prev) => (prev ? { ...prev, last_disposition: 'do_not_call' } : null));
-        await LeadsRepository.updateLeadDisposition(lead.id, 'do_not_call', 'Flagged as DNC / Opt-Out');
+        const noteText = 'Flagged as DNC / Opt-Out';
+        const updatedNotes = NotesService.addNote(lead.notes, noteText);
+        setLead((prev) => (prev ? { ...prev, last_disposition: 'do_not_call', notes: updatedNotes } : null));
+        await LeadsRepository.updateLeadDisposition(lead.id, 'do_not_call', updatedNotes);
         await loadLeadData();
         showToast('🛡️ Flagged as Do Not Call (Removed from Queue)');
       };
@@ -464,18 +468,12 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     HapticsService.medium().catch(() => {});
     setSmsModalVisible(false);
 
-    // Log the SMS event as an outreach touchpoint without re-registering an appointment booking
-    const smsLogDisposition: CallDisposition =
-      lead.last_disposition === 'appointment_set'
-        ? 'connected'
-        : lead.last_disposition && lead.last_disposition !== 'pending'
-        ? lead.last_disposition
-        : 'no_answer';
+    // Log the SMS event as a standalone outreach touchpoint
     await CallLogsRepository.logCall({
       leadId: lead.id,
       listId: lead.list_id,
       durationSeconds: 0,
-      disposition: smsLogDisposition,
+      disposition: 'sms_sent',
       note: lead.last_disposition === 'appointment_set' ? 'Sent appointment confirmation SMS' : 'Sent persuasive ValuTeachers SMS',
       smsSent: true,
       smsBody: body,
@@ -1087,40 +1085,48 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                   <Calendar size={14} color={Colors.heavenlyGold} />
                   <Text style={styles.calCardHeader}>PIPE TO PERSONAL CALENDAR (15-MIN PRE-ALARM)</Text>
                 </View>
-                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                  <TouchableOpacity
-                    style={styles.calDetailBtn}
-                    onPress={async () => {
-                      HapticsService.medium();
-                      const event = CalendarService.buildEducatorEvent(lead, new Date(), 20, lead.notes);
-                      await CalendarService.downloadIcsFile(event);
-                    }}
-                  >
-                    <Text style={styles.calDetailBtnText}>🍏 Apple (.ics)</Text>
-                  </TouchableOpacity>
+                {(() => {
+                  const targetDate = lead.appointment_scheduled_at
+                    ? new Date(lead.appointment_scheduled_at)
+                    : CalendarService.calculateNextPlanningDate(lead.planning_period, lead.school);
 
-                  <TouchableOpacity
-                    style={[styles.calDetailBtn, { borderColor: '#38BDF8' }]}
-                    onPress={() => {
-                      HapticsService.medium();
-                      const event = CalendarService.buildEducatorEvent(lead, new Date(), 20, lead.notes);
-                      CalendarService.openGoogleCalendar(event);
-                    }}
-                  >
-                    <Text style={[styles.calDetailBtnText, { color: '#38BDF8' }]}>🌐 Google Cal</Text>
-                  </TouchableOpacity>
+                  return (
+                    <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                      <TouchableOpacity
+                        style={styles.calDetailBtn}
+                        onPress={async () => {
+                          HapticsService.medium();
+                          const event = CalendarService.buildEducatorEvent(lead, targetDate, 20, lead.notes);
+                          await CalendarService.downloadIcsFile(event);
+                        }}
+                      >
+                        <Text style={styles.calDetailBtnText}>🍏 Apple (.ics)</Text>
+                      </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={[styles.calDetailBtn, { borderColor: '#A78BFA' }]}
-                    onPress={() => {
-                      HapticsService.medium();
-                      const event = CalendarService.buildEducatorEvent(lead, new Date(), 20, lead.notes);
-                      CalendarService.openOutlookCalendar(event);
-                    }}
-                  >
-                    <Text style={[styles.calDetailBtnText, { color: '#A78BFA' }]}>📧 Outlook</Text>
-                  </TouchableOpacity>
-                </View>
+                      <TouchableOpacity
+                        style={[styles.calDetailBtn, { borderColor: '#38BDF8' }]}
+                        onPress={() => {
+                          HapticsService.medium();
+                          const event = CalendarService.buildEducatorEvent(lead, targetDate, 20, lead.notes);
+                          CalendarService.openGoogleCalendar(event);
+                        }}
+                      >
+                        <Text style={[styles.calDetailBtnText, { color: '#38BDF8' }]}>🌐 Google Cal</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.calDetailBtn, { borderColor: '#A78BFA' }]}
+                        onPress={() => {
+                          HapticsService.medium();
+                          const event = CalendarService.buildEducatorEvent(lead, targetDate, 20, lead.notes);
+                          CalendarService.openOutlookCalendar(event);
+                        }}
+                      >
+                        <Text style={[styles.calDetailBtnText, { color: '#A78BFA' }]}>📧 Outlook</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })()}
               </View>
 
 

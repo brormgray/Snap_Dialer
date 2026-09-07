@@ -198,11 +198,11 @@ async function saveToNativeSqlite(db: IDatabase, lists: any[], leads: any[], log
           `INSERT OR REPLACE INTO leads (
             id, list_id, name, phone, school, email, age, planning_period, room_number, years_in_frs, text_ok,
             frs_knowledge, frs_interests, custom_questions, meeting_preferences, annual_salary, present_403b_contribution,
-            source_image_uri, company, notes, cadence_step, last_attempt_at, last_disposition, follow_up_at, attempts_count,
+            source_image_uri, company, notes, priority_tier, cadence_step, last_attempt_at, last_disposition, follow_up_at, attempts_count,
             is_client, client_since, products, annualized_premium, transfer_assets_volume, policy_effective_date, annual_review_due_date,
             drip_track, drip_step, last_drip_sent_at, next_drip_scheduled_at, appointment_scheduled_at, appointment_outcome, appointment_completed_at,
             created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             lead.id,
             lead.list_id || '',
@@ -224,6 +224,7 @@ async function saveToNativeSqlite(db: IDatabase, lists: any[], leads: any[], log
             lead.source_image_uri || null,
             lead.company || null,
             lead.notes || null,
+            lead.priority_tier || 1,
             lead.cadence_step || 1,
             lead.last_attempt_at || null,
             lead.last_disposition || 'pending',
@@ -539,7 +540,33 @@ export class SupabaseSyncService {
           const lTime = lLead.updated_at ? new Date(lLead.updated_at).getTime() : 0;
 
           if (cTime > lTime) {
-            Object.assign(lLead, cLead);
+            const localPreserved = {
+              source_image_uri: lLead.source_image_uri || cLead.source_image_uri || null,
+              text_ok: lLead.text_ok !== undefined ? lLead.text_ok : (cLead.text_ok !== undefined ? cLead.text_ok : true),
+              frs_interests: lLead.frs_interests || cLead.frs_interests || null,
+              frs_knowledge: lLead.frs_knowledge || cLead.frs_knowledge || null,
+              custom_questions: lLead.custom_questions || cLead.custom_questions || null,
+              meeting_preferences: lLead.meeting_preferences || cLead.meeting_preferences || null,
+              annual_salary: lLead.annual_salary || cLead.annual_salary || null,
+              present_403b_contribution: lLead.present_403b_contribution || cLead.present_403b_contribution || null,
+              company: lLead.company || cLead.company || null,
+              priority_tier: lLead.priority_tier !== undefined ? lLead.priority_tier : (cLead.priority_tier || 1),
+              is_client: lLead.is_client !== undefined ? lLead.is_client : (cLead.is_client || false),
+              client_since: lLead.client_since || cLead.client_since || null,
+              products: lLead.products || cLead.products || [],
+              annualized_premium: lLead.annualized_premium !== undefined ? lLead.annualized_premium : (cLead.annualized_premium || 0),
+              transfer_assets_volume: lLead.transfer_assets_volume !== undefined ? lLead.transfer_assets_volume : (cLead.transfer_assets_volume || 0),
+              policy_effective_date: lLead.policy_effective_date || cLead.policy_effective_date || null,
+              annual_review_due_date: lLead.annual_review_due_date || cLead.annual_review_due_date || null,
+              drip_track: lLead.drip_track || cLead.drip_track || 'none',
+              drip_step: lLead.drip_step !== undefined ? lLead.drip_step : (cLead.drip_step || 0),
+              last_drip_sent_at: lLead.last_drip_sent_at || cLead.last_drip_sent_at || null,
+              next_drip_scheduled_at: lLead.next_drip_scheduled_at || cLead.next_drip_scheduled_at || null,
+              appointment_scheduled_at: lLead.appointment_scheduled_at || cLead.appointment_scheduled_at || null,
+              appointment_outcome: lLead.appointment_outcome || cLead.appointment_outcome || null,
+              appointment_completed_at: lLead.appointment_completed_at || cLead.appointment_completed_at || null,
+            };
+            Object.assign(lLead, cLead, localPreserved);
             localUpdated++;
             localLeadsMutated = true;
           } else if (lTime > cTime) {

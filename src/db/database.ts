@@ -441,6 +441,13 @@ class WebDatabase implements IDatabase {
         cadence_step: cadenceStep,
         last_disposition: lastDisp,
         attempts_count: attemptsCount,
+        is_client: params[26] !== undefined ? (params[26] === 1 || params[26] === true) : false,
+        products: [],
+        annualized_premium: 0,
+        transfer_assets_volume: 0,
+        appointment_outcome: null,
+        appointment_scheduled_at: null,
+        appointment_completed_at: null,
         created_at: createdAt,
         updated_at: updatedAt,
       };
@@ -506,6 +513,9 @@ class WebDatabase implements IDatabase {
           log.lead_id = newLeadId;
         }
       }
+      try {
+        dexieDb.call_logs.where('lead_id').equals(oldLeadId).modify({ lead_id: newLeadId }).catch(() => {});
+      } catch {}
     } else if (s.includes('update cadence_rules set')) {
       const ruleId = params[params.length - 1];
       const rule = this.cadence_rules.find((r) => r.id === ruleId);
@@ -764,6 +774,7 @@ class WebDatabase implements IDatabase {
       try {
         dexieDb.leads.delete(leadId).catch(() => {});
         dexieDb.call_logs.where('lead_id').equals(leadId).delete().catch(() => {});
+        dexieDb.lead_photos.where('lead_id').equals(leadId).delete().catch(() => {});
       } catch {}
     } else if (s.includes('delete from leads')) {
       this.leads = [];
@@ -771,9 +782,11 @@ class WebDatabase implements IDatabase {
       try {
         dexieDb.leads.clear().catch(() => {});
         dexieDb.call_logs.clear().catch(() => {});
+        dexieDb.lead_photos.clear().catch(() => {});
       } catch {}
     } else if (s.includes('delete from lists where id = ?')) {
       const listId = params[0];
+      const deletedLeadIds = this.leads.filter((l) => l.list_id === listId).map((l) => l.id);
       this.lists = this.lists.filter((l) => l.id !== listId);
       this.leads = this.leads.filter((l) => l.list_id !== listId);
       this.call_logs = this.call_logs.filter((c) => c.list_id !== listId);
@@ -781,6 +794,9 @@ class WebDatabase implements IDatabase {
         dexieDb.lists.delete(listId).catch(() => {});
         dexieDb.leads.where('list_id').equals(listId).delete().catch(() => {});
         dexieDb.call_logs.where('list_id').equals(listId).delete().catch(() => {});
+        for (const lid of deletedLeadIds) {
+          dexieDb.lead_photos.where('lead_id').equals(lid).delete().catch(() => {});
+        }
       } catch {}
     } else if (s.includes('delete from lists')) {
       this.lists = [];

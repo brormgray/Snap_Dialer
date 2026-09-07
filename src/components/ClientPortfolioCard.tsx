@@ -107,7 +107,7 @@ export function ClientPortfolioCard({ lead, onSave }: ClientPortfolioCardProps) 
           lastDisposition = 'connected';
         }
       } else if (dripTrack === 'prospect_nurture') {
-        if (lead.last_disposition === 'appointment_set' || lead.appointment_scheduled_at || !appointmentOutcome) {
+        if (lead.last_disposition === 'appointment_set' || lead.appointment_scheduled_at) {
           appointmentOutcome = 'nurture_drip';
           appointmentCompletedAt = appointmentCompletedAt || nowISO;
           if (lastDisposition === 'appointment_set') {

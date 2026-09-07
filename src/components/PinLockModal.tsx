@@ -27,16 +27,27 @@ export default function PinLockModal({ visible, onUnlocked }: PinLockModalProps)
   useEffect(() => {
     if (visible) {
       setPin('');
-      setErrorMsg(null);
+      const lockoutUntil = SecurityService.getLockoutUntil();
+      const diff = Math.ceil((lockoutUntil - Date.now()) / 1000);
+      if (diff > 0) {
+        setLockoutRemaining(diff);
+        setErrorMsg(`Too many attempts. Locked for ${diff}s.`);
+      } else {
+        setErrorMsg(null);
+      }
     }
   }, [visible]);
 
   useEffect(() => {
-    if (lockoutRemaining <= 0) return;
+    if (lockoutRemaining <= 0) {
+      SecurityService.clearLockout();
+      return;
+    }
     const timer = setInterval(() => {
       setLockoutRemaining((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
+          SecurityService.clearLockout();
           setErrorMsg(null);
           setFailedAttempts(0);
           return 0;
@@ -59,14 +70,18 @@ export default function PinLockModal({ visible, onUnlocked }: PinLockModalProps)
       const isValid = SecurityService.verifyPin(newPin);
       if (isValid) {
         await HapticsService.success();
+        SecurityService.clearLockout();
         setPin('');
         setFailedAttempts(0);
+        setLockoutRemaining(0);
         onUnlocked();
       } else {
         await HapticsService.error();
         const nextFailed = failedAttempts + 1;
         setFailedAttempts(nextFailed);
         if (nextFailed >= 5) {
+          const lockoutTimeMs = Date.now() + 30000;
+          SecurityService.setLockoutUntil(lockoutTimeMs);
           setLockoutRemaining(30);
           setErrorMsg('Too many attempts. Locked for 30 seconds.');
         } else {

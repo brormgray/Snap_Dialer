@@ -270,6 +270,9 @@ export default function DialerHudScreen({ route, navigation }: any) {
       clearInterval(callTimerRef.current);
       callTimerRef.current = null;
     }
+    callStartTimeRef.current = null;
+    setIsOnCall(false);
+    setCallDuration(0);
     if (navigation && typeof navigation.canGoBack === 'function' && navigation.canGoBack()) {
       navigation.goBack();
     } else if (navigation && typeof navigation.navigate === 'function') {
@@ -437,6 +440,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
   // Trigger outbound call via zero-cost native SIM bridge
   const handleDial = async () => {
     if (!currentLead || isOnCall) return;
+    cancelAutoAdvanceTimer();
     await HapticsService.medium();
     setSessionDials((prev) => prev + 1);
     setIsOnCall(true);
@@ -580,7 +584,9 @@ export default function DialerHudScreen({ route, navigation }: any) {
       if (advanceImmediately) {
         advanceNextLead();
       } else {
-        if (appSettings?.auto_advance_enabled && !isAutoPaused) {
+        if (isAutoPaused) {
+          // Stay on current lead, manual pause active
+        } else if (appSettings?.auto_advance_enabled) {
           startAutoAdvanceTimer();
         } else {
           advanceNextLead();
@@ -592,34 +598,39 @@ export default function DialerHudScreen({ route, navigation }: any) {
   };
 
   const handleScheduleFollowUp = async (presetHours: number) => {
-    if (!currentLead) return;
-    await HapticsService.success();
-    setFollowUpModalVisible(false);
-    setSessionCallbacks((prev) => prev + 1);
+    if (!currentLead || isProcessingDispoRef.current) return;
+    isProcessingDispoRef.current = true;
+    try {
+      await HapticsService.success();
+      setFollowUpModalVisible(false);
+      setSessionCallbacks((prev) => prev + 1);
 
-    if (callTimerRef.current) clearInterval(callTimerRef.current);
-    setIsOnCall(false);
+      if (callTimerRef.current) clearInterval(callTimerRef.current);
+      setIsOnCall(false);
 
-    const followUpDate = new Date();
-    followUpDate.setHours(followUpDate.getHours() + presetHours);
+      const followUpDate = new Date();
+      followUpDate.setHours(followUpDate.getHours() + presetHours);
 
-    await LeadsRepository.scheduleFollowUp(
-      currentLead.id,
-      followUpDate.toISOString(),
-      followUpNote || 'Scheduled Callback'
-    );
+      await LeadsRepository.scheduleFollowUp(
+        currentLead.id,
+        followUpDate.toISOString(),
+        followUpNote || 'Scheduled Callback'
+      );
 
-    await CallLogsRepository.logCall({
-      leadId: currentLead.id,
-      listId: currentLead.list_id,
-      durationSeconds: callDuration,
-      disposition: 'callback_requested',
-      note: `Follow-up set for ${followUpDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-    });
+      await CallLogsRepository.logCall({
+        leadId: currentLead.id,
+        listId: currentLead.list_id,
+        durationSeconds: callDuration,
+        disposition: 'callback_requested',
+        note: `Follow-up set for ${followUpDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      });
 
-    setFollowUpNote('');
-    Alert.alert('Follow-Up Saved', `Callback scheduled for ${followUpDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
-    advanceNextLead();
+      setFollowUpNote('');
+      Alert.alert('Follow-Up Saved', `Callback scheduled for ${followUpDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
+      advanceNextLead();
+    } finally {
+      isProcessingDispoRef.current = false;
+    }
   };
 
   const handleMarkDNC = async () => {
@@ -629,7 +640,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
   };
 
   const handleSaveNote = async () => {
-    if (!currentLead) return;
+    if (!currentLead || isProcessingDispoRef.current) return;
     await HapticsService.success();
     setNoteModalVisible(false);
 
@@ -840,12 +851,16 @@ export default function DialerHudScreen({ route, navigation }: any) {
     } else {
       // Standalone Quick SMS from HUD dock
       try {
+        const noteToRecord = 'Sent persuasive ValuTeachers SMS';
+        const updatedNotes = NotesService.addNote(currentLead.notes, noteToRecord);
+        currentLead.notes = updatedNotes;
+        await LeadsRepository.updateLeadNotes(currentLead.id, updatedNotes);
         await CallLogsRepository.logCall({
           leadId: currentLead.id,
           listId: currentLead.list_id,
           durationSeconds: 0,
           disposition: 'sms_sent',
-          note: 'Sent persuasive ValuTeachers SMS',
+          note: noteToRecord,
           smsSent: true,
           smsBody: messageToSend,
         });
@@ -1313,7 +1328,11 @@ export default function DialerHudScreen({ route, navigation }: any) {
             onPress={() => {
               cancelAutoAdvanceTimer();
               HapticsService.tick();
-              setImageModalVisible(true);
+              if (currentLead?.source_image_uri) {
+                setImageModalVisible(true);
+              } else {
+                showToast('No original report card photo attached to this lead.');
+              }
             }}
             activeOpacity={0.7}
           >
@@ -1468,7 +1487,12 @@ export default function DialerHudScreen({ route, navigation }: any) {
       />
 
       {/* Connected / Appointment Notes Modal */}
-      <Modal visible={noteModalVisible} animationType="slide" transparent>
+      <Modal
+        visible={noteModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setNoteModalVisible(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
@@ -1577,7 +1601,12 @@ export default function DialerHudScreen({ route, navigation }: any) {
       </Modal>
 
       {/* Live Objection Battlecards Modal */}
-      <Modal visible={objectionsModalVisible} animationType="slide" transparent>
+      <Modal
+        visible={objectionsModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setObjectionsModalVisible(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { maxHeight: '85%', paddingBottom: 20 }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -1631,7 +1660,12 @@ export default function DialerHudScreen({ route, navigation }: any) {
       </Modal>
 
       {/* Schedule Follow-up Modal */}
-      <Modal visible={followUpModalVisible} animationType="slide" transparent>
+      <Modal
+        visible={followUpModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setFollowUpModalVisible(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Schedule Callback: {currentLead.name}</Text>
@@ -1936,7 +1970,12 @@ export default function DialerHudScreen({ route, navigation }: any) {
       </Modal>
 
       {/* Edit Educator Details Modal */}
-      <Modal visible={editLeadModalVisible} animationType="slide" transparent>
+      <Modal
+        visible={editLeadModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setEditLeadModalVisible(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { maxHeight: '90%', width: '92%' }]}>
             <View style={styles.modalHeaderRow}>

@@ -216,5 +216,84 @@ describe('Two-Way Delta Sync with Last-Write-Wins (LWW) Conflict Resolution', ()
     assert.strictEqual(parsed[0].name, 'Jane Doe');
     assert.strictEqual(parsed[0].phone, '3865551234');
   });
+
+  test('cloud newer preserves local-only fields (proof card, text_ok, client portfolio, appointment status)', () => {
+    const localLead = {
+      id: 'lead_local_1',
+      name: 'Maria Santos',
+      phone: '3865558899',
+      school: 'Old School',
+      source_image_uri: 'data:image/jpeg;base64,mockLocalImageBase64',
+      text_ok: true,
+      frs_interests: 'DROP Rollover, Pension Maximization',
+      is_client: true,
+      annualized_premium: 6000,
+      transfer_assets_volume: 85000,
+      appointment_outcome: 'converted',
+      appointment_completed_at: '2026-09-02T14:30:00Z',
+      updated_at: '2026-09-01T10:00:00Z',
+    };
+
+    const cloudLead = {
+      id: 'lead_local_1',
+      name: 'Maria Santos',
+      phone: '3865558899',
+      school: 'Deltona High', // updated campus in cloud
+      source_image_uri: null, // cloud doesn't store heavy base64
+      notes: 'Spoke at staff meeting',
+      updated_at: '2026-09-05T10:00:00Z', // newer
+    };
+
+    const localPreserved = {
+      source_image_uri: localLead.source_image_uri || cloudLead.source_image_uri || null,
+      text_ok: localLead.text_ok !== undefined ? localLead.text_ok : true,
+      frs_interests: localLead.frs_interests || cloudLead.frs_interests || null,
+      is_client: localLead.is_client !== undefined ? localLead.is_client : false,
+      annualized_premium: localLead.annualized_premium !== undefined ? localLead.annualized_premium : 0,
+      transfer_assets_volume: localLead.transfer_assets_volume !== undefined ? localLead.transfer_assets_volume : 0,
+      appointment_outcome: localLead.appointment_outcome || cloudLead.appointment_outcome || null,
+      appointment_completed_at: localLead.appointment_completed_at || cloudLead.appointment_completed_at || null,
+    };
+
+    const merged = Object.assign({}, localLead, cloudLead, localPreserved);
+
+    assert.strictEqual(merged.school, 'Deltona High');
+    assert.strictEqual(merged.notes, 'Spoke at staff meeting');
+    assert.strictEqual(merged.source_image_uri, 'data:image/jpeg;base64,mockLocalImageBase64');
+    assert.strictEqual(merged.text_ok, true);
+    assert.strictEqual(merged.is_client, true);
+    assert.strictEqual(merged.annualized_premium, 6000);
+    assert.strictEqual(merged.transfer_assets_volume, 85000);
+    assert.strictEqual(merged.appointment_outcome, 'converted');
+  });
+
+  test('persistent PIN lockout survives page reload simulation using stored timestamp', () => {
+    const mockLocalStorage = new Map();
+    const LOCKOUT_KEY = 'snap_pin_lockout_until';
+
+    function setLockout(untilMs) {
+      mockLocalStorage.set(LOCKOUT_KEY, String(untilMs));
+    }
+
+    function getRemainingLockout(nowMs) {
+      const val = mockLocalStorage.get(LOCKOUT_KEY);
+      if (!val) return 0;
+      const until = parseInt(val, 10);
+      const diff = Math.ceil((until - nowMs) / 1000);
+      return diff > 0 ? diff : 0;
+    }
+
+    const t0 = 2000000;
+    setLockout(t0 + 30000);
+
+    // Initial check: 30 seconds
+    assert.strictEqual(getRemainingLockout(t0), 30);
+
+    // Simulated page reload at +12s
+    assert.strictEqual(getRemainingLockout(t0 + 12000), 18);
+
+    // Simulated check after expiration at +31s
+    assert.strictEqual(getRemainingLockout(t0 + 31000), 0);
+  });
 });
 

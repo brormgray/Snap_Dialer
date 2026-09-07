@@ -44,6 +44,7 @@ import {
 } from 'lucide-react-native';
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
+import { SettingsRepository } from '../db/settingsRepository';
 import { HapticsService } from '../services/hapticsService';
 import { TelephonyService } from '../services/telephonyService';
 import { CsvService } from '../services/csvService';
@@ -67,6 +68,7 @@ export default function ListsScreen({ navigation }: any) {
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
   const [filterTab, setFilterTab] = useState<'all' | 'pending' | 'appts' | 'dispo_needed' | 'connected' | 'callback' | 'unanswered' | 'clients'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [advisorName, setAdvisorName] = useState<string>('Alex');
   const [loading, setLoading] = useState<boolean>(true);
 
   // Original Card Image Proof Modal
@@ -134,16 +136,20 @@ export default function ListsScreen({ navigation }: any) {
 
   const loadLeads = async () => {
     try {
-      const [all, lists, schools, logs] = await Promise.all([
+      const [all, lists, schools, logs, appSettings] = await Promise.all([
         LeadsRepository.getAllLeads(),
         LeadsRepository.getAllLists(),
         LeadsRepository.getAllSchools(),
         CallLogsRepository.getAllCallLogs(),
+        SettingsRepository.getSettings(),
       ]);
       setLeads(all);
       setAvailableLists(lists);
       setAvailableSchools(schools);
       setCallLogs(logs);
+      if (appSettings?.user_name) {
+        setAdvisorName(appSettings.user_name);
+      }
     } catch (e) {
       console.error('Failed to load leads:', e);
     } finally {
@@ -405,8 +411,8 @@ export default function ListsScreen({ navigation }: any) {
 
   // Due SMS Drips & Annual Reviews for today
   const dueDrips = React.useMemo(() => {
-    return DripDispatcherService.getDueDrips(scopedLeads, 'Alex');
-  }, [scopedLeads]);
+    return DripDispatcherService.getDueDrips(scopedLeads, advisorName);
+  }, [scopedLeads, advisorName]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -449,23 +455,37 @@ export default function ListsScreen({ navigation }: any) {
       />
 
       {/* KPI Stats Strip */}
-      <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>{totalCount}</Text>
-          <Text style={styles.statLabel}>Educators</Text>
-        </View>
-        <View style={[styles.statCard, { borderLeftWidth: 1, borderLeftColor: Colors.borderSubtle }]}>
-          <Text style={[styles.statNumber, { color: Colors.brandAccent }]}>{pendingCount}</Text>
-          <Text style={styles.statLabel}>To Call</Text>
-        </View>
-        <View style={[styles.statCard, { borderLeftWidth: 1, borderLeftColor: Colors.borderSubtle }]}>
-          <Text style={[styles.statNumber, { color: Colors.badgeSuccessText }]}>{appointmentCount}</Text>
-          <Text style={[styles.statLabel, { color: Colors.badgeSuccessText, fontWeight: '800' }]}>Appts Set</Text>
-        </View>
-        <View style={[styles.statCard, { borderLeftWidth: 1, borderLeftColor: Colors.borderSubtle }]}>
-          <Text style={[styles.statNumber, { color: Colors.badgeWarningText }]}>{callbackCount}</Text>
-          <Text style={styles.statLabel}>Callbacks</Text>
-        </View>
+      <View style={styles.statsRowOuter}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.statsRow}
+        >
+          <View style={styles.statCard}>
+            <Text style={styles.statNumber}>{totalCount}</Text>
+            <Text style={styles.statLabel}>Educators</Text>
+          </View>
+          <View style={[styles.statCard, { borderLeftWidth: 1, borderLeftColor: Colors.borderSubtle }]}>
+            <Text style={[styles.statNumber, { color: Colors.brandAccent }]}>{pendingCount}</Text>
+            <Text style={styles.statLabel}>To Call</Text>
+          </View>
+          <View style={[styles.statCard, { borderLeftWidth: 1, borderLeftColor: Colors.borderSubtle }]}>
+            <Text style={[styles.statNumber, { color: Colors.badgeSuccessText }]}>{appointmentCount}</Text>
+            <Text style={[styles.statLabel, { color: Colors.badgeSuccessText, fontWeight: '800' }]}>Appts Set</Text>
+          </View>
+          <View style={[styles.statCard, { borderLeftWidth: 1, borderLeftColor: Colors.borderSubtle }]}>
+            <Text style={[styles.statNumber, { color: Colors.badgeWarningText }]}>{callbackCount}</Text>
+            <Text style={styles.statLabel}>Callbacks</Text>
+          </View>
+          <View style={[styles.statCard, { borderLeftWidth: 1, borderLeftColor: Colors.borderSubtle }]}>
+            <Text style={[styles.statNumber, { color: Colors.textSecondary }]}>{unansweredCount}</Text>
+            <Text style={styles.statLabel}>Unanswered</Text>
+          </View>
+          <View style={[styles.statCard, { borderLeftWidth: 1, borderLeftColor: Colors.borderSubtle }]}>
+            <Text style={[styles.statNumber, { color: Colors.callActive }]}>{callableCount}</Text>
+            <Text style={styles.statLabel}>Callable</Text>
+          </View>
+        </ScrollView>
       </View>
 
       {/* Duplicate Leads Notification Banner */}
@@ -833,7 +853,7 @@ export default function ListsScreen({ navigation }: any) {
                   {PipelineStateService.isDispoNeeded(item) ? (
                     <TouchableOpacity
                       style={[styles.cardActionBtn, styles.dispoActionBtn]}
-                      onPress={() => navigation.navigate('LeadDetail', { leadId: item.id })}
+                      onPress={() => navigation.navigate('LeadDetail', { leadId: item.id, openDispo: true })}
                     >
                       <Clock size={15} color="#D97706" />
                       <Text style={[styles.cardActionBtnText, { color: '#D97706', fontWeight: '800' }]}>
@@ -976,18 +996,21 @@ const styles = StyleSheet.create({
   iconButton: {
     padding: 4,
   },
+  statsRowOuter: {
+    marginHorizontal: 16,
+    marginTop: 12,
+  },
   statsRow: {
     flexDirection: 'row',
     backgroundColor: Colors.surfaceCard,
-    marginHorizontal: 16,
-    marginTop: 12,
     borderRadius: 14,
     paddingVertical: 12,
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
   },
   statCard: {
-    flex: 1,
+    minWidth: 85,
+    paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },

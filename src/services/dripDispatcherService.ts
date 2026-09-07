@@ -155,20 +155,17 @@ export class DripDispatcherService {
 
     // Update lead in DB
     await LeadsRepository.updateLeadDetails({
-      id: lead.id,
-      name: lead.name,
-      phone: lead.phone,
-      school: lead.school,
+      ...lead,
       drip_step: nextStep,
       last_drip_sent_at: todayISO,
       next_drip_scheduled_at: nextScheduled,
     });
 
-    // Record call log with sms_sent = true
+    // Record call log with sms_sent = true and standalone disposition
     await CallLogsRepository.logCall({
       leadId: lead.id,
       listId: lead.list_id || 'master_queue',
-      disposition: 'connected',
+      disposition: 'drip_sent',
       durationSeconds: 0,
       smsSent: true,
       note: `[Drip Sent] ${template.title}`,

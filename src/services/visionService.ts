@@ -197,11 +197,20 @@ Never output conversational text. Output pure JSON adhering to the schema.`;
         const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!rawText) throw new Error('Empty response from vision model');
 
-        const sanitized = rawText
-          .replace(/```json\s*/gi, '')
-          .replace(/```\s*$/gi, '')
-          .trim();
-        const parsedRaw: any = JSON.parse(sanitized);
+        let jsonStr = rawText.trim();
+        const firstBracket = jsonStr.indexOf('[');
+        const lastBracket = jsonStr.lastIndexOf(']');
+        const firstBrace = jsonStr.indexOf('{');
+        const lastBrace = jsonStr.lastIndexOf('}');
+
+        if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+          jsonStr = jsonStr.substring(firstBracket, lastBracket + 1);
+        } else if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
+        } else {
+          jsonStr = jsonStr.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
+        }
+        const parsedRaw: any = JSON.parse(jsonStr);
         const parsed: any[] = Array.isArray(parsedRaw)
           ? parsedRaw
           : (parsedRaw && typeof parsedRaw === 'object' ? [parsedRaw] : []);
@@ -240,15 +249,15 @@ Never output conversational text. Output pure JSON adhering to the schema.`;
         lastError = err;
         console.warn(`Vision model ${model} attempt failed:`, err?.message);
 
-        // Immediate circuit breaker: Stop retrying subsequent models if quota is exhausted or request timed out
+        // Immediate circuit breaker: Stop retrying subsequent models if quota is exhausted
         if (err?.message?.includes('QUOTA_EXHAUSTED')) {
           break;
         }
         if (err?.name === 'AbortError') {
           lastError = new Error(
-            'TIMEOUT: Card analysis request timed out after 15 seconds. Please check your connection or enter details manually below.'
+            `TIMEOUT: Card analysis timed out after 15 seconds. Please check your connection or enter details manually below.`
           );
-          break;
+          continue;
         }
       }
     }

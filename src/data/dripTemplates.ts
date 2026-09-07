@@ -9,7 +9,7 @@ export const NURTURE_DRIP_TEMPLATES: SMSTemplate[] = [
   {
     id: 'tpl_nurture_day21_drop_inflation',
     title: 'Day 21 - DROP & Inflation Awareness',
-    body: 'Hi {{first_name}}, {{my_name}} here. With FRS post-2011 service having 0% cost-of-living adjustments, planning your DROP window early is critical. When can we do a 15-min sit-down during planning in Room {{room_number}}?',
+    body: 'Hi {{first_name}}, {{my_name}} here. With FRS post-2011 service having 0% cost-of-living adjustments, planning your DROP window early is critical. When can we do a 15-min sit-down during planning in {{room_number}}?',
   },
   {
     id: 'tpl_nurture_day45_tax_catchup',
@@ -42,7 +42,7 @@ export const CLIENT_REVIEW_DRIP_TEMPLATES: SMSTemplate[] = [
   {
     id: 'tpl_client_anniv7_reminder',
     title: 'Anniversary -7d - Urgent Review Reminder',
-    body: "Hi {{first_name}}, urgent reminder from {{my_name}}: your annual review is due by {{anniversary_date}}. Let's take 15 mins during your planning period this week in Room {{room_number}} to finalize your review!",
+    body: "Hi {{first_name}}, urgent reminder from {{my_name}}: your annual review is due by {{anniversary_date}}. Let's take 15 mins during your planning period this week in {{room_number}} to finalize your review!",
   },
 ];
 

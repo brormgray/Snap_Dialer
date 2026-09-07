@@ -165,16 +165,31 @@ export class IndexedDbStorage {
         products = [l.products.trim()];
       }
 
+      const isClient = l.is_client === 1 || l.is_client === true || l.is_client === 'true';
+      let apptOutcome = l.appointment_outcome || null;
+      let apptCompletedAt = l.appointment_completed_at || null;
+      let lastDispo = l.last_disposition || 'pending';
+
+      // Auto-heal appointment lifecycle state on load
+      if (isClient) {
+        if (!apptOutcome) apptOutcome = 'converted';
+        if (!apptCompletedAt && l.client_since) apptCompletedAt = l.client_since;
+        if (lastDispo === 'appointment_set') lastDispo = 'connected';
+      } else if (l.drip_track === 'prospect_nurture' && lastDispo === 'appointment_set') {
+        if (!apptOutcome) apptOutcome = 'nurture_drip';
+        if (!apptCompletedAt) apptCompletedAt = l.updated_at || l.created_at || new Date().toISOString();
+        lastDispo = 'connected';
+      }
+
       return {
         ...l,
         priority_tier: l.priority_tier !== undefined && l.priority_tier !== null ? Number(l.priority_tier) : 1,
         list_id: l.list_id || 'master_queue',
         attempts_count: l.attempts_count || 0,
         cadence_step: l.cadence_step || 1,
-        last_disposition: l.last_disposition || 'pending',
 
         // Client Conversion Defaults
-        is_client: l.is_client === 1 || l.is_client === true || l.is_client === 'true',
+        is_client: isClient,
         client_since: l.client_since || null,
         products,
         annualized_premium:
@@ -199,8 +214,9 @@ export class IndexedDbStorage {
 
         // Post-Appointment Sit-Down Lifecycle Defaults
         appointment_scheduled_at: l.appointment_scheduled_at || null,
-        appointment_outcome: l.appointment_outcome || null,
-        appointment_completed_at: l.appointment_completed_at || null,
+        appointment_outcome: apptOutcome,
+        appointment_completed_at: apptCompletedAt,
+        last_disposition: lastDispo,
       };
     });
 
