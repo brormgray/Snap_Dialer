@@ -173,3 +173,14 @@ Whenever the codebase is modified:
 - **Persistent PIN Lockout**: In `securityService.ts` and `PinLockModal.tsx`, persisted 30-second lockout timestamp across page reloads in `localStorage` (`snap_pin_lockout_until`).
 - **Immediate Background Lock**: In `App.tsx`, app state changes to `background`/`inactive` or document visibility to `hidden` immediately trigger `SecurityService.lockSession()`.
 
+### 8.7 Today's Advisor Playbook & Appointment Scheduling Hygiene (`src/components/TodayCockpitCard.tsx`, `src/services/pipelineStateService.ts`, `src/screens/DialerHudScreen.tsx`)
+- **Color Contrast & Dark Surface Legibility**:
+  - In `TodayCockpitCard.tsx`, replaced dark navy text tokens (`Colors.textPrimary` `#0F172A`) with high-contrast `#FFFFFF` (pure white for lead name and triad labels), `#CBD5E1` (school name, preview subtext), and `#38BDF8` (planning period/time chip) on the dark `#0F172A`/`#1E293B` background.
+- **Strict Calendar Date Parity for Today's Playbook**:
+  - Added `PipelineStateService.isAppointmentToday` and `isUpcomingAppointmentToday` using calendar date parity (`en-CA` formatting in `America/New_York` timezone).
+  - In `TodayCockpitCard.tsx`, restricted the "Sit-Downs Today" metric and the preview chips strictly to appointments scheduled for the current calendar date (`todaySitDowns`).
+  - Retained total weekly upcoming appointments in the Metric 3 subtext ("X this week") and in the `Appts Set` pipeline tab (`onFilterAppts`).
+- **HUD Appointment Day Selection Chips**:
+  - In `DialerHudScreen.tsx`, added dynamic day selection pills (`[Today]`, `[Tomorrow]`, `[Wed]`, `[Thu]`, `[Fri]`, `[Next Mon]`) in the Appointment Set disposition modal.
+  - Passes confirmed appointment date override (`selectedApptDate`) into `handleDisposition` to ensure appointments booked for later in the week are saved with their precise target date.
+
