@@ -82,6 +82,13 @@ export default function DialerHudScreen({ route, navigation }: any) {
   queueRef.current = queue;
   const isProcessingDispoRef = useRef<boolean>(false);
   const smsAlreadyLoggedRef = useRef<boolean>(false);
+  const pendingNoAnswerDispositionRef = useRef<{
+    lead: Lead;
+    attemptNum: number;
+    actualDuration: number;
+    disposition: CallDisposition;
+  } | null>(null);
+  const [isNoAnswerSmsPrompt, setIsNoAnswerSmsPrompt] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState<number | null>(null);
   const [isAutoPaused, setIsAutoPaused] = useState<boolean>(false);
@@ -460,14 +467,20 @@ export default function DialerHudScreen({ route, navigation }: any) {
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       setAutoAdvanceCountdown(null);
 
-      // 1. Immediate SMS Dispatch for No Answer / Voicemail (Preserves iOS Safari Gesture Token)
-      let smsDispatched = false;
-      let interpolatedSms = '';
-      const attemptNum = (currentLead.attempts_count || 0) + 1;
+      const actualDuration = callStartTimeRef.current
+        ? Math.max(callDuration, Math.floor((Date.now() - callStartTimeRef.current) / 1000))
+        : callDuration;
+      callStartTimeRef.current = null;
 
-      if ((disposition === 'no_answer' || disposition === 'voicemail') && currentLead.text_ok !== false) {
+      const attemptNum = (currentLead.attempts_count || 0) + 1;
+      const isUnanswered = disposition === 'no_answer' || disposition === 'voicemail';
+      const stepRule = cadenceRules.find((r) => r.step_number === attemptNum);
+      const isCallOnly = stepRule?.action_type === 'call_only';
+      const hasTextConsent = currentLead.text_ok !== false && currentLead.text_ok !== (0 as any);
+      const shouldPromptSms = isUnanswered && hasTextConsent && !isCallOnly;
+
+      if (shouldPromptSms) {
         // Find template according to configured Cadence rule for this step, or fallback
-        const stepRule = cadenceRules.find((r) => r.step_number === attemptNum);
         const ruleTemplateId = stepRule?.sms_template_id;
         const matchingTemplate =
           (ruleTemplateId ? templates.find((t) => t.id === ruleTemplateId) : null) ||
@@ -478,7 +491,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
             body: 'Hi {{name}}, this is {{my_name}} with ValuTeachers! I just tried giving you a quick call regarding your FRS Report Card from {{school}}. Feel free to call me back, or text me a good time during your planning period to connect!',
           };
 
-        interpolatedSms = TelephonyService.interpolateTemplate(
+        const interpolatedSms = TelephonyService.interpolateTemplate(
           matchingTemplate,
           currentLead,
           appSettings?.user_name || 'Alex'
@@ -486,18 +499,21 @@ export default function DialerHudScreen({ route, navigation }: any) {
 
         setSelectedTemplate(matchingTemplate);
         setCustomSmsBody(interpolatedSms);
+        pendingNoAnswerDispositionRef.current = {
+          lead: currentLead,
+          attemptNum,
+          actualDuration,
+          disposition,
+        };
+        setIsNoAnswerSmsPrompt(true);
         setSmsModalVisible(true);
-
-        // Trigger native SMS app IMMEDIATELY without waiting for DB promises
-        TelephonyService.sendSMS(currentLead.phone, interpolatedSms);
-        smsDispatched = true;
-        smsAlreadyLoggedRef.current = true;
+        return;
       }
 
       // 2. Build and append timestamped structured note for this outreach attempt
       const defaultNote =
-        disposition === 'no_answer'
-          ? `Call attempt #${attemptNum}: No Answer / Voicemail. Sent follow-up SMS.`
+        isUnanswered
+          ? `Call attempt #${attemptNum}: No Answer / Voicemail.`
           : disposition === 'spoke' || disposition === 'connected'
           ? `Call attempt #${attemptNum}: Connected / Spoke on phone.`
           : disposition === 'appointment_set'
@@ -535,10 +551,6 @@ export default function DialerHudScreen({ route, navigation }: any) {
           );
         }
         await LeadsRepository.updateLeadDisposition(currentLead.id, disposition, updatedNotes || undefined);
-        const actualDuration = callStartTimeRef.current
-          ? Math.max(callDuration, Math.floor((Date.now() - callStartTimeRef.current) / 1000))
-          : callDuration;
-        callStartTimeRef.current = null;
 
         await CallLogsRepository.logCall({
           leadId: currentLead.id,
@@ -546,8 +558,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
           durationSeconds: actualDuration,
           disposition,
           note: noteToRecord,
-          smsSent: smsDispatched,
-          smsBody: smsDispatched ? interpolatedSms : undefined,
+          smsSent: false,
         });
       } catch (e) {
         console.warn('Disposition DB save error:', e);
@@ -555,7 +566,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
 
       if (advanceImmediately) {
         advanceNextLead();
-      } else if (!smsDispatched) {
+      } else {
         if (appSettings?.auto_advance_enabled && !isAutoPaused) {
           startAutoAdvanceTimer();
         } else {
@@ -618,6 +629,8 @@ export default function DialerHudScreen({ route, navigation }: any) {
   const openSmsModal = async () => {
     if (!currentLead) return;
     cancelAutoAdvanceTimer();
+    pendingNoAnswerDispositionRef.current = null;
+    setIsNoAnswerSmsPrompt(false);
     smsAlreadyLoggedRef.current = false;
     await HapticsService.tick();
 
@@ -732,25 +745,102 @@ export default function DialerHudScreen({ route, navigation }: any) {
     }
   };
 
+  const handleSkipNoAnswerSms = async () => {
+    const pending = pendingNoAnswerDispositionRef.current;
+    pendingNoAnswerDispositionRef.current = null;
+    setIsNoAnswerSmsPrompt(false);
+    setSmsModalVisible(false);
+
+    if (pending && pending.lead) {
+      const targetLead = pending.lead;
+      const noteToRecord = `Call attempt #${pending.attemptNum}: No Answer / Voicemail.`;
+      const updatedNotes = NotesService.addNote(targetLead.notes, noteToRecord);
+      targetLead.notes = updatedNotes;
+      setQueue((prev) => {
+        const next = [...prev];
+        const idx = next.findIndex((l) => l.id === targetLead.id);
+        if (idx >= 0) next[idx] = { ...next[idx], notes: updatedNotes };
+        return next;
+      });
+
+      try {
+        await LeadsRepository.updateLeadNotes(targetLead.id, updatedNotes || null);
+        await LeadsRepository.updateLeadDisposition(targetLead.id, pending.disposition, updatedNotes || undefined);
+        await CallLogsRepository.logCall({
+          leadId: targetLead.id,
+          listId: targetLead.list_id,
+          durationSeconds: pending.actualDuration,
+          disposition: pending.disposition,
+          note: noteToRecord,
+          smsSent: false,
+        });
+      } catch (e) {
+        console.warn('Error recording skip SMS disposition:', e);
+      }
+    }
+
+    advanceNextLead();
+  };
+
   const handleSendCustomSms = async () => {
     if (!currentLead) return;
-    await HapticsService.medium();
+    const pending = pendingNoAnswerDispositionRef.current;
+    pendingNoAnswerDispositionRef.current = null;
+    setIsNoAnswerSmsPrompt(false);
+    const messageToSend = customSmsBody;
+
     setSmsModalVisible(false);
-    await TelephonyService.sendSMS(currentLead.phone, customSmsBody);
-    // Only log if not already logged during handleDisposition
-    if (!smsAlreadyLoggedRef.current) {
-      await CallLogsRepository.logCall({
-        leadId: currentLead.id,
-        listId: currentLead.list_id,
-        durationSeconds: 0,
-        disposition: 'sms_sent',
-        note: 'Sent persuasive ValuTeachers SMS',
-        smsSent: true,
-        smsBody: customSmsBody,
+
+    // CRITICAL: Call TelephonyService.sendSMS synchronously on user click
+    // without awaiting any microtasks before it to preserve iOS Safari touch gesture token!
+    TelephonyService.sendSMS(currentLead.phone, messageToSend);
+    HapticsService.medium().catch(() => {});
+
+    if (pending && pending.lead) {
+      const targetLead = pending.lead;
+      const noteToRecord = `Call attempt #${pending.attemptNum}: No Answer / Voicemail. Follow-up SMS sent.`;
+      const updatedNotes = NotesService.addNote(targetLead.notes, noteToRecord);
+      targetLead.notes = updatedNotes;
+      setQueue((prev) => {
+        const next = [...prev];
+        const idx = next.findIndex((l) => l.id === targetLead.id);
+        if (idx >= 0) next[idx] = { ...next[idx], notes: updatedNotes };
+        return next;
       });
+
+      try {
+        await LeadsRepository.updateLeadNotes(targetLead.id, updatedNotes || null);
+        await LeadsRepository.updateLeadDisposition(targetLead.id, pending.disposition, updatedNotes || undefined);
+        await CallLogsRepository.logCall({
+          leadId: targetLead.id,
+          listId: targetLead.list_id,
+          durationSeconds: pending.actualDuration,
+          disposition: pending.disposition,
+          note: noteToRecord,
+          smsSent: true,
+          smsBody: messageToSend,
+        });
+      } catch (e) {
+        console.warn('Error recording send SMS disposition:', e);
+      }
+      advanceNextLead();
+    } else {
+      // Standalone Quick SMS from HUD dock
+      try {
+        await CallLogsRepository.logCall({
+          leadId: currentLead.id,
+          listId: currentLead.list_id,
+          durationSeconds: 0,
+          disposition: 'sms_sent',
+          note: 'Sent persuasive ValuTeachers SMS',
+          smsSent: true,
+          smsBody: messageToSend,
+        });
+      } catch (e) {
+        console.warn('Error logging standalone SMS:', e);
+      }
+      advanceNextLead();
     }
-    smsAlreadyLoggedRef.current = false;
-    advanceNextLead();
   };
 
 
@@ -789,6 +879,8 @@ export default function DialerHudScreen({ route, navigation }: any) {
     setNoteModalVisible(false);
     setFollowUpModalVisible(false);
     setNotesModalVisible(false);
+    pendingNoAnswerDispositionRef.current = null;
+    setIsNoAnswerSmsPrompt(false);
 
     if (callTimerRef.current) {
       clearInterval(callTimerRef.current);
@@ -819,6 +911,8 @@ export default function DialerHudScreen({ route, navigation }: any) {
     setNoteModalVisible(false);
     setFollowUpModalVisible(false);
     setNotesModalVisible(false);
+    pendingNoAnswerDispositionRef.current = null;
+    setIsNoAnswerSmsPrompt(false);
 
     if (callTimerRef.current) {
       clearInterval(callTimerRef.current);
@@ -1298,7 +1392,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
             >
               <PhoneOff size={16} color={Colors.badgeNeutralText} />
               <Text style={[styles.dispositionButtonText, { color: Colors.badgeNeutralText }]}>📞 No Answer</Text>
-              <Text style={[styles.dispositionSubtext, { color: Colors.textMuted }]}>Advance & SMS</Text>
+              <Text style={[styles.dispositionSubtext, { color: Colors.textMuted }]}>Log & follow-up</Text>
             </TouchableOpacity>
 
             {/* Quick SMS */}
@@ -1589,11 +1683,24 @@ export default function DialerHudScreen({ route, navigation }: any) {
       </Modal>
 
       {/* AI-Powered Multi-template SMS Modal */}
-      <Modal visible={smsModalVisible} animationType="slide" transparent>
+      <Modal
+        visible={smsModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => {
+          if (isNoAnswerSmsPrompt) {
+            handleSkipNoAnswerSms();
+          } else {
+            setSmsModalVisible(false);
+          }
+        }}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <Text style={styles.modalTitle}>Draft Text Message</Text>
+              <Text style={styles.modalTitle}>
+                {isNoAnswerSmsPrompt ? 'Draft Follow-Up Text' : 'Draft Text Message'}
+              </Text>
               <TouchableOpacity
                 style={styles.aiGenerateBtn}
                 onPress={() => handleGenerateAiSms()}
@@ -1611,7 +1718,9 @@ export default function DialerHudScreen({ route, navigation }: any) {
             </View>
 
             <Text style={{ color: '#94A3B8', fontSize: 12, marginBottom: 8 }}>
-              Preview & edit before sending. Gemini crafts personalized copy based on call notes and FRS needs:
+              {isNoAnswerSmsPrompt
+                ? 'Cadence follow-up template. Tap Send to launch your native messaging app, or Skip to move to the next lead:'
+                : 'Preview & edit before sending. Gemini crafts personalized copy based on call notes and FRS needs:'}
             </Text>
 
             {/* Quick Focus Chips */}
@@ -1662,18 +1771,19 @@ export default function DialerHudScreen({ route, navigation }: any) {
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={styles.modalCancelButton}
-                onPress={() => {
-                  setSmsModalVisible(false);
-                  advanceNextLead();
-                }}
+                onPress={isNoAnswerSmsPrompt ? handleSkipNoAnswerSms : () => setSmsModalVisible(false)}
               >
-                <Text style={styles.modalCancelText}>Done & Advance ⏭️</Text>
+                <Text style={styles.modalCancelText}>
+                  {isNoAnswerSmsPrompt ? 'Skip SMS & Advance ⏭️' : 'Cancel'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.modalSaveButton}
                 onPress={handleSendCustomSms}
               >
-                <Text style={styles.modalSaveText}>Re-Open SMS App</Text>
+                <Text style={styles.modalSaveText}>
+                  {isNoAnswerSmsPrompt ? 'Send SMS & Advance 💬' : 'Send SMS 💬'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
