@@ -184,3 +184,24 @@ Whenever the codebase is modified:
   - In `DialerHudScreen.tsx`, added dynamic day selection pills (`[Today]`, `[Tomorrow]`, `[Wed]`, `[Thu]`, `[Fri]`, `[Next Mon]`) in the Appointment Set disposition modal.
   - Passes confirmed appointment date override (`selectedApptDate`) into `handleDisposition` to ensure appointments booked for later in the week are saved with their precise target date.
 
+### 8.8 Inline Editable Drip Composer, Audit Log Parity & Sit-Down Timezone Resolution
+- **Inline Editable Drip Dispatcher (`src/components/BatchDripDispatchModal.tsx`)**:
+  - Replaced static `<Text>` element with an always-editable `<TextInput>` pre-populated with `currentItem.formattedMessage`.
+  - Added Gemini AI Re-Draft button with `Sparkles` icon and 4 quick focus chips (`[📝 Address Note]`, `[🏫 Planning]`, `[🎯 Meeting]`, `[💰 5% DROP]`).
+  - Added live character counter and `[Reset]` button to revert edits to standard template.
+  - Implemented synchronous `TelephonyService.sendSMS(phone, bodyToSend)` dispatch before any async calls to preserve iOS Safari / WebKit user touch gesture token.
+  - Passes `bodyToSend` into `recordDripDispatched(currentItem.lead, currentItem.template, bodyToSend)`.
+- **Drip Audit Log Accuracy (`src/services/dripDispatcherService.ts`)**:
+  - Updated `recordDripDispatched(lead, template, customBody?: string)` to accept `customBody`.
+  - Computes `finalSmsBody = customBody?.trim() || TelephonyService.interpolateTemplate(template, lead)`.
+  - Logs exact dispatched text as `smsBody: finalSmsBody` in `CallLogsRepository.logCall` rather than the raw template string.
+- **Sit-Down Timezone & "Due Now" Resolution (`src/services/pipelineStateService.ts`)**:
+  - Fixed UTC midnight date-only parsing in `getAppointmentWindow`: parses year, month, and day in local time and aligns with bell schedule start time.
+  - Explicitly locked `end.setFullYear(start.getFullYear(), start.getMonth(), start.getDate())` so bell schedule end times cannot shift backward across calendar days.
+  - Missing timestamp fallback: if booked within the last 24h, anchors forward from `now` rather than an expired hour earlier today.
+- **Dialer HUD & Lead Detail Queue Sync (`src/screens/DialerHudScreen.tsx` & `src/screens/LeadDetailScreen.tsx`)**:
+  - In `handleSaveNote`, if `selectedApptDate` is null, automatically resolves to first available school day (`availableDays[0]?.date`).
+  - In `handleDisposition`, updates `currentLead.appointment_scheduled_at = scheduledISO` and updates in-memory React queue state so the scheduled timestamp persists in memory.
+  - In `LeadDetailScreen.tsx`, added `userEditedSmsRef` to prevent asynchronous AI re-draft generation from clobbering text if the advisor has already started typing.
+  - Updated confirmed sit-down calendar card to honor `lead.appointment_scheduled_at` instead of always projecting forward.
+
