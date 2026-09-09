@@ -202,6 +202,31 @@ Whenever the codebase is modified:
 - **Dialer HUD & Lead Detail Queue Sync (`src/screens/DialerHudScreen.tsx` & `src/screens/LeadDetailScreen.tsx`)**:
   - In `handleSaveNote`, if `selectedApptDate` is null, automatically resolves to first available school day (`availableDays[0]?.date`).
   - In `handleDisposition`, updates `currentLead.appointment_scheduled_at = scheduledISO` and updates in-memory React queue state so the scheduled timestamp persists in memory.
-  - In `LeadDetailScreen.tsx`, added `userEditedSmsRef` to prevent asynchronous AI re-draft generation from clobbering text if the advisor has already started typing.
-  - Updated confirmed sit-down calendar card to honor `lead.appointment_scheduled_at` instead of always projecting forward.
+### 8.9 Interactive Appointment Scheduler, Auto-Healing Dispo State & Responsive Landscape Ergonomics (`AppointmentSchedulerModal.tsx`, `pipelineStateService.ts`, `TodayCockpitCard.tsx`, `ListsScreen.tsx`)
+- **World-Class Interactive Appointment Scheduler (`src/components/AppointmentSchedulerModal.tsx`)**:
+  - Pure React Native component with zero native binary dependencies (runs identically on iOS, Android, and Mobile Web PWA).
+  - 10-day quick school-day strip (auto-skips weekends) with 1-tap day pills (`[Today]`, `[Tomorrow]`, `[Wed 9/9]`, `[Thu 9/10]`, etc.).
+  - Expandable full-month calendar grid with month navigation allowing selection of any date in the future.
+  - Volusia County Bell Schedule Period Matching: Automatically looks up school schedules and highlights the educator's free period with a `★ BEST TIME (Planning)` badge and instructional vs planning designations.
+  - Precision Time Stepper: Hours (1–12), 15-minute minute increments (:00, :15, :30, :45), AM/PM toggles, and duration selectors (15m, 25m, 30m, 45m).
+  - Location Selector: Pre-fills room number from dossier with options for Lounge, Phone, or Virtual.
+  - 1-Tap Calendar Export Links: Direct Apple `.ics` download, Google Calendar link, and Outlook link.
+  - Unified across all appointment touchpoints:
+    1. `DialerHudScreen.tsx`: `🎯 Appt Set` opens interactive calendar before logging disposition.
+    2. `LeadDetailScreen.tsx`: `🎯 Appt Set` triggers interactive calendar; added `✏️ Reschedule / Change Sit-Down Time` button directly into Confirmed Sit-Down card.
+    3. `PostApptWrapUpCard.tsx`: `📅 Reschedule Sit-Down` opens interactive calendar to select exact date/time.
+- **Auto-Healing Pipeline State & Elimination of Premature "Dispo Due" Alerts**:
+  - **Absolute Future Sanity Guard**: In `PipelineStateService.isDispoNeeded()`, if `window.startDate > now || window.endDate > now`, returns `false` unconditionally.
+  - **Notes Date Extraction Fallback**: In `PipelineStateService.extractAppointmentDateFromLead()`, regex parses ISO strings, written dates ("Sep 9", "Thursday Sep 10"), and weekday names directly from call notes if `appointment_scheduled_at` was missing.
+  - **In-Memory & Storage Auto-Healing**: Added migration rules in `IndexedDbStorage.normalizeState()` and `LeadsRepository.hydrateLead()` so legacy `appointment_set` records missing `appointment_scheduled_at` are immediately normalized.
+  - **SQL Pattern Matcher Alignment**: Updated `WebDatabase.runAsync` in `database.ts` to support both `appointment_scheduled_at = ?` and `follow_up_at = ?`.
+- **Responsive Landscape Ergonomics & Full-Range Scrolling (`src/screens/ListsScreen.tsx` & `src/components/TodayCockpitCard.tsx`)**:
+  - **Embedded `ListHeaderComponent`**: Moved `TodayCockpitCard`, KPI stats strip, duplicate banner, search bar, and filter tabs inside `FlatList`'s `ListHeaderComponent`. The entire dashboard scrolls natively from top to bottom as a single document in both portrait and landscape.
+  - **Collapsible Today's Advisor Playbook**: Senses orientation via `useWindowDimensions()`. In landscape, defaults to a compact 1-line horizontal strip showing `Calls Due • Drips • Sit-Downs Today` with direct tap actions, while retaining an explicit `[Show] / [Hide]` toggle button.
+  - **Consistent Grid Margins**: Aligned all header items and lead cards to the standard 16px horizontal gutter.
+- **Automated Verification & Live Deploy**:
+  - TypeScript compilation: 0 errors (`npx tsc --noEmit`).
+  - Unit tests: 72/72 passing across 10 suites (`node --test tests/*.test.mjs`).
+  - Web export & live deploy: Deployed to `valuteachers-dialer.surge.sh`.
+  - Version control: Committed and pushed to GitHub `main` and `master` branches.
 
