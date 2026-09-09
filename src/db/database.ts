@@ -716,7 +716,10 @@ class WebDatabase implements IDatabase {
             lead.appointment_outcome = null;
             lead.appointment_completed_at = null;
             lead.last_disposition = 'appointment_set';
-            if (s.includes('planning_period = coalesce(?, planning_period)')) {
+            if (s.includes('follow_up_at = ?')) {
+              lead.follow_up_at = params[1];
+              if (params[2]) lead.notes = params[2];
+            } else if (s.includes('planning_period = coalesce(?, planning_period)')) {
               if (params[1]) lead.planning_period = params[1];
               if (params[2]) lead.notes = lead.notes ? `${lead.notes}\n\n${params[2]}` : params[2];
             } else if (s.includes('notes = coalesce(?, notes)')) {

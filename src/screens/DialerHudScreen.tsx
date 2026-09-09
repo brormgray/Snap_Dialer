@@ -68,6 +68,7 @@ import { isTeacherInPlanningNow, getScheduleForSchool, matchPeriodId } from '../
 import { Lead, CallDisposition, SMSTemplate, AppSettings, CadenceRule } from '../types';
 import { Colors } from '../theme/colors';
 import ZoomableImageModal from '../components/ZoomableImageModal';
+import { AppointmentSchedulerModal } from '../components/AppointmentSchedulerModal';
 
 export default function DialerHudScreen({ route, navigation }: any) {
   const listId = route.params?.listId || 'master_queue';
@@ -107,6 +108,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
 
   // Quick Notes modal for Connected calls / Appointments
   const [noteModalVisible, setNoteModalVisible] = useState<boolean>(false);
+  const [apptSchedulerVisible, setApptSchedulerVisible] = useState<boolean>(false);
   const [isSettingAppt, setIsSettingAppt] = useState<boolean>(false);
   const [selectedApptDate, setSelectedApptDate] = useState<Date | null>(null);
   const [callNote, setCallNote] = useState<string>('');
@@ -1438,21 +1440,15 @@ export default function DialerHudScreen({ route, navigation }: any) {
             <TouchableOpacity
               style={styles.apptSetHeroButton}
               onPress={() => {
-                setIsSettingAppt(true);
-                const defaultPref = currentLead.meeting_preferences && currentLead.meeting_preferences.length > 0
-                  ? `Appt set for ${currentLead.meeting_preferences[0]}`
-                  : currentLead.planning_period
-                  ? `Appt set during ${currentLead.planning_period}`
-                  : '';
-                setCallNote(defaultPref);
-                setNoteModalVisible(true);
+                HapticsService.tick();
+                setApptSchedulerVisible(true);
               }}
               activeOpacity={0.75}
             >
               <CheckCircle2 size={20} color={Colors.badgeSuccessText} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.apptSetHeroTitle}>🎯 APPOINTMENT SET</Text>
-                <Text style={styles.apptSetHeroSubtitle}>Book classroom sit-down & record details</Text>
+                <Text style={styles.apptSetHeroSubtitle}>Pick day, period & classroom for sit-down</Text>
               </View>
             </TouchableOpacity>
 
@@ -1539,6 +1535,25 @@ export default function DialerHudScreen({ route, navigation }: any) {
         title="Proof of Contact Request"
         subtitle={`${currentLead?.name || 'Educator'} • ${currentLead?.school || 'ValuTeachers'}`}
         onClose={() => setImageModalVisible(false)}
+      />
+
+      {/* World-Class Interactive Appointment Scheduler Modal */}
+      <AppointmentSchedulerModal
+        visible={apptSchedulerVisible}
+        lead={currentLead}
+        initialNotes={currentLead?.notes || ''}
+        onClose={() => setApptSchedulerVisible(false)}
+        onSave={async ({ scheduledDate, scheduledISO, roomNumber, notes }) => {
+          let noteText = notes
+            ? `[Confirmed Sit-Down] ${notes}`
+            : `[Confirmed Sit-Down] Scheduled for ${scheduledDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at ${scheduledDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+          if (roomNumber) {
+            noteText += ` in Room ${roomNumber}`;
+            currentLead.room_number = roomNumber;
+          }
+          setCallNote(noteText);
+          await handleDisposition('appointment_set', noteText, true, scheduledDate);
+        }}
       />
 
       {/* Connected / Appointment Notes Modal */}

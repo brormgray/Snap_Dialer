@@ -9,22 +9,16 @@ export interface AppointmentTimeWindow {
 
 export class PipelineStateService {
   /**
-   * Resolves the start and end Date for a lead's scheduled sit-down
+   * Scans lead notes or fallbacks to extract an intended appointment date
    */
-  static getAppointmentWindow(lead: Lead, now: Date = new Date()): AppointmentTimeWindow | null {
-    if (lead.last_disposition !== 'appointment_set' && !lead.appointment_scheduled_at) {
-      return null;
-    }
-
-    // 1. Resolve appointment start date
-    let start: Date | null = null;
-    if (lead.appointment_scheduled_at) {
+  static extractAppointmentDateFromLead(lead: Lead, now: Date = new Date()): Date {
+    // 1. Explicit appointment_scheduled_at
+    if (lead.appointment_scheduled_at && lead.appointment_scheduled_at.trim()) {
       const raw = lead.appointment_scheduled_at.trim();
       const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
       const hasExplicitNonMidnightTime = /T(?!00:00:00(\.000)?(Z|[+-]\d{2}:\d{2})?$)\d{2}:\d{2}/.test(raw);
 
       if (dateOnlyMatch && !hasExplicitNonMidnightTime) {
-        // Parse calendar year, month (0-indexed), and day in local time to prevent UTC midnight shift
         const y = parseInt(dateOnlyMatch[1], 10);
         const m = parseInt(dateOnlyMatch[2], 10) - 1;
         const d = parseInt(dateOnlyMatch[3], 10);
@@ -34,23 +28,92 @@ export class PipelineStateService {
         const period = periodId ? schedule.find((p) => p.id === periodId) : schedule[2];
         const [sH, sM] = (period?.startTime || '09:00').split(':').map(Number);
 
-        start = new Date(y, m, d, sH || 9, sM || 0, 0, 0);
-      } else {
-        start = new Date(raw);
+        return new Date(y, m, d, sH || 9, sM || 0, 0, 0);
       }
-    } else if (lead.follow_up_at) {
-      start = new Date(lead.follow_up_at);
-    } else {
-      // For leads without an explicit scheduled timestamp, anchor the planning date calculation
-      // forward from now if booked within the last 24h, or from bookingTimestamp if older
-      const bookingTimestamp = lead.last_attempt_at || lead.updated_at || lead.created_at;
-      const refDate = bookingTimestamp ? new Date(bookingTimestamp) : now;
-      const validRef = !isNaN(refDate.getTime()) ? refDate : now;
-      const isBookedRecently = Math.abs(now.getTime() - validRef.getTime()) < 24 * 3600000;
-      const anchor = isBookedRecently ? now : validRef;
-      start = CalendarService.calculateNextPlanningDate(lead.planning_period, lead.school, anchor);
+      const parsed = new Date(raw);
+      if (!isNaN(parsed.getTime())) return parsed;
     }
 
+    // 2. Try follow_up_at if valid and in future or today
+    if (lead.follow_up_at && lead.follow_up_at.trim()) {
+      const parsed = new Date(lead.follow_up_at.trim());
+      if (!isNaN(parsed.getTime()) && parsed.getTime() > now.getTime() - 12 * 3600000) {
+        return parsed;
+      }
+    }
+
+    // 3. Scan notes for explicit dates or days
+    if (lead.notes && lead.notes.trim()) {
+      const notes = lead.notes;
+
+      // Check for ISO date in notes: 2026-09-09 or 2026-09-10
+      const isoMatch = notes.match(/\b(202\d)-(\d{2})-(\d{2})\b/);
+      if (isoMatch) {
+        const y = parseInt(isoMatch[1], 10);
+        const m = parseInt(isoMatch[2], 10) - 1;
+        const d = parseInt(isoMatch[3], 10);
+        const schedule = getScheduleForSchool(lead.school);
+        const periodId = matchPeriodId(lead.planning_period);
+        const period = periodId ? schedule.find((p) => p.id === periodId) : schedule[2];
+        const [sH, sM] = (period?.startTime || '09:00').split(':').map(Number);
+        return new Date(y, m, d, sH || 9, sM || 0, 0, 0);
+      }
+
+      // Check for Month + Day: "Sep 9", "Sept 10", "September 10"
+      const monthMatch = notes.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*,?\s*(202\d))?\b/i);
+      if (monthMatch) {
+        const monthMap: Record<string, number> = {
+          jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+          jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11,
+        };
+        const m = monthMap[monthMatch[1].toLowerCase()] ?? now.getMonth();
+        const d = parseInt(monthMatch[2], 10);
+        const y = monthMatch[3] ? parseInt(monthMatch[3], 10) : now.getFullYear();
+        const schedule = getScheduleForSchool(lead.school);
+        const periodId = matchPeriodId(lead.planning_period);
+        const period = periodId ? schedule.find((p) => p.id === periodId) : schedule[2];
+        const [sH, sM] = (period?.startTime || '09:00').split(':').map(Number);
+        return new Date(y, m, d, sH || 9, sM || 0, 0, 0);
+      }
+
+      // Check for weekday names: "Thursday", "Wednesday", "Friday"
+      const weekdayMatch = notes.match(/\b(Monday|Tuesday|Wednesday|Thursday|Friday)\b/i);
+      if (weekdayMatch) {
+        const dayMap: Record<string, number> = {
+          monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5,
+        };
+        const targetDay = dayMap[weekdayMatch[1].toLowerCase()];
+        if (targetDay !== undefined) {
+          const target = new Date(now);
+          const currentDay = target.getDay();
+          let diff = targetDay - currentDay;
+          if (diff <= 0) diff += 7; // Forward to next occurrence
+          target.setDate(target.getDate() + diff);
+
+          const schedule = getScheduleForSchool(lead.school);
+          const periodId = matchPeriodId(lead.planning_period);
+          const period = periodId ? schedule.find((p) => p.id === periodId) : schedule[2];
+          const [sH, sM] = (period?.startTime || '09:00').split(':').map(Number);
+          target.setHours(sH || 9, sM || 0, 0, 0);
+          return target;
+        }
+      }
+    }
+
+    // 4. Default: Forward relative to now (Next School Day)
+    return CalendarService.calculateNextPlanningDate(lead.planning_period, lead.school, now);
+  }
+
+  /**
+   * Resolves the start and end Date for a lead's scheduled sit-down
+   */
+  static getAppointmentWindow(lead: Lead, now: Date = new Date()): AppointmentTimeWindow | null {
+    if (lead.last_disposition !== 'appointment_set' && !lead.appointment_scheduled_at) {
+      return null;
+    }
+
+    // 1. Resolve appointment start date using extractor
+    const start = this.extractAppointmentDateFromLead(lead, now);
     if (!start || isNaN(start.getTime())) return null;
 
     // 2. Resolve appointment window end date using Bell Schedules
@@ -87,12 +150,16 @@ export class PipelineStateService {
    * Strict predicate for UPCOMING Confirmed Sit-Downs:
    * - Must have last_disposition === 'appointment_set'
    * - Must NOT be completed/dispositioned (checks outcome, completed_at, is_client, prospect_nurture drip)
-   * - Window has NOT ended yet
+   * - Window has NOT ended yet (endDate is in the future)
    */
   static isUpcomingAppointment(lead: Lead, now: Date = new Date()): boolean {
     if (lead.last_disposition !== 'appointment_set') return false;
     if (this.isAppointmentCompleted(lead)) return false;
-    return !this.isAppointmentWindowEnded(lead, now);
+
+    const window = this.getAppointmentWindow(lead, now);
+    if (!window) return false;
+
+    return window.endDate.getTime() > now.getTime();
   }
 
   /**
@@ -135,12 +202,23 @@ export class PipelineStateService {
    * Strict predicate for DISPOSITION NEEDED:
    * - Must have last_disposition === 'appointment_set'
    * - Must NOT be completed/dispositioned (checks outcome, completed_at, is_client, prospect_nurture drip)
+   * - Must NOT be scheduled for the future (window start or end > now)
    * - Window HAS passed
    */
   static isDispoNeeded(lead: Lead, now: Date = new Date()): boolean {
     if (lead.last_disposition !== 'appointment_set') return false;
     if (this.isAppointmentCompleted(lead)) return false;
-    return this.isAppointmentWindowEnded(lead, now);
+
+    const window = this.getAppointmentWindow(lead, now);
+    if (!window) return false;
+
+    // ABSOLUTE SANITY GUARD: If the window start or end is in the future,
+    // it is physically impossible for disposition to be needed!
+    if (window.startDate.getTime() > now.getTime() || window.endDate.getTime() > now.getTime()) {
+      return false;
+    }
+
+    return now.getTime() >= window.endDate.getTime();
   }
 
   /**

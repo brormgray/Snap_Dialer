@@ -9,6 +9,7 @@ import {
   ClientConversionPayload,
   AppointmentOutcome,
 } from '../types';
+import { PipelineStateService } from '../services/pipelineStateService';
 
 export function normalizePhoneKey(phone?: string | null): string {
   if (!phone) return '';
@@ -636,13 +637,14 @@ export class LeadsRepository {
     await db.runAsync(
       `UPDATE leads 
        SET appointment_scheduled_at = ?,
+           follow_up_at = ?,
            appointment_outcome = NULL,
            appointment_completed_at = NULL,
            last_disposition = 'appointment_set',
            notes = COALESCE(?, notes),
            updated_at = ?
        WHERE id = ?`,
-      [scheduledDateISO, note || null, now, leadId]
+      [scheduledDateISO, scheduledDateISO, note || null, now, leadId]
     );
   }
 
@@ -1191,11 +1193,20 @@ export class LeadsRepository {
       needsHealing = true;
     }
 
+    // Auto-healing rule 3: If active appointment_set but appointment_scheduled_at is missing
+    let apptScheduledAt = raw.appointment_scheduled_at || null;
+    if (lastDisp === 'appointment_set' && !apptOutcome && !apptCompletedAt && !apptScheduledAt) {
+      const healed = PipelineStateService.extractAppointmentDateFromLead(raw, new Date());
+      apptScheduledAt = healed.toISOString();
+      needsHealing = true;
+    }
+
     // In-memory normalization without spawning hundreds of concurrent background writes on every read
     if (needsHealing) {
       raw.appointment_outcome = apptOutcome;
       raw.appointment_completed_at = apptCompletedAt;
       raw.last_disposition = lastDisp;
+      raw.appointment_scheduled_at = apptScheduledAt;
     }
 
     return {

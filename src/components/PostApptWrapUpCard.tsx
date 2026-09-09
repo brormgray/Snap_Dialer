@@ -25,6 +25,7 @@ import { Colors } from '../theme/colors';
 import { HapticsService } from '../services/hapticsService';
 import { CalendarService } from '../services/calendarService';
 import { Lead, AppointmentOutcome } from '../types';
+import { AppointmentSchedulerModal } from './AppointmentSchedulerModal';
 
 interface PostApptWrapUpCardProps {
   lead: Lead;
@@ -43,6 +44,7 @@ export function PostApptWrapUpCard({
 }: PostApptWrapUpCardProps) {
   const [isEditingOutcome, setIsEditingOutcome] = useState<boolean>(false);
   const [rescheduleModalVisible, setRescheduleModalVisible] = useState<boolean>(false);
+  const [calendarSchedulerVisible, setCalendarSchedulerVisible] = useState<boolean>(false);
   const [noShowModalVisible, setNoShowModalVisible] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
@@ -243,7 +245,7 @@ export function PostApptWrapUpCard({
           style={[styles.actionBtn, styles.actionBtnReschedule]}
           onPress={() => {
             HapticsService.tick();
-            setRescheduleModalVisible(true);
+            setCalendarSchedulerVisible(true);
           }}
           activeOpacity={0.8}
           disabled={isSubmitting}
@@ -251,7 +253,7 @@ export function PostApptWrapUpCard({
           <RotateCcw size={18} color={Colors.heavenlyGold} />
           <View style={{ flex: 1 }}>
             <Text style={styles.actionBtnRescheduleTitle}>📅 Reschedule Sit-Down</Text>
-            <Text style={styles.actionBtnRescheduleSub}>Postpone to new date/time & sync calendar</Text>
+            <Text style={styles.actionBtnRescheduleSub}>Pick exact date & time with calendar</Text>
           </View>
         </TouchableOpacity>
 
@@ -432,6 +434,24 @@ export function PostApptWrapUpCard({
           </View>
         </View>
       </Modal>
+
+      {/* World-Class Interactive Appointment Scheduler for Rescheduling */}
+      <AppointmentSchedulerModal
+        visible={calendarSchedulerVisible}
+        lead={lead}
+        initialDate={scheduledDate}
+        onClose={() => setCalendarSchedulerVisible(false)}
+        onSave={async ({ scheduledISO }) => {
+          setCalendarSchedulerVisible(false);
+          setIsSubmitting(true);
+          try {
+            await onReschedule(scheduledISO);
+            setIsEditingOutcome(false);
+          } finally {
+            setIsSubmitting(false);
+          }
+        }}
+      />
     </View>
   );
 }

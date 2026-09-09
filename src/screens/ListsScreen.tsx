@@ -14,6 +14,7 @@ import {
   Image,
   Platform,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -414,36 +415,11 @@ export default function ListsScreen({ navigation }: any) {
     return DripDispatcherService.getDueDrips(scopedLeads, advisorName);
   }, [scopedLeads, advisorName]);
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.brandPrimary} />
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height && height < 550;
 
-      {/* App Header */}
-      <View style={styles.header}>
-        <View style={styles.titleArea}>
-          <Text style={styles.appTitle} numberOfLines={1}>SnapDialer</Text>
-          <Text style={styles.appSubtitle} numberOfLines={1} ellipsizeMode="tail">ValuTeachers • FRS Pipeline</Text>
-        </View>
-
-        <View style={styles.headerIcons}>
-          <TouchableOpacity
-            style={styles.snapHeaderButton}
-            onPress={() => navigation.navigate('ScanSheet')}
-            accessibilityLabel="Scan report cards"
-          >
-            <Camera size={16} color={Colors.livingWhite} />
-            <Text style={styles.snapHeaderButtonText}>Snap</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.iconButton}
-            onPress={handleExportCsv}
-            accessibilityLabel="Export CSV"
-          >
-            <Download size={19} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-      </View>
-
+  const renderHeader = () => (
+    <View style={{ paddingTop: 4 }}>
       {/* Today's Advisor Action Cockpit */}
       <TodayCockpitCard
         leads={scopedLeads}
@@ -679,39 +655,73 @@ export default function ListsScreen({ navigation }: any) {
           )}
         </ScrollView>
       </View>
+    </View>
+  );
 
-      {/* Lead Cards List */}
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={Colors.brandPrimary} />
+
+      {/* App Header */}
+      <View style={styles.header}>
+        <View style={styles.titleArea}>
+          <Text style={styles.appTitle} numberOfLines={1}>SnapDialer</Text>
+          <Text style={styles.appSubtitle} numberOfLines={1} ellipsizeMode="tail">ValuTeachers • FRS Pipeline</Text>
+        </View>
+
+        <View style={styles.headerIcons}>
+          <TouchableOpacity
+            style={styles.snapHeaderButton}
+            onPress={() => navigation.navigate('ScanSheet')}
+            accessibilityLabel="Scan report cards"
+          >
+            <Camera size={16} color={Colors.livingWhite} />
+            <Text style={styles.snapHeaderButtonText}>Snap</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={handleExportCsv}
+            accessibilityLabel="Export CSV"
+          >
+            <Download size={19} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Lead Cards List with Embedded Header */}
       {loading ? (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={Colors.heavenlyGold} />
           <Text style={styles.loadingText}>Loading educator pipeline...</Text>
         </View>
-      ) : filteredLeads.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <View style={styles.emptyIconCircle}>
-            <GraduationCap size={40} color={Colors.heavenlyGold} />
-          </View>
-          <Text style={styles.emptyTitle}>
-            {searchQuery ? 'No matching educators' : 'No educator leads in pipeline'}
-          </Text>
-          <Text style={styles.emptyDesc}>
-            {searchQuery
-              ? 'Try adjusting your search terms or filter.'
-              : 'Tap "Snap Card" above to take a photo of an educator\'s ValuTeachers Report Card.'}
-          </Text>
-          <TouchableOpacity
-            style={styles.emptyButton}
-            onPress={() => navigation.navigate('ScanSheet')}
-          >
-            <Camera size={20} color="#FFFFFF" />
-            <Text style={styles.emptyButtonText}>Snap First Report Card</Text>
-          </TouchableOpacity>
-        </View>
       ) : (
         <FlatList
           data={filteredLeads}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ padding: 16, paddingTop: 10, paddingBottom: 100 }}
+          ListHeaderComponent={renderHeader}
+          ListEmptyComponent={() => (
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIconCircle}>
+                <GraduationCap size={40} color={Colors.heavenlyGold} />
+              </View>
+              <Text style={styles.emptyTitle}>
+                {searchQuery ? 'No matching educators' : 'No educator leads in pipeline'}
+              </Text>
+              <Text style={styles.emptyDesc}>
+                {searchQuery
+                  ? 'Try adjusting your search terms or filter.'
+                  : 'Tap "Snap Card" above to take a photo of an educator\'s ValuTeachers Report Card.'}
+              </Text>
+              <TouchableOpacity
+                style={styles.emptyButton}
+                onPress={() => navigation.navigate('ScanSheet')}
+              >
+                <Camera size={20} color="#FFFFFF" />
+                <Text style={styles.emptyButtonText}>Snap First Report Card</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          contentContainerStyle={{ paddingBottom: 110 }}
           renderItem={({ item }) => {
             const badge = getStatusBadge(item);
             const dateAdded = item.created_at
@@ -1195,6 +1205,7 @@ const styles = StyleSheet.create({
   },
   tabsContainer: {
     marginTop: 10,
+    marginBottom: 8,
   },
   tabsContent: {
     paddingHorizontal: 16,
@@ -1244,6 +1255,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 14,
     marginBottom: 12,
+    marginHorizontal: 16,
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
   },

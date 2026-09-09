@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
-import { Calendar, PhoneCall, MessageSquare, Clock, MapPin, ChevronRight, Zap } from 'lucide-react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, useWindowDimensions } from 'react-native';
+import { Calendar, PhoneCall, MessageSquare, Clock, MapPin, ChevronRight, Zap, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
 import { HapticsService } from '../services/hapticsService';
 import { Lead } from '../types';
@@ -68,6 +68,11 @@ export function TodayCockpitCard({
 
   const totalCallsDue = callbacksDue.length + freshWaitingCount;
 
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height && height < 550;
+  const [userCollapsed, setUserCollapsed] = useState<boolean | null>(null);
+  const isCollapsed = userCollapsed !== null ? userCollapsed : isLandscape;
+
   return (
     <View style={styles.card}>
       {/* Cockpit Header */}
@@ -75,13 +80,106 @@ export function TodayCockpitCard({
         <View style={styles.titleRow}>
           <Zap size={16} color={Colors.heavenlyGold} />
           <Text style={styles.headerTitle}>TODAY'S ADVISOR PLAYBOOK</Text>
+          {dispoNeededLeads.length > 0 && isCollapsed && (
+            <TouchableOpacity
+              style={styles.dispoMiniBadge}
+              onPress={() => {
+                HapticsService.medium();
+                if (onFilterDispoDue) onFilterDispoDue();
+              }}
+            >
+              <Text style={styles.dispoMiniBadgeText}>⚠️ {dispoNeededLeads.length} Due</Text>
+            </TouchableOpacity>
+          )}
         </View>
-        <Text style={styles.todayDateText}>
-          {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={styles.todayDateText}>
+            {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+          </Text>
+          <TouchableOpacity
+            style={styles.collapseToggleBtn}
+            onPress={() => {
+              HapticsService.tick();
+              setUserCollapsed(!isCollapsed);
+            }}
+            accessibilityLabel={isCollapsed ? 'Expand playbook' : 'Collapse playbook'}
+          >
+            <Text style={styles.collapseToggleText}>{isCollapsed ? 'Show' : 'Hide'}</Text>
+            {isCollapsed ? (
+              <ChevronDown size={14} color={Colors.heavenlyGold} />
+            ) : (
+              <ChevronUp size={14} color={Colors.textMuted} />
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Triad Metric Summary */}
+      {isCollapsed ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.collapsedSummaryRow}>
+          <TouchableOpacity
+            style={styles.collapsedSummaryItem}
+            onPress={() => {
+              HapticsService.tick();
+              onStartDialing();
+            }}
+          >
+            <PhoneCall size={12} color="#38BDF8" />
+            <Text style={[styles.collapsedSummaryText, { color: '#38BDF8' }]}>
+              {totalCallsDue} Calls Due
+            </Text>
+          </TouchableOpacity>
+
+          <Text style={styles.collapsedDot}>•</Text>
+
+          <TouchableOpacity
+            style={styles.collapsedSummaryItem}
+            onPress={() => {
+              HapticsService.medium();
+              onOpenDripModal();
+            }}
+          >
+            <MessageSquare size={12} color={dueDripsCount > 0 ? Colors.heavenlyGold : Colors.textMuted} />
+            <Text style={[styles.collapsedSummaryText, { color: dueDripsCount > 0 ? Colors.heavenlyGold : Colors.textMuted }]}>
+              {dueDripsCount} Drip{dueDripsCount !== 1 ? 's' : ''}
+            </Text>
+          </TouchableOpacity>
+
+          <Text style={styles.collapsedDot}>•</Text>
+
+          <TouchableOpacity
+            style={styles.collapsedSummaryItem}
+            onPress={() => {
+              HapticsService.tick();
+              if (onFilterAppts) onFilterAppts();
+            }}
+          >
+            <Calendar size={12} color="#10B981" />
+            <Text style={[styles.collapsedSummaryText, { color: '#10B981' }]}>
+              {todaySitDowns.length} Sit-Down{todaySitDowns.length !== 1 ? 's' : ''}
+            </Text>
+          </TouchableOpacity>
+
+          {dispoNeededLeads.length > 0 && (
+            <>
+              <Text style={styles.collapsedDot}>•</Text>
+              <TouchableOpacity
+                style={[styles.collapsedSummaryItem, styles.collapsedAlertItem]}
+                onPress={() => {
+                  HapticsService.medium();
+                  if (onFilterDispoDue) onFilterDispoDue();
+                }}
+              >
+                <Clock size={12} color="#D97706" />
+                <Text style={[styles.collapsedSummaryText, { color: '#D97706', fontWeight: '800' }]}>
+                  {dispoNeededLeads.length} Dispo Due!
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </ScrollView>
+      ) : (
+        <>
+          {/* Triad Metric Summary */}
       <View style={styles.triadContainer}>
         {/* Metric 1: Calls Due */}
         <TouchableOpacity
@@ -255,6 +353,8 @@ export function TodayCockpitCard({
             </View>
           </ScrollView>
         </View>
+      )}
+        </>
       )}
     </View>
   );
@@ -454,5 +554,60 @@ const styles = StyleSheet.create({
     color: '#B45309',
     fontSize: 12,
     fontWeight: '800',
+  },
+  collapseToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    gap: 3,
+  },
+  collapseToggleText: {
+    color: Colors.heavenlyGold,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  dispoMiniBadge: {
+    backgroundColor: 'rgba(245, 158, 11, 0.25)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  dispoMiniBadgeText: {
+    color: '#F59E0B',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  collapsedSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    gap: 8,
+  },
+  collapsedSummaryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    backgroundColor: '#1E293B',
+    borderRadius: 6,
+  },
+  collapsedSummaryText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  collapsedDot: {
+    color: Colors.textMuted,
+    fontSize: 11,
+  },
+  collapsedAlertItem: {
+    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
   },
 });

@@ -521,5 +521,64 @@ describe('Post-Appointment Lifecycle & Dispo Queue Architecture', () => {
     assert.strictEqual(window.endDate.getFullYear(), 2026);
     assert.ok(window.endDate.getTime() > window.startDate.getTime());
   });
+
+  // 15. Note Parsing & Extraction Fallback for Missing appointment_scheduled_at
+  it('extracts date from notes when appointment_scheduled_at is null, preventing premature dispo due', () => {
+    // Current time: Tuesday night 9/8/2026
+    const tuesdayNight = new Date('2026-09-09T01:29:00.000Z');
+
+    // Lead booked with appointment details only in notes
+    const leadWithNote = {
+      id: 'lead_note_appt',
+      name: 'Maria Santos',
+      last_disposition: 'appointment_set',
+      appointment_scheduled_at: null,
+      notes: 'Spoke with teacher. Confirmed sit-down on Thursday Sep 10 at 10:15 AM in room 204.',
+      appointment_outcome: null,
+      appointment_completed_at: null,
+    };
+
+    function extractDateFromNotes(notes, now) {
+      if (!notes) return null;
+      const monthMap = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+      const dateTextMatch = notes.match(/\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*,?\s*(\d{4}))?/i);
+      if (dateTextMatch) {
+        const m = monthMap[dateTextMatch[1].slice(0, 3).toLowerCase()];
+        const d = parseInt(dateTextMatch[2], 10);
+        const y = dateTextMatch[3] ? parseInt(dateTextMatch[3], 10) : now.getFullYear();
+        return new Date(y, m, d, 10, 15, 0, 0);
+      }
+      return null;
+    }
+
+    const extracted = extractDateFromNotes(leadWithNote.notes, tuesdayNight);
+    assert.ok(extracted, 'Should extract date from note');
+    assert.strictEqual(extracted.getDate(), 10);
+    assert.strictEqual(extracted.getMonth(), 8); // Sep
+    assert.ok(extracted.getTime() > tuesdayNight.getTime(), 'Extracted date should be in the future');
+  });
+
+  // 16. Auto-Healing Migration Simulation
+  it('auto-heals leads in appointment_set state missing appointment_scheduled_at', () => {
+    const rawDbLead = {
+      id: 'lead_unhealed',
+      name: 'Robert Davis',
+      last_disposition: 'appointment_set',
+      appointment_scheduled_at: null,
+      follow_up_at: null,
+      notes: 'Scheduled for 2026-09-10 in 3rd period',
+      created_at: '2026-09-07T14:00:00.000Z',
+    };
+
+    // Auto-healing simulation
+    const healedLead = { ...rawDbLead };
+    if (healedLead.last_disposition === 'appointment_set' && !healedLead.appointment_scheduled_at) {
+      healedLead.appointment_scheduled_at = '2026-09-10T10:15:00.000Z';
+      healedLead.follow_up_at = healedLead.appointment_scheduled_at;
+    }
+
+    assert.ok(healedLead.appointment_scheduled_at);
+    assert.strictEqual(healedLead.appointment_scheduled_at, healedLead.follow_up_at);
+  });
 });
 

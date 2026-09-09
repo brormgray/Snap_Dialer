@@ -9,6 +9,8 @@ const DB_VERSION = 1;
 const STORE_NAME = 'app_state';
 const LEGACY_STORAGE_KEY = 'snap_dialer_valuteachers_data';
 
+import { PipelineStateService } from '../services/pipelineStateService';
+
 export interface DatabaseState {
   lists: any[];
   leads: any[];
@@ -181,6 +183,12 @@ export class IndexedDbStorage {
         lastDispo = 'connected';
       }
 
+      let apptScheduledAt = l.appointment_scheduled_at || null;
+      if (lastDispo === 'appointment_set' && !apptOutcome && !apptCompletedAt && !apptScheduledAt) {
+        const healed = PipelineStateService.extractAppointmentDateFromLead(l, new Date());
+        apptScheduledAt = healed.toISOString();
+      }
+
       return {
         ...l,
         priority_tier: l.priority_tier !== undefined && l.priority_tier !== null ? Number(l.priority_tier) : 1,
@@ -213,7 +221,7 @@ export class IndexedDbStorage {
         next_drip_scheduled_at: l.next_drip_scheduled_at || null,
 
         // Post-Appointment Sit-Down Lifecycle Defaults
-        appointment_scheduled_at: l.appointment_scheduled_at || null,
+        appointment_scheduled_at: apptScheduledAt,
         appointment_outcome: apptOutcome,
         appointment_completed_at: apptCompletedAt,
         last_disposition: lastDispo,

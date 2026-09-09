@@ -57,6 +57,7 @@ import { Colors } from '../theme/colors';
 import ZoomableImageModal from '../components/ZoomableImageModal';
 import { ClientPortfolioCard } from '../components/ClientPortfolioCard';
 import { PostApptWrapUpCard } from '../components/PostApptWrapUpCard';
+import { AppointmentSchedulerModal } from '../components/AppointmentSchedulerModal';
 
 export default function LeadDetailScreen({ route, navigation }: any) {
   const leadId = route.params?.leadId;
@@ -82,6 +83,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
   // Call & Post-Call Disposition State
   const [showDispositionRow, setShowDispositionRow] = useState<boolean>(false);
   const [callStartTime, setCallStartTime] = useState<number | null>(null);
+  const [apptSchedulerVisible, setApptSchedulerVisible] = useState<boolean>(false);
 
   // Edit form state
   const [name, setName] = useState<string>('');
@@ -259,17 +261,68 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     await TelephonyService.makeCall(lead.phone);
   };
 
-  const handleLogCallOutcome = async (disposition: CallDisposition) => {
+  const handleScheduleAppointmentWithCalendar = async (
+    scheduledDateISO: string,
+    periodName?: string,
+    customNotes?: string
+  ) => {
     if (!lead) return;
     await HapticsService.success();
     const durationSeconds = callStartTime ? Math.max(0, Math.floor((Date.now() - callStartTime) / 1000)) : 0;
     setCallStartTime(null);
     setShowDispositionRow(false);
 
+    const dateFormatted = new Date(scheduledDateISO).toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    });
+    const timeFormatted = new Date(scheduledDateISO).toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+
+    const note = `Confirmed Sit-Down scheduled for ${dateFormatted} @ ${timeFormatted}${periodName ? ` (${periodName})` : ''}${customNotes ? `. Notes: ${customNotes}` : ''}.`;
+    const updatedNotes = NotesService.addNote(lead.notes, note);
+
+    await LeadsRepository.scheduleAppointment(lead.id, scheduledDateISO, updatedNotes);
+
+    if (periodName && periodName !== lead.planning_period) {
+      await LeadsRepository.updateLeadDetails({
+        id: lead.id,
+        name: lead.name,
+        phone: lead.phone,
+        planning_period: periodName,
+      });
+    }
+
+    await CallLogsRepository.logCall({
+      leadId: lead.id,
+      listId: lead.list_id,
+      durationSeconds,
+      disposition: 'appointment_set',
+      note,
+    });
+
+    await loadLeadData();
+    showToast(`✓ Confirmed Sit-Down: ${dateFormatted} @ ${timeFormatted}`);
+  };
+
+  const handleLogCallOutcome = async (disposition: CallDisposition) => {
+    if (!lead) return;
+    await HapticsService.success();
+
+    if (disposition === 'appointment_set') {
+      setApptSchedulerVisible(true);
+      return;
+    }
+
+    const durationSeconds = callStartTime ? Math.max(0, Math.floor((Date.now() - callStartTime) / 1000)) : 0;
+    setCallStartTime(null);
+    setShowDispositionRow(false);
+
     const defaultNote =
-      disposition === 'appointment_set'
-        ? 'Direct profile call: Appointment Set.'
-        : disposition === 'connected' || disposition === 'spoke'
+      disposition === 'connected' || disposition === 'spoke'
         ? 'Direct profile call: Spoke with educator.'
         : disposition === 'no_answer'
         ? 'Direct profile call: No Answer.'
@@ -280,13 +333,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         : `Direct profile call: ${disposition}.`;
 
     const updatedNotes = NotesService.addNote(lead.notes, defaultNote);
-
-    if (disposition === 'appointment_set') {
-      const scheduledDate = CalendarService.calculateNextPlanningDate(lead.planning_period, lead.school);
-      await LeadsRepository.scheduleAppointment(lead.id, scheduledDate.toISOString(), defaultNote);
-    } else {
-      await LeadsRepository.updateLeadDisposition(lead.id, disposition, updatedNotes);
-    }
+    await LeadsRepository.updateLeadDisposition(lead.id, disposition, updatedNotes);
 
     await CallLogsRepository.logCall({
       leadId: lead.id,
@@ -936,6 +983,30 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                           🌐 Google Calendar
                         </Text>
                       </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={{
+                          width: '100%',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: Colors.bgDark,
+                          borderColor: Colors.borderGold,
+                          borderWidth: 1.5,
+                          paddingVertical: 10,
+                          borderRadius: 10,
+                          gap: 6,
+                          marginTop: 2,
+                        }}
+                        onPress={() => {
+                          HapticsService.medium();
+                          setApptSchedulerVisible(true);
+                        }}
+                      >
+                        <Text style={{ color: Colors.heavenlyGold, fontSize: 13, fontWeight: '800' }}>
+                          ✏️ Reschedule / Change Sit-Down Time
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                   </View>
                 );
@@ -1539,6 +1610,20 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         subtitle={`${lead?.name || 'Educator'} • ${lead?.school || 'ValuTeachers'}`}
         onClose={() => setImageModalVisible(false)}
       />
+
+      {/* World-Class Interactive Appointment Scheduler */}
+      {lead && (
+        <AppointmentSchedulerModal
+          visible={apptSchedulerVisible}
+          lead={lead}
+          initialDate={lead.appointment_scheduled_at ? new Date(lead.appointment_scheduled_at) : undefined}
+          onClose={() => setApptSchedulerVisible(false)}
+          onSave={async ({ scheduledISO, notes }) => {
+            setApptSchedulerVisible(false);
+            await handleScheduleAppointmentWithCalendar(scheduledISO, lead.planning_period || undefined, notes);
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
