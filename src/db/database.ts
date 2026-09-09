@@ -632,10 +632,6 @@ class WebDatabase implements IDatabase {
                 if (!lead.appointment_outcome) lead.appointment_outcome = 'converted';
                 if (!lead.appointment_completed_at) lead.appointment_completed_at = new Date().toISOString();
                 if (lead.last_disposition === 'appointment_set') lead.last_disposition = 'connected';
-              } else if (lead.drip_track === 'prospect_nurture' && lead.last_disposition === 'appointment_set') {
-                if (!lead.appointment_outcome) lead.appointment_outcome = 'nurture_drip';
-                if (!lead.appointment_completed_at) lead.appointment_completed_at = new Date().toISOString();
-                lead.last_disposition = 'connected';
               }
             } else {
               lead.updated_at = params[10] || new Date().toISOString();

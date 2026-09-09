@@ -575,14 +575,6 @@ export class LeadsRepository {
       if (finalDispo === 'appointment_set') {
         finalDispo = 'connected';
       }
-    } else if (dripTrack === 'prospect_nurture' && finalDispo === 'appointment_set') {
-      if (!apptOutcome) {
-        apptOutcome = 'nurture_drip';
-      }
-      if (!apptCompletedAt) {
-        apptCompletedAt = now;
-      }
-      finalDispo = 'connected';
     }
 
     await db.runAsync(
@@ -1183,13 +1175,11 @@ export class LeadsRepository {
       }
     }
 
-    // Auto-healing rule 2: If enrolled in prospect_nurture drip while still in appointment_set
-    if (dripTrack === 'prospect_nurture' && lastDisp === 'appointment_set') {
-      lastDisp = 'connected';
-      if (!apptOutcome) {
-        apptOutcome = 'nurture_drip';
-        apptCompletedAt = apptCompletedAt || raw.updated_at || raw.created_at || new Date().toISOString();
-      }
+    // Auto-healing rule 2: Auto-restore appointments that were erroneously converted to nurture_drip
+    if (apptOutcome === 'nurture_drip' && (raw.appointment_scheduled_at || (raw.notes && /sit-down|appointment/i.test(raw.notes)))) {
+      lastDisp = 'appointment_set';
+      apptOutcome = null;
+      apptCompletedAt = null;
       needsHealing = true;
     }
 

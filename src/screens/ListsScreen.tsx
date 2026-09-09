@@ -201,7 +201,7 @@ export default function ListsScreen({ navigation }: any) {
     if (filterTab === 'pending') {
       result = result.filter((l) => !hasEverBeenCalled(l));
     } else if (filterTab === 'appts') {
-      result = result.filter((l) => PipelineStateService.isUpcomingAppointment(l, now));
+      result = result.filter((l) => PipelineStateService.isActiveAppointment(l));
     } else if (filterTab === 'dispo_needed') {
       result = result.filter((l) => PipelineStateService.isDispoNeeded(l, now));
     } else if (filterTab === 'connected') {
@@ -380,10 +380,10 @@ export default function ListsScreen({ navigation }: any) {
   const pendingCount = scopedLeads.filter((l) => !hasEverBeenCalled(l)).length;
 
   const now = new Date();
-  const upcomingCount = scopedLeads.filter((l) => PipelineStateService.isUpcomingAppointment(l, now)).length;
+  const upcomingCount = scopedLeads.filter((l) => PipelineStateService.isActiveAppointment(l)).length;
   const dispoNeededCount = scopedLeads.filter((l) => PipelineStateService.isDispoNeeded(l, now)).length;
 
-  // 'Appts Set': Strictly reflects active upcoming confirmed sit-downs in 1:1 parity with the filter tab
+  // 'Appts Set': Strictly reflects active confirmed sit-downs in 1:1 parity with the filter tab
   const appointmentCount = upcomingCount;
 
   // 'Callbacks': Leads scheduled for a callback, removed once called back and answered (connected/spoke/appt/dnc/bad_number)
@@ -499,8 +499,40 @@ export default function ListsScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
       )}
+    </View>
+  );
 
-      {/* Unified Search & Slide-Up Filter Trigger Bar */}
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={Colors.brandPrimary} />
+
+      {/* App Header */}
+      <View style={styles.header}>
+        <View style={styles.titleArea}>
+          <Text style={styles.appTitle} numberOfLines={1}>SnapDialer</Text>
+          <Text style={styles.appSubtitle} numberOfLines={1} ellipsizeMode="tail">ValuTeachers • FRS Pipeline</Text>
+        </View>
+
+        <View style={styles.headerIcons}>
+          <TouchableOpacity
+            style={styles.snapHeaderButton}
+            onPress={() => navigation.navigate('ScanSheet')}
+            accessibilityLabel="Scan report cards"
+          >
+            <Camera size={16} color={Colors.livingWhite} />
+            <Text style={styles.snapHeaderButtonText}>Snap</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={handleExportCsv}
+            accessibilityLabel="Export CSV"
+          >
+            <Download size={19} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Unified Search & Slide-Up Filter Trigger Bar (Pinned outside FlatList to guarantee keyboard focus stability) */}
       <View style={styles.searchFilterRow}>
         <View style={styles.searchContainer}>
           <Search size={16} color={Colors.textMuted} />
@@ -550,7 +582,7 @@ export default function ListsScreen({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
-      {/* Filter Tabs */}
+      {/* Filter Tabs (Pinned outside FlatList for instant horizontal paging) */}
       <View style={styles.tabsContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContent}>
           <TouchableOpacity
@@ -654,38 +686,6 @@ export default function ListsScreen({ navigation }: any) {
             </TouchableOpacity>
           )}
         </ScrollView>
-      </View>
-    </View>
-  );
-
-  return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.brandPrimary} />
-
-      {/* App Header */}
-      <View style={styles.header}>
-        <View style={styles.titleArea}>
-          <Text style={styles.appTitle} numberOfLines={1}>SnapDialer</Text>
-          <Text style={styles.appSubtitle} numberOfLines={1} ellipsizeMode="tail">ValuTeachers • FRS Pipeline</Text>
-        </View>
-
-        <View style={styles.headerIcons}>
-          <TouchableOpacity
-            style={styles.snapHeaderButton}
-            onPress={() => navigation.navigate('ScanSheet')}
-            accessibilityLabel="Scan report cards"
-          >
-            <Camera size={16} color={Colors.livingWhite} />
-            <Text style={styles.snapHeaderButtonText}>Snap</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.iconButton}
-            onPress={handleExportCsv}
-            accessibilityLabel="Export CSV"
-          >
-            <Download size={19} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
       </View>
 
       {/* Lead Cards List with Embedded Header */}

@@ -223,24 +223,34 @@ export class PipelineStateService {
 
   /**
    * Returns whether a sit-down appointment has already been concluded/dispositioned.
-   * If lead.is_client is true or lead.drip_track is 'prospect_nurture', the sit-down
-   * is automatically treated as completed/dispositioned.
+   * A sit-down is completed only if the educator converted to a client (is_client: true)
+   * or has an explicit appointment_outcome / appointment_completed_at timestamp.
    */
   static isAppointmentCompleted(lead: Lead): boolean {
-    if (Boolean(lead.is_client) || lead.drip_track === 'prospect_nurture') {
+    if (Boolean(lead.is_client)) {
       return true;
     }
     return Boolean(lead.appointment_outcome || lead.appointment_completed_at);
   }
 
   /**
+   * True for any lead with an active, un-dispositioned confirmed sit-down.
+   * Includes both upcoming sit-downs and sit-downs scheduled for today
+   * awaiting wrap-up/disposition.
+   */
+  static isActiveAppointment(lead: Lead): boolean {
+    if (lead.last_disposition !== 'appointment_set') return false;
+    if (this.isAppointmentCompleted(lead)) return false;
+    return true;
+  }
+
+  /**
    * Resolves the effective appointment outcome:
-   * Explicit outcome > 'converted' (if client) > 'nurture_drip' (if prospect nurture)
+   * Explicit outcome > 'converted' (if client)
    */
   static getEffectiveAppointmentOutcome(lead: Lead): AppointmentOutcome | null {
     if (lead.appointment_outcome) return lead.appointment_outcome;
     if (Boolean(lead.is_client)) return 'converted';
-    if (lead.drip_track === 'prospect_nurture') return 'nurture_drip';
     return null;
   }
 }

@@ -177,10 +177,11 @@ export class IndexedDbStorage {
         if (!apptOutcome) apptOutcome = 'converted';
         if (!apptCompletedAt && l.client_since) apptCompletedAt = l.client_since;
         if (lastDispo === 'appointment_set') lastDispo = 'connected';
-      } else if (l.drip_track === 'prospect_nurture' && lastDispo === 'appointment_set') {
-        if (!apptOutcome) apptOutcome = 'nurture_drip';
-        if (!apptCompletedAt) apptCompletedAt = l.updated_at || l.created_at || new Date().toISOString();
-        lastDispo = 'connected';
+      } else if (apptOutcome === 'nurture_drip' && (l.appointment_scheduled_at || (l.notes && /sit-down|appointment/i.test(l.notes)))) {
+        // Auto-restoration: Recover appointments that were erroneously converted to nurture_drip
+        lastDispo = 'appointment_set';
+        apptOutcome = null;
+        apptCompletedAt = null;
       }
 
       let apptScheduledAt = l.appointment_scheduled_at || null;

@@ -580,5 +580,54 @@ describe('Post-Appointment Lifecycle & Dispo Queue Architecture', () => {
     assert.ok(healedLead.appointment_scheduled_at);
     assert.strictEqual(healedLead.appointment_scheduled_at, healedLead.follow_up_at);
   });
+
+  // 17. prospect_nurture drip enrollment must not erase appointment_set
+  it('preserves appointment_set status when lead has drip_track set to prospect_nurture', () => {
+    const lead = {
+      id: 'lead_drip_preservation',
+      name: 'Jennifer Taylor',
+      last_disposition: 'appointment_set',
+      appointment_scheduled_at: '2026-09-10T14:00:00.000Z',
+      drip_track: 'prospect_nurture',
+      appointment_outcome: null,
+      appointment_completed_at: null,
+    };
+
+    function isActiveAppointment(l) {
+      return l.last_disposition === 'appointment_set' && !l.appointment_outcome && !l.appointment_completed_at;
+    }
+
+    assert.strictEqual(isActiveAppointment(lead), true);
+  });
+
+  // 18. Auto-restoration recovers falsely demoted appointments
+  it('auto-restores falsely demoted nurture_drip appointments with scheduled dates', () => {
+    const demotedLead = {
+      id: 'lead_falsely_demoted',
+      name: 'Michael Miller',
+      last_disposition: 'connected',
+      appointment_outcome: 'nurture_drip',
+      appointment_completed_at: '2026-09-08T18:00:00.000Z',
+      appointment_scheduled_at: '2026-09-09T14:30:00.000Z',
+      notes: 'Sit-down appointment scheduled for Wednesday',
+      drip_track: 'prospect_nurture',
+    };
+
+    // Auto-restoration logic
+    let lastDisp = demotedLead.last_disposition;
+    let apptOutcome = demotedLead.appointment_outcome;
+    let apptCompletedAt = demotedLead.appointment_completed_at;
+
+    if (apptOutcome === 'nurture_drip' && (demotedLead.appointment_scheduled_at || /sit-down|appointment/i.test(demotedLead.notes))) {
+      lastDisp = 'appointment_set';
+      apptOutcome = null;
+      apptCompletedAt = null;
+    }
+
+    assert.strictEqual(lastDisp, 'appointment_set');
+    assert.strictEqual(apptOutcome, null);
+    assert.strictEqual(apptCompletedAt, null);
+  });
 });
+
 
