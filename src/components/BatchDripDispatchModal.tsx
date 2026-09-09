@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   SafeAreaView,
   TextInput,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import {
   X,
@@ -19,12 +20,14 @@ import {
   School,
   Award,
   Sparkles,
+  RotateCcw,
   ChevronRight,
 } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
 import { HapticsService } from '../services/hapticsService';
 import { TelephonyService } from '../services/telephonyService';
 import { DripDispatcherService, DueDripItem } from '../services/dripDispatcherService';
+import { AiSmsService } from '../services/aiSmsService';
 import { isTeacherInPlanningNow } from '../data/bellSchedules';
 
 interface BatchDripDispatchModalProps {
@@ -44,51 +47,73 @@ export function BatchDripDispatchModal({
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [isSending, setIsSending] = useState<boolean>(false);
   const [customMessage, setCustomMessage] = useState<string>('');
-  const [editingMessage, setEditingMessage] = useState<boolean>(false);
+  const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false);
 
-  React.useEffect(() => {
-    if (visible) {
+  useEffect(() => {
+    if (visible && dueDrips.length > 0) {
       setLocalQueue([...dueDrips]);
       setCurrentIndex(0);
-      setCustomMessage('');
-      setEditingMessage(false);
+      setCustomMessage(dueDrips[0]?.formattedMessage || '');
     }
-  }, [visible]);
+  }, [visible, dueDrips]);
 
   const currentItem: DueDripItem | undefined = localQueue[currentIndex];
 
   const handleClose = () => {
     setCurrentIndex(0);
-    setEditingMessage(false);
     onClose();
   };
 
   const handleNext = () => {
     if (currentIndex + 1 < localQueue.length) {
-      setCurrentIndex((prev) => prev + 1);
-      setEditingMessage(false);
-      setCustomMessage('');
+      const nextIdx = currentIndex + 1;
+      setCurrentIndex(nextIdx);
+      setCustomMessage(localQueue[nextIdx]?.formattedMessage || '');
     } else {
-      // Completed all
       handleClose();
+    }
+  };
+
+  const handleGenerateAiSms = async (toneFocus?: any) => {
+    if (!currentItem) return;
+    setIsGeneratingAi(true);
+    await HapticsService.medium();
+    try {
+      const generated = await AiSmsService.generatePersuasiveSMS(
+        currentItem.lead,
+        currentItem.track === 'client_annual_review' ? 'annual_review' : 'nurture',
+        undefined,
+        toneFocus
+      );
+      if (generated && generated.trim().length > 0) {
+        setCustomMessage(generated.trim().replace(/^["']|["']$/g, ''));
+        await HapticsService.success();
+      }
+    } catch (e) {
+      console.warn('AI Drip generation fallback:', e);
+    } finally {
+      setIsGeneratingAi(false);
     }
   };
 
   const handleSend = async () => {
     if (!currentItem || isSending) return;
     setIsSending(true);
-    await HapticsService.medium();
+
+    const bodyToSend = customMessage.trim() || currentItem.formattedMessage;
+
+    // CRITICAL: Call TelephonyService.sendSMS synchronously on user click
+    // without awaiting any microtasks before it to preserve iOS Safari touch gesture token!
+    TelephonyService.sendSMS(currentItem.lead.phone, bodyToSend);
+    HapticsService.medium().catch(() => {});
 
     try {
-      const bodyToSend = editingMessage && customMessage.trim()
-        ? customMessage
-        : currentItem.formattedMessage;
-
-      // 1. Open native OS SMS composer with prefilled text ($0 carrier cost)
-      await TelephonyService.sendSMS(currentItem.lead.phone, bodyToSend);
-
-      // 2. Record log and advance drip step
-      await DripDispatcherService.recordDripDispatched(currentItem.lead, currentItem.template);
+      // 2. Record log with the exact bodyToSend and advance drip step
+      await DripDispatcherService.recordDripDispatched(
+        currentItem.lead,
+        currentItem.template,
+        bodyToSend
+      );
 
       // 3. Trigger parent refresh
       onDripSent();
@@ -217,38 +242,91 @@ export function BatchDripDispatchModal({
               })() : null}
             </View>
 
-            {/* Template Header & Stage */}
+            {/* Template Header & AI Re-Draft Controls */}
             <View style={styles.templateStageRow}>
-              <Text style={styles.templateStageTitle}>
-                STAGE TOUCHPOINT: <Text style={{ color: Colors.heavenlyGold }}>{currentItem.template.title}</Text>
+              <Text style={styles.templateStageTitle} numberOfLines={1}>
+                TOUCHPOINT: <Text style={{ color: Colors.heavenlyGold }}>{currentItem.template.title}</Text>
               </Text>
               <TouchableOpacity
-                onPress={() => {
-                  HapticsService.tick();
-                  setEditingMessage(!editingMessage);
-                  if (!editingMessage) {
-                    setCustomMessage(currentItem.formattedMessage);
-                  }
-                }}
+                style={styles.aiGenerateBtn}
+                onPress={() => handleGenerateAiSms()}
+                disabled={isGeneratingAi}
+                activeOpacity={0.7}
               >
-                <Text style={styles.editMessageLink}>
-                  {editingMessage ? 'Use Standard' : 'Edit Text'}
-                </Text>
+                {isGeneratingAi ? (
+                  <ActivityIndicator size="small" color="#38BDF8" />
+                ) : (
+                  <>
+                    <Sparkles size={13} color="#38BDF8" />
+                    <Text style={styles.aiGenerateBtnText}>AI Re-Draft</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
 
-            {/* Message Composer Card */}
+            {/* Quick Focus Chips */}
+            <View style={styles.focusChipRow}>
+              {(currentItem.lead.custom_questions || currentItem.lead.notes) && (
+                <TouchableOpacity
+                  style={[styles.focusChip, { borderColor: Colors.heavenlyGold }]}
+                  onPress={() => handleGenerateAiSms('address_question')}
+                  disabled={isGeneratingAi}
+                >
+                  <Text style={[styles.focusChipText, { color: Colors.heavenlyGold }]}>📝 Address Note</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={styles.focusChip}
+                onPress={() => handleGenerateAiSms('planning_period')}
+                disabled={isGeneratingAi}
+              >
+                <Text style={styles.focusChipText}>🏫 Planning</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.focusChip}
+                onPress={() => handleGenerateAiSms('meeting_confirmation')}
+                disabled={isGeneratingAi}
+              >
+                <Text style={styles.focusChipText}>🎯 Meeting</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.focusChip}
+                onPress={() => handleGenerateAiSms('drop_bonus_focus')}
+                disabled={isGeneratingAi}
+              >
+                <Text style={styles.focusChipText}>💰 5% DROP</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Always-Editable Message Composer Card */}
             <View style={styles.messageBox}>
-              {editingMessage ? (
-                <TextInput
-                  style={styles.messageInput}
-                  value={customMessage}
-                  onChangeText={setCustomMessage}
-                  multiline
-                  autoFocus
-                />
-              ) : (
-                <Text style={styles.messageText}>{currentItem.formattedMessage}</Text>
+              <TextInput
+                style={styles.messageInput}
+                value={customMessage}
+                onChangeText={setCustomMessage}
+                multiline
+                placeholder="Drafting message..."
+                placeholderTextColor={Colors.textMuted}
+                textAlignVertical="top"
+              />
+            </View>
+
+            {/* Live Character Count & Reset Link */}
+            <View style={styles.composerMetaRow}>
+              <Text style={styles.charCountText}>
+                {customMessage.length} characters • Tap text above to customize before sending
+              </Text>
+              {customMessage !== currentItem.formattedMessage && (
+                <TouchableOpacity
+                  style={styles.resetBtn}
+                  onPress={() => {
+                    HapticsService.tick();
+                    setCustomMessage(currentItem.formattedMessage);
+                  }}
+                >
+                  <RotateCcw size={11} color={Colors.brandAccent} />
+                  <Text style={styles.resetBtnText}>Reset</Text>
+                </TouchableOpacity>
               )}
             </View>
 
@@ -415,6 +493,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
     marginTop: 6,
+    gap: 8,
   },
   templateStageTitle: {
     color: Colors.textMuted,
@@ -422,10 +501,40 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     flex: 1,
   },
-  editMessageLink: {
-    color: Colors.brandAccent,
+  aiGenerateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+  },
+  aiGenerateBtnText: {
+    color: '#38BDF8',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
+  },
+  focusChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 10,
+  },
+  focusChip: {
+    backgroundColor: '#1E293B',
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  focusChipText: {
+    color: Colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '600',
   },
   messageBox: {
     backgroundColor: '#0F172A',
@@ -433,12 +542,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: Colors.borderGold,
     padding: 16,
-    marginBottom: 10,
-  },
-  messageText: {
-    color: Colors.livingWhite,
-    fontSize: 15,
-    lineHeight: 22,
+    marginBottom: 6,
   },
   messageInput: {
     color: Colors.livingWhite,
@@ -446,6 +550,28 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     minHeight: 120,
     textAlignVertical: 'top',
+  },
+  composerMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginHorizontal: 4,
+    marginBottom: 12,
+  },
+  charCountText: {
+    color: Colors.textMuted,
+    fontSize: 11,
+    flex: 1,
+  },
+  resetBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  resetBtnText: {
+    color: Colors.brandAccent,
+    fontSize: 11,
+    fontWeight: '700',
   },
   complianceDisclaimer: {
     color: Colors.textMuted,

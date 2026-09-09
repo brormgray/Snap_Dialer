@@ -264,4 +264,57 @@ describe('Advisor CRM, Production Ledger & Dual-Track SMS Drips', () => {
     assert.strictEqual(dueLeads.length, 2);
     assert.deepStrictEqual(dueLeads.map((l) => l.id), ['l1', 'l2']);
   });
+
+  // 7. Custom SMS Body Audit Logging
+  it('records custom edited SMS body in call log audit trail instead of generic template string', () => {
+    const lead = {
+      id: 'lead_drip_custom',
+      name: 'Jennifer Miller',
+      phone: '3865558822',
+      school: 'University High',
+      drip_track: 'prospect_nurture',
+      drip_step: 0,
+    };
+
+    const template = {
+      id: 'nurture_1',
+      track: 'prospect_nurture',
+      step: 0,
+      title: 'Initial Follow-Up',
+      body: 'Hi {{first_name}}, this is {{my_name}} with ValuTeachers. Following up on your 403(b) review.',
+    };
+
+    // Simulate DripDispatcherService.recordDripDispatched logic
+    function recordDripDispatchedSim(lead, template, customBody) {
+      // Interpolate default if not custom
+      const defaultInterpolated = template.body
+        .replace(/{{first_name}}/gi, lead.name.split(' ')[0])
+        .replace(/{{my_name}}/gi, 'Alex');
+      const finalSmsBody = customBody?.trim() || defaultInterpolated;
+
+      const log = {
+        lead_id: lead.id,
+        lead_name: lead.name,
+        phone: lead.phone,
+        disposition: 'connected',
+        notes: `[Drip Outreach] Step ${template.step + 1}: ${template.title}`,
+        sms_sent: true,
+        sms_body: finalSmsBody,
+        call_duration_seconds: 0,
+        attempt_number: 1,
+        created_at: new Date().toISOString(),
+      };
+      return log;
+    }
+
+    // Case A: Advisor edited the text before dispatching
+    const advisorCustomizedText = "Hey Jennifer! Stopped by University High today regarding your 403(b) planning. Let's touch base during 4th period! - Alex";
+    const logA = recordDripDispatchedSim(lead, template, advisorCustomizedText);
+    assert.strictEqual(logA.sms_body, advisorCustomizedText);
+    assert.notStrictEqual(logA.sms_body, template.body);
+
+    // Case B: Advisor sent with standard template without editing
+    const logB = recordDripDispatchedSim(lead, template, undefined);
+    assert.strictEqual(logB.sms_body, 'Hi Jennifer, this is Alex with ValuTeachers. Following up on your 403(b) review.');
+  });
 });

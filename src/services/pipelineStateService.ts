@@ -17,21 +17,41 @@ export class PipelineStateService {
     }
 
     // 1. Resolve appointment start date
-    let start: Date;
+    let start: Date | null = null;
     if (lead.appointment_scheduled_at) {
-      start = new Date(lead.appointment_scheduled_at);
+      const raw = lead.appointment_scheduled_at.trim();
+      const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      const hasExplicitNonMidnightTime = /T(?!00:00:00(\.000)?(Z|[+-]\d{2}:\d{2})?$)\d{2}:\d{2}/.test(raw);
+
+      if (dateOnlyMatch && !hasExplicitNonMidnightTime) {
+        // Parse calendar year, month (0-indexed), and day in local time to prevent UTC midnight shift
+        const y = parseInt(dateOnlyMatch[1], 10);
+        const m = parseInt(dateOnlyMatch[2], 10) - 1;
+        const d = parseInt(dateOnlyMatch[3], 10);
+
+        const schedule = getScheduleForSchool(lead.school);
+        const periodId = matchPeriodId(lead.planning_period);
+        const period = periodId ? schedule.find((p) => p.id === periodId) : schedule[2];
+        const [sH, sM] = (period?.startTime || '09:00').split(':').map(Number);
+
+        start = new Date(y, m, d, sH || 9, sM || 0, 0, 0);
+      } else {
+        start = new Date(raw);
+      }
     } else if (lead.follow_up_at) {
       start = new Date(lead.follow_up_at);
     } else {
       // For leads without an explicit scheduled timestamp, anchor the planning date calculation
-      // to when the appointment was actually booked rather than perpetually projecting forward from now
+      // forward from now if booked within the last 24h, or from bookingTimestamp if older
       const bookingTimestamp = lead.last_attempt_at || lead.updated_at || lead.created_at;
       const refDate = bookingTimestamp ? new Date(bookingTimestamp) : now;
-      const validRefDate = !isNaN(refDate.getTime()) ? refDate : now;
-      start = CalendarService.calculateNextPlanningDate(lead.planning_period, lead.school, validRefDate);
+      const validRef = !isNaN(refDate.getTime()) ? refDate : now;
+      const isBookedRecently = Math.abs(now.getTime() - validRef.getTime()) < 24 * 3600000;
+      const anchor = isBookedRecently ? now : validRef;
+      start = CalendarService.calculateNextPlanningDate(lead.planning_period, lead.school, anchor);
     }
 
-    if (isNaN(start.getTime())) return null;
+    if (!start || isNaN(start.getTime())) return null;
 
     // 2. Resolve appointment window end date using Bell Schedules
     const schedule = getScheduleForSchool(lead.school);
@@ -41,6 +61,8 @@ export class PipelineStateService {
     const end = new Date(start);
     if (matchedPeriod && matchedPeriod.endTime) {
       const [endH, endM] = matchedPeriod.endTime.split(':').map(Number);
+      // Explicitly lock end to the exact same calendar day as start in local time
+      end.setFullYear(start.getFullYear(), start.getMonth(), start.getDate());
       end.setHours(endH, endM, 0, 0);
       if (end.getTime() <= start.getTime()) {
         end.setTime(start.getTime() + 30 * 60000); // 30-minute fallback buffer

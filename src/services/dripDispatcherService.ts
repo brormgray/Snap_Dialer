@@ -139,9 +139,14 @@ export class DripDispatcherService {
   }
 
   /**
-   * Records SMS dispatch, advances drip step, and schedules next touchpoint
+   * Records SMS dispatch, advances drip step, schedules next touchpoint,
+   * and records the exact dispatched SMS body (customized or interpolated).
    */
-  static async recordDripDispatched(lead: Lead, template: SMSTemplate): Promise<void> {
+  static async recordDripDispatched(
+    lead: Lead,
+    template: SMSTemplate,
+    customBody?: string
+  ): Promise<void> {
     const currentStep = lead.drip_step || 0;
     const nextStep = currentStep + 1;
     const todayISO = new Date().toISOString();
@@ -161,7 +166,12 @@ export class DripDispatcherService {
       next_drip_scheduled_at: nextScheduled,
     });
 
-    // Record call log with sms_sent = true and standalone disposition
+    const formattedDefault = TelephonyService.interpolateTemplate(template, lead);
+    const finalSmsBody = customBody && customBody.trim().length > 0
+      ? customBody.trim()
+      : formattedDefault;
+
+    // Record call log with sms_sent = true and the actual text sent
     await CallLogsRepository.logCall({
       leadId: lead.id,
       listId: lead.list_id || 'master_queue',
@@ -169,7 +179,7 @@ export class DripDispatcherService {
       durationSeconds: 0,
       smsSent: true,
       note: `[Drip Sent] ${template.title}`,
-      smsBody: template.body,
+      smsBody: finalSmsBody,
     });
   }
 }

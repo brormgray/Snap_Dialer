@@ -567,9 +567,26 @@ export default function DialerHudScreen({ route, navigation }: any) {
             currentLead.planning_period,
             currentLead.school
           );
+          const scheduledISO = scheduledDate.toISOString();
+          currentLead.appointment_scheduled_at = scheduledISO;
+          currentLead.last_disposition = 'appointment_set';
+
+          setQueue((prev) => {
+            const next = [...prev];
+            if (next[currentIndex]) {
+              next[currentIndex] = {
+                ...next[currentIndex],
+                notes: updatedNotes,
+                last_disposition: 'appointment_set',
+                appointment_scheduled_at: scheduledISO,
+              };
+            }
+            return next;
+          });
+
           await LeadsRepository.scheduleAppointment(
             currentLead.id,
-            scheduledDate.toISOString(),
+            scheduledISO,
             updatedNotes || undefined
           );
         }
@@ -651,7 +668,37 @@ export default function DialerHudScreen({ route, navigation }: any) {
     setNoteModalVisible(false);
 
     const disposition: CallDisposition = isSettingAppt ? 'appointment_set' : 'connected';
-    const apptDateToUse = isSettingAppt ? (selectedApptDate || undefined) : undefined;
+    
+    // Ensure the date shown as visually selected is passed even if user didn't re-click the active pill
+    let apptDateToUse: Date | undefined = undefined;
+    if (isSettingAppt) {
+      if (selectedApptDate) {
+        apptDateToUse = selectedApptDate;
+      } else {
+        const schedule = getScheduleForSchool(currentLead.school);
+        const periodId = matchPeriodId(currentLead.planning_period);
+        const period = schedule.find((p) => p.id === periodId) || schedule[2];
+        const [sH, sM] = (period?.startTime || '09:00').split(':').map(Number);
+
+        const now = new Date();
+        const dow = now.getDay();
+        const todaySlot = new Date(now);
+        todaySlot.setHours(sH || 9, sM || 0, 0, 0);
+
+        if (dow >= 1 && dow <= 5 && todaySlot.getTime() > now.getTime()) {
+          apptDateToUse = todaySlot;
+        } else {
+          const nextDay = new Date(now);
+          nextDay.setDate(nextDay.getDate() + 1);
+          while (nextDay.getDay() === 0 || nextDay.getDay() === 6) {
+            nextDay.setDate(nextDay.getDate() + 1);
+          }
+          nextDay.setHours(sH || 9, sM || 0, 0, 0);
+          apptDateToUse = nextDay;
+        }
+      }
+    }
+
     await handleDisposition(disposition, callNote, true, apptDateToUse);
     setCallNote('');
     setIsSettingAppt(false);

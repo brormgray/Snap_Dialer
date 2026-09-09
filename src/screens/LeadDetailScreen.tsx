@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -77,6 +77,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
   const [smsModalVisible, setSmsModalVisible] = useState<boolean>(false);
   const [smsBody, setSmsBody] = useState<string>('');
   const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false);
+  const userEditedSmsRef = useRef<boolean>(false);
 
   // Call & Post-Call Disposition State
   const [showDispositionRow, setShowDispositionRow] = useState<boolean>(false);
@@ -431,6 +432,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
   const launchSmsComposer = (targetLead: Lead) => {
     const firstName = (targetLead.name || 'Educator').split(' ')[0];
     const defaultTemplate = `Hi ${firstName}, this is with ValuTeachers following up on your FRS Report Card from ${targetLead.school || 'your school'}. When is a good time to connect?`;
+    userEditedSmsRef.current = false;
     setSmsBody(defaultTemplate);
     setSmsModalVisible(true);
     handleGenerateAiSms(undefined, targetLead);
@@ -448,7 +450,11 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         toneFocus
       );
       if (generated && generated.trim().length > 0) {
-        setSmsBody(generated.trim().replace(/^"|"$/g, ''));
+        // Only overwrite if the advisor hasn't manually edited the text, or if they explicitly tapped an AI tone chip
+        if (!userEditedSmsRef.current || toneFocus) {
+          setSmsBody(generated.trim().replace(/^["']|["']$/g, ''));
+          userEditedSmsRef.current = false;
+        }
       }
       await HapticsService.success();
     } catch (e) {
@@ -843,10 +849,12 @@ export default function LeadDetailScreen({ route, navigation }: any) {
 
               {/* Confirmed Sit-Down 1-Tap Calendar Card */}
               {lead.last_disposition === 'appointment_set' && (() => {
-                const scheduledDate = CalendarService.calculateNextPlanningDate(
-                  lead.planning_period,
-                  lead.school
-                );
+                const scheduledDate = lead.appointment_scheduled_at
+                  ? new Date(lead.appointment_scheduled_at)
+                  : CalendarService.calculateNextPlanningDate(
+                      lead.planning_period,
+                      lead.school
+                    );
                 const dateStr = scheduledDate.toLocaleDateString('en-US', {
                   weekday: 'short',
                   month: 'short',
@@ -1438,7 +1446,10 @@ export default function LeadDetailScreen({ route, navigation }: any) {
             <TextInput
               style={[styles.modalInput, { height: 130, marginTop: 8 }]}
               value={smsBody}
-              onChangeText={setSmsBody}
+              onChangeText={(text) => {
+                userEditedSmsRef.current = true;
+                setSmsBody(text);
+              }}
               multiline
               placeholder="Drafting persuasive SMS..."
               placeholderTextColor={Colors.textMuted}

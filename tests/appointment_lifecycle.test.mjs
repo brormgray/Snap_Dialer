@@ -8,19 +8,37 @@ describe('Post-Appointment Lifecycle & Dispo Queue Architecture', () => {
       return null;
     }
 
-    let start;
+    let start = null;
     if (lead.appointment_scheduled_at) {
-      start = new Date(lead.appointment_scheduled_at);
+      const raw = lead.appointment_scheduled_at.trim();
+      const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      const hasExplicitNonMidnightTime = /T(?!00:00:00(\.000)?(Z|[+-]\d{2}:\d{2})?$)\d{2}:\d{2}/.test(raw);
+
+      if (dateOnlyMatch && !hasExplicitNonMidnightTime) {
+        // Parse calendar year, month (0-indexed), and day in local time to prevent UTC midnight shift
+        const y = parseInt(dateOnlyMatch[1], 10);
+        const m = parseInt(dateOnlyMatch[2], 10) - 1;
+        const d = parseInt(dateOnlyMatch[3], 10);
+        start = new Date(y, m, d, 9, 0, 0, 0);
+      } else {
+        start = new Date(raw);
+      }
     } else if (lead.follow_up_at) {
       start = new Date(lead.follow_up_at);
     } else {
-      start = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const bookingTimestamp = lead.last_attempt_at || lead.updated_at || lead.created_at;
+      const refDate = bookingTimestamp ? new Date(bookingTimestamp) : now;
+      const validRef = !isNaN(refDate.getTime()) ? refDate : now;
+      const isBookedRecently = Math.abs(now.getTime() - validRef.getTime()) < 24 * 3600000;
+      start = isBookedRecently ? new Date(now.getTime() + 24 * 3600000) : new Date(validRef.getTime() + 24 * 3600000);
     }
 
-    if (isNaN(start.getTime())) return null;
+    if (!start || isNaN(start.getTime())) return null;
 
-    // Simulate standard 30-min window
-    const end = new Date(start.getTime() + 30 * 60 * 1000);
+    // Simulate standard 30-min window locked to same calendar day
+    const end = new Date(start);
+    end.setFullYear(start.getFullYear(), start.getMonth(), start.getDate());
+    end.setTime(start.getTime() + 30 * 60 * 1000);
     return { startDate: start, endDate: end };
   }
 
@@ -429,4 +447,79 @@ describe('Post-Appointment Lifecycle & Dispo Queue Architecture', () => {
     });
     assert.strictEqual(allUpcoming.length, 4);
   });
+
+  // 13. Timezone & Date-Only Preservation (Prevents False "Due Now" for Tomorrow & Thursday)
+  it('prevents appointments scheduled for tomorrow or Thursday from falsely triggering isDispoNeeded today', () => {
+    // Current time: Tuesday, September 8, 2026 at 9:29 PM EDT
+    // In UTC: 2026-09-09T01:29:00.000Z
+    const tuesdayNight = new Date('2026-09-09T01:29:00.000Z');
+
+    // Lead A: Scheduled for Wednesday 9/9 stored as UTC midnight or date-only
+    const wedLeadUtcMidnight = {
+      id: 'lead_wed_1',
+      name: 'Elena Rostova',
+      phone: '3865551234',
+      last_disposition: 'appointment_set',
+      appointment_scheduled_at: '2026-09-09T00:00:00.000Z',
+      appointment_outcome: null,
+      appointment_completed_at: null,
+    };
+
+    const wedLeadDateOnly = {
+      id: 'lead_wed_2',
+      name: 'Marcus Vance',
+      phone: '3865555678',
+      last_disposition: 'appointment_set',
+      appointment_scheduled_at: '2026-09-09',
+      appointment_outcome: null,
+      appointment_completed_at: null,
+    };
+
+    // Lead B: Scheduled for Thursday 9/10
+    const thuLead = {
+      id: 'lead_thu',
+      name: 'Claire Beauchamp',
+      phone: '3865559012',
+      last_disposition: 'appointment_set',
+      appointment_scheduled_at: '2026-09-10T14:00:00.000Z',
+      appointment_outcome: null,
+      appointment_completed_at: null,
+    };
+
+    // 1. None of these appointments should be considered "dispo needed" on Tuesday night
+    assert.strictEqual(isDispoNeeded(wedLeadUtcMidnight, tuesdayNight), false);
+    assert.strictEqual(isDispoNeeded(wedLeadDateOnly, tuesdayNight), false);
+    assert.strictEqual(isDispoNeeded(thuLead, tuesdayNight), false);
+
+    // 2. All of these appointments are upcoming appointments
+    assert.strictEqual(isUpcomingAppointment(wedLeadUtcMidnight, tuesdayNight), true);
+    assert.strictEqual(isUpcomingAppointment(wedLeadDateOnly, tuesdayNight), true);
+    assert.strictEqual(isUpcomingAppointment(thuLead, tuesdayNight), true);
+  });
+
+  // 14. Date Parsing Local Time Alignment
+  it('correctly sets appointment window to the scheduled calendar day without backward day shift', () => {
+    // When an appointment is scheduled for 2026-09-09
+    const lead = {
+      id: 'lead_local_align',
+      name: 'David Kim',
+      last_disposition: 'appointment_set',
+      appointment_scheduled_at: '2026-09-09T00:00:00.000Z',
+    };
+
+    const window = getAppointmentWindow(lead);
+    assert.ok(window, 'Window should not be null');
+
+    // In local time, startDate must be on Sept 9 (the 9th of the month)
+    assert.strictEqual(window.startDate.getDate(), 9);
+    assert.strictEqual(window.startDate.getMonth(), 8); // 8 is September (0-indexed)
+    assert.strictEqual(window.startDate.getFullYear(), 2026);
+
+    // endDate must be on the exact same calendar day
+    assert.strictEqual(window.endDate.getDate(), 9);
+    assert.strictEqual(window.endDate.getMonth(), 8);
+    assert.strictEqual(window.endDate.getFullYear(), 2026);
+    assert.ok(window.endDate.getTime() > window.startDate.getTime());
+  });
 });
+
