@@ -194,6 +194,7 @@ export class IndexedDbStorage {
         ...l,
         priority_tier: l.priority_tier !== undefined && l.priority_tier !== null ? Number(l.priority_tier) : 1,
         list_id: l.list_id || 'master_queue',
+        follow_up_at: l.follow_up_at || null,
         attempts_count: l.attempts_count || 0,
         cadence_step: l.cadence_step || 1,
 

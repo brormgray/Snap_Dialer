@@ -10,6 +10,7 @@ import {
   AppointmentOutcome,
 } from '../types';
 import { PipelineStateService } from '../services/pipelineStateService';
+import { NotesService } from '../services/notesService';
 
 export function normalizePhoneKey(phone?: string | null): string {
   if (!phone) return '';
@@ -445,6 +446,13 @@ export class LeadsRepository {
   static async scheduleFollowUp(leadId: string, followUpDateISO: string, note?: string): Promise<void> {
     const db = await getDatabase();
     const now = new Date().toISOString();
+
+    let mergedNotes: string | null = null;
+    if (note && note.trim().length > 0) {
+      const currentLead = await this.getLeadById(leadId);
+      mergedNotes = NotesService.addNote(currentLead?.notes, note.trim());
+    }
+
     await db.runAsync(
       `UPDATE leads 
        SET follow_up_at = ?, 
@@ -452,7 +460,28 @@ export class LeadsRepository {
            notes = COALESCE(?, notes), 
            updated_at = ? 
        WHERE id = ?`,
-      [followUpDateISO, note || null, now, leadId]
+      [followUpDateISO, mergedNotes, now, leadId]
+    );
+  }
+
+  static async clearFollowUp(leadId: string, completionNote?: string): Promise<void> {
+    const db = await getDatabase();
+    const now = new Date().toISOString();
+
+    let mergedNotes: string | null = null;
+    if (completionNote && completionNote.trim().length > 0) {
+      const currentLead = await this.getLeadById(leadId);
+      mergedNotes = NotesService.addNote(currentLead?.notes, completionNote.trim());
+    }
+
+    await db.runAsync(
+      `UPDATE leads 
+       SET follow_up_at = NULL, 
+           last_disposition = CASE WHEN last_disposition = 'callback_requested' THEN 'pending' ELSE last_disposition END,
+           notes = COALESCE(?, notes),
+           updated_at = ? 
+       WHERE id = ?`,
+      [mergedNotes, now, leadId]
     );
   }
 

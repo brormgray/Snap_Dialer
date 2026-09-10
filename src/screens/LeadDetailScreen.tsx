@@ -58,6 +58,7 @@ import ZoomableImageModal from '../components/ZoomableImageModal';
 import { ClientPortfolioCard } from '../components/ClientPortfolioCard';
 import { PostApptWrapUpCard } from '../components/PostApptWrapUpCard';
 import { AppointmentSchedulerModal } from '../components/AppointmentSchedulerModal';
+import { CallbackSchedulerModal } from '../components/CallbackSchedulerModal';
 
 export default function LeadDetailScreen({ route, navigation }: any) {
   const leadId = route.params?.leadId;
@@ -84,6 +85,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
   const [showDispositionRow, setShowDispositionRow] = useState<boolean>(false);
   const [callStartTime, setCallStartTime] = useState<number | null>(null);
   const [apptSchedulerVisible, setApptSchedulerVisible] = useState<boolean>(false);
+  const [callbackModalVisible, setCallbackModalVisible] = useState<boolean>(false);
 
   // Edit form state
   const [name, setName] = useState<string>('');
@@ -317,6 +319,11 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       return;
     }
 
+    if (disposition === 'callback_requested') {
+      setCallbackModalVisible(true);
+      return;
+    }
+
     const durationSeconds = callStartTime ? Math.max(0, Math.floor((Date.now() - callStartTime) / 1000)) : 0;
     setCallStartTime(null);
     setShowDispositionRow(false);
@@ -328,8 +335,6 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         ? 'Direct profile call: No Answer.'
         : disposition === 'voicemail'
         ? 'Direct profile call: Left Voicemail.'
-        : disposition === 'callback_requested'
-        ? 'Direct profile call: Callback requested.'
         : `Direct profile call: ${disposition}.`;
 
     const updatedNotes = NotesService.addNote(lead.notes, defaultNote);
@@ -345,6 +350,60 @@ export default function LeadDetailScreen({ route, navigation }: any) {
 
     await loadLeadData();
     showToast(`✓ Logged: ${getDispositionLabel(disposition)}`);
+  };
+
+  const handleConfirmCallback = async ({ followUpDateISO, note: noteToRecord }: { followUpDateISO: string; note: string }) => {
+    if (!lead) return;
+    await HapticsService.success();
+    const durationSeconds = callStartTime ? Math.max(0, Math.floor((Date.now() - callStartTime) / 1000)) : 0;
+    setCallStartTime(null);
+    setShowDispositionRow(false);
+    setCallbackModalVisible(false);
+
+    await LeadsRepository.scheduleFollowUp(lead.id, followUpDateISO, noteToRecord);
+
+    await CallLogsRepository.logCall({
+      leadId: lead.id,
+      listId: lead.list_id,
+      durationSeconds,
+      disposition: 'callback_requested',
+      note: noteToRecord,
+    });
+
+    await loadLeadData();
+    const followUpDate = new Date(followUpDateISO);
+    const dateFormatted = followUpDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const timeFormatted = followUpDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    showToast(`✓ Callback Scheduled: ${dateFormatted} @ ${timeFormatted}`);
+  };
+
+  const handleClearCallback = async () => {
+    if (!lead) return;
+    await HapticsService.medium();
+
+    const doClear = async () => {
+      await HapticsService.success();
+      setCallbackModalVisible(false);
+      const noteText = '[Callback Completed] Follow-up marked complete.';
+      await LeadsRepository.clearFollowUp(lead.id, noteText);
+      await loadLeadData();
+      showToast('✓ Callback completed and cleared from pipeline.');
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' && window.confirm('Mark this scheduled callback as completed?');
+      if (confirmed) await doClear();
+      return;
+    }
+
+    Alert.alert(
+      'Complete Callback',
+      'Mark this scheduled callback as completed and remove from queue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Mark Complete', onPress: doClear },
+      ]
+    );
   };
 
   const handleWrapUpConverted = async () => {
@@ -1012,6 +1071,117 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                 );
               })()}
 
+              {/* Scheduled Callback Reminder Card */}
+              {(lead.last_disposition === 'callback_requested' || !!lead.follow_up_at) && lead.last_disposition !== 'appointment_set' && (() => {
+                const followUpDate = lead.follow_up_at ? new Date(lead.follow_up_at) : new Date();
+                const now = new Date();
+                const isOverdue = followUpDate.getTime() < now.getTime();
+                const isToday = followUpDate.toDateString() === now.toDateString();
+                const tomorrow = new Date(now);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                const isTomorrow = followUpDate.toDateString() === tomorrow.toDateString();
+
+                let relativeTimeStr = '';
+                const diffMs = followUpDate.getTime() - now.getTime();
+                const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+                const diffMins = Math.round(diffMs / (1000 * 60));
+
+                if (isOverdue) {
+                  const overdueMins = Math.abs(diffMins);
+                  relativeTimeStr = overdueMins < 60 ? `${overdueMins}m overdue` : `${Math.abs(diffHours)}h overdue`;
+                } else if (isToday) {
+                  relativeTimeStr = diffMins < 60 ? `In ${diffMins} mins` : `Today at ${followUpDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+                } else if (isTomorrow) {
+                  relativeTimeStr = `Tomorrow at ${followUpDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+                } else {
+                  relativeTimeStr = followUpDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) +
+                    ` at ${followUpDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+                }
+
+                // Extract latest callback note
+                const parsedNotes = NotesService.parseNotes(lead.notes);
+                const latestCallbackNote = parsedNotes.find((n) => 
+                  n.text.toLowerCase().includes('callback') || n.text.toLowerCase().includes('follow-up')
+                )?.text || parsedNotes[0]?.text;
+
+                return (
+                  <View style={styles.callbackCardContainer}>
+                    <View style={styles.callbackCardHeader}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Calendar size={16} color={isOverdue ? Colors.badgeDangerText : Colors.badgeWarningText} />
+                        <Text style={[styles.callbackCardTitle, isOverdue && { color: Colors.badgeDangerText }]}>
+                          SCHEDULED CALLBACK REMINDER
+                        </Text>
+                      </View>
+                      <View style={[styles.callbackStatusPill, isOverdue ? styles.callbackPillOverdue : styles.callbackPillDue]}>
+                        <Text style={[styles.callbackStatusPillText, isOverdue ? styles.callbackPillOverdueText : styles.callbackPillDueText]}>
+                          {isOverdue ? '🔴 OVERDUE' : isToday ? '🟡 TODAY' : '🟢 SCHEDULED'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.callbackTimeRow}>
+                      <Text style={styles.callbackTimePrimary}>
+                        {followUpDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} @ {followUpDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                      </Text>
+                      <Text style={[styles.callbackTimeRelative, isOverdue && { color: Colors.badgeDangerText, fontWeight: '700' }]}>
+                        ({relativeTimeStr})
+                      </Text>
+                    </View>
+
+                    {lead.planning_period && (
+                      <View style={styles.callbackPlanningContextRow}>
+                        <Clock size={13} color={Colors.brandAccent} />
+                        <Text style={styles.callbackPlanningContextText}>
+                          Educator Planning: {lead.planning_period} ({lead.school || 'School'})
+                        </Text>
+                      </View>
+                    )}
+
+                    {latestCallbackNote ? (
+                      <View style={styles.callbackNoteBox}>
+                        <FileText size={13} color={Colors.textSecondary} />
+                        <Text style={styles.callbackNoteText} numberOfLines={2}>
+                          "{latestCallbackNote}"
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    <View style={styles.callbackActionsRow}>
+                      <TouchableOpacity
+                        style={styles.callbackCallNowBtn}
+                        onPress={handleCall}
+                        activeOpacity={0.8}
+                      >
+                        <PhoneCall size={14} color="#FFFFFF" />
+                        <Text style={styles.callbackCallNowBtnText}>Call Now</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.callbackRescheduleBtn}
+                        onPress={() => {
+                          HapticsService.medium();
+                          setCallbackModalVisible(true);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Edit3 size={14} color={Colors.brandAccent} />
+                        <Text style={styles.callbackRescheduleBtnText}>Reschedule</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.callbackClearBtn}
+                        onPress={handleClearCallback}
+                        activeOpacity={0.8}
+                      >
+                        <Check size={14} color={Colors.badgeSuccessText} />
+                        <Text style={styles.callbackClearBtnText}>Complete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })()}
+
               {/* Proof of Contact / View Scanned Sheet Button */}
               <TouchableOpacity
                 style={styles.proofButton}
@@ -1442,6 +1612,24 @@ export default function LeadDetailScreen({ route, navigation }: any) {
             <Text style={styles.stickySmsButtonText}>AI Messages</Text>
           </TouchableOpacity>
 
+          {/* Standalone Callback Scheduling Button */}
+          <TouchableOpacity
+            style={[
+              styles.stickyCallbackButton,
+              lead.follow_up_at ? styles.stickyCallbackButtonActive : null,
+            ]}
+            onPress={() => {
+              HapticsService.medium();
+              setCallbackModalVisible(true);
+            }}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={lead.follow_up_at ? 'Edit scheduled callback' : 'Schedule callback'}
+          >
+            <Calendar size={18} color={lead.follow_up_at ? '#FFFFFF' : Colors.badgeWarningText} />
+            {lead.follow_up_at ? <View style={styles.callbackActiveDot} /> : null}
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.stickyDncButton, isDNC && styles.stickyDncButtonRevert]}
             onPress={handleToggleDNC}
@@ -1622,6 +1810,18 @@ export default function LeadDetailScreen({ route, navigation }: any) {
             setApptSchedulerVisible(false);
             await handleScheduleAppointmentWithCalendar(scheduledISO, lead.planning_period || undefined, notes);
           }}
+        />
+      )}
+
+      {/* Quick Educator Callback Scheduler */}
+      {lead && (
+        <CallbackSchedulerModal
+          visible={callbackModalVisible}
+          lead={lead}
+          initialDate={lead.follow_up_at ? new Date(lead.follow_up_at) : null}
+          onClose={() => setCallbackModalVisible(false)}
+          onSave={handleConfirmCallback}
+          onClear={lead.follow_up_at ? handleClearCallback : undefined}
         />
       )}
     </SafeAreaView>
@@ -2511,5 +2711,179 @@ const styles = StyleSheet.create({
   stickyDncButtonRevert: {
     backgroundColor: 'rgba(52, 211, 153, 0.15)',
     borderColor: '#34D399',
+  },
+  // --- Callback Reminder Card Styles ---
+  callbackCardContainer: {
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+    borderColor: '#F59E0B',
+    borderWidth: 1.5,
+    borderRadius: 14,
+    padding: 14,
+    marginVertical: 10,
+  },
+  callbackCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  callbackCardTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#B45309',
+    letterSpacing: 0.6,
+  },
+  callbackStatusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  callbackStatusPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  callbackPillDue: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  callbackPillDueText: {
+    color: '#B45309',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  callbackPillOverdue: {
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+  },
+  callbackPillOverdueText: {
+    color: '#991B1B',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  callbackTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+    marginBottom: 4,
+  },
+  callbackTimePrimary: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  callbackTimeRelative: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  callbackPlanningContextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  callbackPlanningContextText: {
+    fontSize: 12,
+    color: Colors.brandAccent,
+    fontWeight: '600',
+  },
+  callbackNoteBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.surfaceCard,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    marginBottom: 10,
+  },
+  callbackNoteText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
+    flex: 1,
+  },
+  callbackActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  callbackCallNowBtn: {
+    flex: 1.2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.callActive,
+    paddingVertical: 9,
+    borderRadius: 10,
+    gap: 6,
+  },
+  callbackCallNowBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  callbackRescheduleBtn: {
+    flex: 1.2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: Colors.brandAccent,
+    paddingVertical: 9,
+    borderRadius: 10,
+    gap: 6,
+  },
+  callbackRescheduleBtnText: {
+    color: Colors.brandAccent,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  callbackClearBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: Colors.badgeSuccessText,
+    paddingVertical: 9,
+    borderRadius: 10,
+    gap: 4,
+  },
+  callbackClearBtnText: {
+    color: Colors.badgeSuccessText,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  // --- Sticky Dock Callback Button ---
+  stickyCallbackButton: {
+    width: 46,
+    height: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.badgeWarningBg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.badgeWarningText,
+    position: 'relative',
+  },
+  stickyCallbackButtonActive: {
+    backgroundColor: '#D97706',
+    borderColor: '#B45309',
+  },
+  callbackActiveDot: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10B981',
   },
 });

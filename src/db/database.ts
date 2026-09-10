@@ -584,11 +584,18 @@ class WebDatabase implements IDatabase {
             } catch { lead.meeting_preferences = []; }
             lead.updated_at = params[14] || new Date().toISOString();
           }
-        } else if (s.includes('follow_up_at = ?')) {
+        } else if (s.includes("last_disposition = 'callback_requested'") || (s.includes('follow_up_at = ?') && !s.includes('appointment_scheduled_at'))) {
           lead.follow_up_at = params[0];
           lead.last_disposition = 'callback_requested';
           if (params[1] !== undefined && params[1] !== null) lead.notes = params[1];
           lead.updated_at = params[2] || new Date().toISOString();
+        } else if (s.includes('follow_up_at = null') || s.includes('follow_up_at=null')) {
+          lead.follow_up_at = null;
+          if (lead.last_disposition === 'callback_requested') {
+            lead.last_disposition = 'pending';
+          }
+          if (params[0] !== undefined && params[0] !== null) lead.notes = params[0];
+          lead.updated_at = params[1] || new Date().toISOString();
         } else if (s.includes('name = ?')) {
           lead.name = params[0];
           lead.phone = params[1];

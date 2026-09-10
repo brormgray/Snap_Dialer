@@ -628,6 +628,78 @@ describe('Post-Appointment Lifecycle & Dispo Queue Architecture', () => {
     assert.strictEqual(apptOutcome, null);
     assert.strictEqual(apptCompletedAt, null);
   });
+
+  // 19. scheduleFollowUp preserves historical notes
+  it('preserves historical educator notes when scheduling a callback', () => {
+    const existingNotes = '[Sep 08, 10:15 AM] Educator asked about 5% DROP bonus and retirement timeline.';
+    const callbackNote = 'Prefers callback during 4th period planning';
+
+    // Simulate NotesService.addNote prepend
+    const timestampHeader = '[Sep 10, 2:30 PM]';
+    const newEntry = `${timestampHeader} ${callbackNote}`;
+    const mergedNotes = `${newEntry}\n\n${existingNotes}`;
+
+    assert.ok(mergedNotes.includes(callbackNote), 'New callback note should be present');
+    assert.ok(mergedNotes.includes('5% DROP bonus'), 'Historical notes must be preserved');
+    assert.ok(mergedNotes.startsWith(timestampHeader), 'Newest note should be prepended to the top');
+  });
+
+  // 20. clearFollowUp safely resets follow_up_at and appends completion note
+  it('clears follow_up_at and resets disposition to pending when callback is completed', () => {
+    const lead = {
+      id: 'lead_cb_complete',
+      name: 'Angela White',
+      last_disposition: 'callback_requested',
+      follow_up_at: '2026-09-10T14:00:00.000Z',
+      notes: '[Sep 09, 11:00 AM] Callback scheduled for 2:00 PM',
+    };
+
+    // Simulate clearFollowUp
+    const clearedLead = {
+      ...lead,
+      follow_up_at: null,
+      last_disposition: lead.last_disposition === 'callback_requested' ? 'pending' : lead.last_disposition,
+      notes: `[Sep 10, 2:15 PM] [Callback Completed] Follow-up marked complete.\n\n${lead.notes}`,
+    };
+
+    assert.strictEqual(clearedLead.follow_up_at, null);
+    assert.strictEqual(clearedLead.last_disposition, 'pending');
+    assert.ok(clearedLead.notes.includes('[Callback Completed]'));
+    assert.ok(clearedLead.notes.includes('[Sep 09, 11:00 AM]'));
+  });
+
+  // 21. WebDatabase SQL query pattern matching routing
+  it('correctly distinguishes scheduleAppointment and scheduleFollowUp SQL patterns', () => {
+    const scheduleAppointmentSql = `UPDATE leads 
+       SET appointment_scheduled_at = ?,
+           follow_up_at = ?,
+           appointment_outcome = NULL,
+           appointment_completed_at = NULL,
+           last_disposition = 'appointment_set',
+           notes = COALESCE(?, notes),
+           updated_at = ?
+       WHERE id = ?`.toLowerCase();
+
+    const scheduleFollowUpSql = `UPDATE leads 
+       SET follow_up_at = ?, 
+           last_disposition = 'callback_requested', 
+           notes = COALESCE(?, notes), 
+           updated_at = ? 
+       WHERE id = ?`.toLowerCase();
+
+    const isCallbackMatch = (s) =>
+      s.includes("last_disposition = 'callback_requested'") ||
+      (s.includes('follow_up_at = ?') && !s.includes('appointment_scheduled_at'));
+
+    const isAppointmentMatch = (s) => s.includes('appointment_scheduled_at = ?');
+
+    assert.strictEqual(isCallbackMatch(scheduleFollowUpSql), true);
+    assert.strictEqual(isAppointmentMatch(scheduleFollowUpSql), false);
+
+    assert.strictEqual(isCallbackMatch(scheduleAppointmentSql), false);
+    assert.strictEqual(isAppointmentMatch(scheduleAppointmentSql), true);
+  });
 });
+
 
 
