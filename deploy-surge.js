@@ -161,12 +161,16 @@ try {
   surge = require('surge');
 } catch (e) {
   try {
-    surge = require('C:/Users/brorm/AppData/Local/npm-cache/_npx/23158936acd5c32d/node_modules/surge');
-  } catch (err2) {
-    const { execSync } = require('child_process');
-    console.log('[Surge] Deploying via npx surge ./dist valuteachers-dialer.surge.sh...');
-    execSync('npx surge ./dist valuteachers-dialer.surge.sh --endpoint https://surge.surge.sh', { stdio: 'inherit' });
-    process.exit(0);
+    surge = require('/home/brormgray/.npm/_npx/23158936acd5c32d/node_modules/surge');
+  } catch (eLinux) {
+    try {
+      surge = require('C:/Users/brorm/AppData/Local/npm-cache/_npx/23158936acd5c32d/node_modules/surge');
+    } catch (err2) {
+      const { execSync } = require('child_process');
+      console.log('[Surge] Deploying via npx surge ./dist valuteachers-dialer.surge.sh...');
+      execSync('npx surge ./dist valuteachers-dialer.surge.sh --endpoint https://surge.surge.sh', { stdio: 'inherit' });
+      process.exit(0);
+    }
   }
 }
 
