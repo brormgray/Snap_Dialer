@@ -165,6 +165,8 @@ export function CallbackSchedulerModal({
     }
   };
 
+  if (!visible) return null;
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.modalOverlay}>

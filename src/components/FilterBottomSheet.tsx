@@ -52,6 +52,8 @@ export function FilterBottomSheet({
   filteredCount,
   onResetFilters,
 }: FilterBottomSheetProps) {
+  if (!visible) return null;
+
   const activeFiltersCount =
     (selectedSchool !== 'all' ? 1 : 0) +
     (selectedListId !== 'all' ? 1 : 0) +
@@ -70,7 +72,7 @@ export function FilterBottomSheet({
           activeOpacity={1}
           onPress={onClose}
         />
-        <View style={styles.sheetContainer}>
+        <View style={styles.sheetContainer} pointerEvents="auto">
           {/* Grab Bar Handle */}
           <View style={styles.handleBar} />
 

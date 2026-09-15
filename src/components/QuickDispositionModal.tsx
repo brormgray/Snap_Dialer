@@ -63,7 +63,7 @@ export function QuickDispositionModal({
   onClose,
   onDispositionComplete,
 }: QuickDispositionModalProps) {
-  if (!lead) return null;
+  if (!visible || !lead) return null;
 
   // Live Call Timer state
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);

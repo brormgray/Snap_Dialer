@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -68,7 +68,6 @@ export default function ListsScreen({ navigation }: any) {
   const [selectedListId, setSelectedListId] = useState<string>('all');
   const [selectedSchool, setSelectedSchool] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'fresh' | 'legacy'>('all');
-  const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
   const [filterTab, setFilterTab] = useState<'all' | 'pending' | 'appts' | 'dispo_needed' | 'connected' | 'callback' | 'unanswered' | 'clients'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [advisorName, setAdvisorName] = useState<string>('Alex');
@@ -173,39 +172,49 @@ export default function ListsScreen({ navigation }: any) {
   );
 
   // Helper to check if a lead has ever been called at least once
-  const hasEverBeenCalled = (l: Lead) => {
-    if (l.attempts_count && l.attempts_count > 0) return true;
-    if (l.last_attempt_at) return true;
-    if (l.last_disposition && l.last_disposition !== 'pending') return true;
-    if (callLogs && callLogs.some((log) => String(log.lead_id).trim() === String(l.id).trim())) return true;
-    return false;
-  };
+  const hasEverBeenCalled = useCallback(
+    (l: Lead) => {
+      if (!l) return false;
+      if (l.attempts_count && l.attempts_count > 0) return true;
+      if (l.last_attempt_at) return true;
+      if (l.last_disposition && l.last_disposition !== 'pending') return true;
+      if (l.id && callLogs && callLogs.length > 0) {
+        const leadIdStr = String(l.id).trim();
+        if (leadIdStr && leadIdStr !== 'undefined' && leadIdStr !== 'null') {
+          return callLogs.some((log) => {
+            if (!log || !log.lead_id) return false;
+            const logLeadId = String(log.lead_id).trim();
+            return logLeadId && logLeadId !== 'undefined' && logLeadId !== 'null' && logLeadId === leadIdStr;
+          });
+        }
+      }
+      return false;
+    },
+    [callLogs]
+  );
 
-  useEffect(() => {
-    applyFilters();
-  }, [leads, callLogs, filterTab, searchQuery, selectedListId, selectedSchool, priorityFilter]);
+  // Scope leads based on Campaign & School & Priority filters (before Tab filter)
+  const scopedLeads = useMemo(() => {
+    return leads.filter((l) => {
+      if (!l) return false;
+      if (selectedListId !== 'all' && l.list_id !== selectedListId) return false;
+      if (
+        selectedSchool !== 'all' &&
+        String(l.school || 'VOL').toLowerCase().trim() !== selectedSchool.toLowerCase().trim()
+      ) {
+        return false;
+      }
+      if (priorityFilter === 'fresh' && (l.priority_tier || 1) !== 1) return false;
+      if (priorityFilter === 'legacy' && l.priority_tier !== 3) return false;
+      return true;
+    });
+  }, [leads, selectedListId, selectedSchool, priorityFilter]);
 
-  const applyFilters = () => {
-    let result = [...leads];
+  // Synchronously compute filteredLeads from scopedLeads, active tab, and search query
+  const filteredLeads = useMemo(() => {
+    let result = scopedLeads;
 
-    // Filter by Campaign List
-    if (selectedListId !== 'all') {
-      result = result.filter((l) => l.list_id === selectedListId);
-    }
-
-    // Filter by Campus / School
-    if (selectedSchool !== 'all') {
-      result = result.filter((l) => (l.school || 'VOL').toLowerCase().trim() === selectedSchool.toLowerCase().trim());
-    }
-
-    // Filter by Priority Tier
-    if (priorityFilter === 'fresh') {
-      result = result.filter((l) => (l.priority_tier || 1) === 1);
-    } else if (priorityFilter === 'legacy') {
-      result = result.filter((l) => l.priority_tier === 3);
-    }
-
-    // Filter by Tab
+    // 1. Filter by Tab
     const now = new Date();
     if (filterTab === 'pending') {
       result = result.filter((l) => !hasEverBeenCalled(l));
@@ -217,7 +226,9 @@ export default function ListsScreen({ navigation }: any) {
       result = result.filter((l) => ['connected', 'spoke'].includes(l.last_disposition || ''));
     } else if (filterTab === 'callback') {
       result = result.filter((l) => {
-        const isAnswered = ['appointment_set', 'connected', 'spoke', 'do_not_call', 'bad_number', 'other'].includes(l.last_disposition || '');
+        const isAnswered = ['appointment_set', 'connected', 'spoke', 'do_not_call', 'bad_number', 'other'].includes(
+          l.last_disposition || ''
+        );
         if (isAnswered) return false;
         const hasValidFollowUp = l.follow_up_at && !isNaN(new Date(l.follow_up_at).getTime());
         return l.last_disposition === 'callback_requested' || !!hasValidFollowUp;
@@ -228,21 +239,33 @@ export default function ListsScreen({ navigation }: any) {
       result = result.filter((l) => Boolean(l.is_client));
     }
 
-    // Filter by Search Query
+    // 2. Filter by Search Query
     if (searchQuery.trim().length > 0) {
       const q = searchQuery.toLowerCase().trim();
-      result = result.filter(
-        (l) =>
-          l.name.toLowerCase().includes(q) ||
-          l.phone.includes(q) ||
-          (l.school && l.school.toLowerCase().includes(q)) ||
-          (l.planning_period && l.planning_period.toLowerCase().includes(q)) ||
-          (l.room_number && l.room_number.toLowerCase().includes(q))
-      );
+      result = result.filter((l) => {
+        if (!l) return false;
+        const nameStr = String(l.name || '').toLowerCase();
+        const phoneDigits = String(l.phone || '').replace(/\D/g, '');
+        const phoneRaw = String(l.phone || '').toLowerCase();
+        const schoolStr = String(l.school || '').toLowerCase();
+        const periodStr = String(l.planning_period || '').toLowerCase();
+        const roomStr = String(l.room_number || '').toLowerCase();
+        const notesStr = String(l.notes || '').toLowerCase();
+
+        return (
+          nameStr.includes(q) ||
+          phoneDigits.includes(q) ||
+          phoneRaw.includes(q) ||
+          schoolStr.includes(q) ||
+          periodStr.includes(q) ||
+          roomStr.includes(q) ||
+          notesStr.includes(q)
+        );
+      });
     }
 
-    setFilteredLeads(result);
-  };
+    return result;
+  }, [scopedLeads, filterTab, searchQuery, hasEverBeenCalled]);
 
   const handleStartMasterQueue = async () => {
     await HapticsService.success();
@@ -393,14 +416,6 @@ export default function ListsScreen({ navigation }: any) {
     return { label: 'Ready to Call', bg: Colors.badgeNeutralBg, color: Colors.brandAccent };
   };
 
-  // Scope leads based on Campaign & School & Priority filters (before Tab filter)
-  const scopedLeads = leads.filter((l) => {
-    if (selectedListId !== 'all' && l.list_id !== selectedListId) return false;
-    if (selectedSchool !== 'all' && (l.school || 'VOL').toLowerCase().trim() !== selectedSchool.toLowerCase().trim()) return false;
-    if (priorityFilter === 'fresh' && (l.priority_tier || 1) !== 1) return false;
-    if (priorityFilter === 'legacy' && l.priority_tier !== 3) return false;
-    return true;
-  });
 
   // Stats calculation
   const totalCount = scopedLeads.length;
@@ -586,6 +601,7 @@ export default function ListsScreen({ navigation }: any) {
             (selectedSchool !== 'all' || selectedListId !== 'all' || priorityFilter !== 'all') &&
               styles.filterTriggerButtonActive,
           ]}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           onPress={() => {
             HapticsService.tick();
             setFilterSheetVisible(true);
@@ -1212,6 +1228,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
     position: 'relative',
+    zIndex: 10,
   },
   filterTriggerButtonActive: {
     backgroundColor: Colors.brandPrimary,

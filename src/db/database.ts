@@ -80,16 +80,30 @@ class WebDatabase implements IDatabase {
       if (this.leads.length > 0 && this.call_logs.length > 0) {
         let healed = false;
         for (const lead of this.leads) {
-          const leadLogs = this.call_logs.filter((log) => String(log.lead_id).trim() === String(lead.id).trim());
+          if (!lead || !lead.id) continue;
+          const leadId = String(lead.id).trim();
+          if (!leadId || leadId === 'undefined' || leadId === 'null') continue;
+
+          const leadLogs = this.call_logs.filter((log) => {
+            if (!log || !log.lead_id) return false;
+            const logLeadId = String(log.lead_id).trim();
+            return logLeadId && logLeadId !== 'undefined' && logLeadId !== 'null' && logLeadId === leadId;
+          });
+
           if (leadLogs.length > 0) {
             if (!lead.attempts_count || lead.attempts_count < leadLogs.length) {
               lead.attempts_count = leadLogs.length;
               healed = true;
             }
-            const sortedLogs = [...leadLogs].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+            const sortedLogs = [...leadLogs].sort((a, b) => {
+              const timeA = String(a.timestamp || (a as any).created_at || '');
+              const timeB = String(b.timestamp || (b as any).created_at || '');
+              return timeB.localeCompare(timeA);
+            });
             const latestLog = sortedLogs[0];
-            if (latestLog?.created_at && (!lead.last_attempt_at || latestLog.created_at > lead.last_attempt_at)) {
-              lead.last_attempt_at = latestLog.created_at;
+            const latestTime = String(latestLog?.timestamp || (latestLog as any)?.created_at || '');
+            if (latestTime && (!lead.last_attempt_at || latestTime > lead.last_attempt_at)) {
+              lead.last_attempt_at = latestTime;
               healed = true;
             }
             if (

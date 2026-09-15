@@ -289,6 +289,8 @@ export function AppointmentSchedulerModal({
     }
   };
 
+  if (!visible) return null;
+
   return (
     <Modal
       visible={visible}
