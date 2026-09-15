@@ -102,12 +102,13 @@ export function FilterBottomSheet({
 
               <TouchableOpacity
                 style={styles.closeButton}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 onPress={() => {
                   HapticsService.tick();
                   onClose();
                 }}
               >
-                <X size={18} color={Colors.textSecondary} />
+                <X size={18} color={Colors.textPrimary} />
               </TouchableOpacity>
             </View>
           </View>

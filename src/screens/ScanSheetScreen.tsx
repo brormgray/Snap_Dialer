@@ -751,13 +751,27 @@ export default function ScanSheetScreen({ navigation }: any) {
       </ScrollView>
 
       {/* Paste Modal */}
-      <Modal visible={pasteModalVisible} transparent animationType="slide">
+      <Modal
+        visible={pasteModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPasteModalVisible(false)}
+      >
         <View style={styles.modalBackdrop}>
-          <SafeAreaView style={styles.modalContainer}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setPasteModalVisible(false)}
+          />
+          <SafeAreaView style={styles.modalContainer} pointerEvents="auto">
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Paste Lead Text</Text>
-              <TouchableOpacity onPress={() => setPasteModalVisible(false)}>
-                <X size={24} color={Colors.textSecondary} />
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                onPress={() => setPasteModalVisible(false)}
+              >
+                <X size={18} color={Colors.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -1168,6 +1182,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
   },
   modalTitle: {
     fontSize: 18,

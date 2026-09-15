@@ -297,7 +297,15 @@ export function AppointmentSchedulerModal({
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
+        <TouchableOpacity
+          style={StyleSheet.absoluteFill}
+          activeOpacity={1}
+          onPress={() => {
+            HapticsService.tick().catch(() => {});
+            onClose();
+          }}
+        />
+        <View style={styles.modalContent} pointerEvents="auto">
           {/* Header */}
           <View style={styles.modalHeader}>
             <View style={{ flex: 1 }}>
@@ -309,8 +317,15 @@ export function AppointmentSchedulerModal({
                 {lead.name} • {lead.school || 'Campus'} {lead.planning_period ? `• ${lead.planning_period}` : ''}
               </Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-              <X size={20} color={Colors.textSecondary} />
+            <TouchableOpacity
+              onPress={() => {
+                HapticsService.tick().catch(() => {});
+                onClose();
+              }}
+              style={styles.closeButton}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <X size={18} color={Colors.textPrimary} />
             </TouchableOpacity>
           </View>
 
@@ -759,9 +774,11 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: Colors.bgApp,
+    backgroundColor: Colors.surfaceSubtle,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
   },
   scrollBody: {
     maxHeight: 520,

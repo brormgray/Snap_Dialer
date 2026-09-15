@@ -1760,25 +1760,44 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       )}
 
       {/* AI Draft SMS Modal */}
-      <Modal visible={smsModalVisible} animationType="slide" transparent>
+      <Modal
+        visible={smsModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSmsModalVisible(false)}
+      >
         <View style={styles.imageModalOverlay}>
-          <View style={styles.modalContent}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setSmsModalVisible(false)}
+          />
+          <View style={styles.modalContent} pointerEvents="auto">
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <Text style={styles.modalTitle}>Draft Text Message</Text>
-              <TouchableOpacity
-                style={styles.aiGenerateBtn}
-                onPress={() => handleGenerateAiSms()}
-                disabled={isGeneratingAi}
-              >
-                {isGeneratingAi ? (
-                  <ActivityIndicator size="small" color="#38BDF8" />
-                ) : (
-                  <>
-                    <Sparkles size={14} color="#38BDF8" />
-                    <Text style={styles.aiGenerateBtnText}>AI Re-Draft</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <TouchableOpacity
+                  style={styles.aiGenerateBtn}
+                  onPress={() => handleGenerateAiSms()}
+                  disabled={isGeneratingAi}
+                >
+                  {isGeneratingAi ? (
+                    <ActivityIndicator size="small" color="#38BDF8" />
+                  ) : (
+                    <>
+                      <Sparkles size={14} color="#38BDF8" />
+                      <Text style={styles.aiGenerateBtnText}>AI Re-Draft</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalHeaderCloseBtn}
+                  onPress={() => setSmsModalVisible(false)}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <X size={18} color={Colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <Text style={{ color: '#94A3B8', fontSize: 12, marginBottom: 8 }}>
@@ -1852,23 +1871,42 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       </Modal>
 
       {/* Note Edit Modal */}
-      <Modal visible={noteEditModalVisible} animationType="slide" transparent>
+      <Modal
+        visible={noteEditModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => {
+          setNoteEditModalVisible(false);
+          setEditingNoteId(null);
+          setEditingNoteText('');
+        }}
+      >
         <View style={styles.imageModalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => {
+              setNoteEditModalVisible(false);
+              setEditingNoteId(null);
+              setEditingNoteText('');
+            }}
+          />
+          <View style={[styles.modalContent, { maxHeight: '80%' }]} pointerEvents="auto">
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Edit3 size={16} color={Colors.heavenlyGold} />
                 <Text style={styles.modalTitle}>Edit Educator Note</Text>
               </View>
               <TouchableOpacity
-                style={{ padding: 4 }}
+                style={styles.modalHeaderCloseBtn}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 onPress={() => {
                   setNoteEditModalVisible(false);
                   setEditingNoteId(null);
                   setEditingNoteText('');
                 }}
               >
-                <X size={18} color={Colors.livingWhite} />
+                <X size={18} color={Colors.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -1947,7 +1985,12 @@ export default function LeadDetailScreen({ route, navigation }: any) {
           onRequestClose={() => setOtherModalVisible(false)}
         >
           <View style={styles.otherModalOverlay}>
-            <View style={styles.otherModalCard}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFill}
+              activeOpacity={1}
+              onPress={() => setOtherModalVisible(false)}
+            />
+            <View style={styles.otherModalCard} pointerEvents="auto">
               <View style={styles.otherModalHeader}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.otherModalTitle}>📋 Other Disposition</Text>
@@ -1957,9 +2000,10 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                 </View>
                 <TouchableOpacity
                   style={styles.otherModalCloseBtn}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   onPress={() => setOtherModalVisible(false)}
                 >
-                  <X size={18} color={Colors.textSecondary} />
+                  <X size={18} color={Colors.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -3147,9 +3191,24 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   otherModalCloseBtn: {
-    padding: 4,
-    borderRadius: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: Colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  modalHeaderCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
   },
   otherSectionLabel: {
     fontSize: 11,

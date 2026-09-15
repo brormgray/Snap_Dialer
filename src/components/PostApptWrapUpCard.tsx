@@ -276,15 +276,29 @@ export function PostApptWrapUpCard({
       </View>
 
       {/* Reschedule Preset Modal */}
-      <Modal visible={rescheduleModalVisible} animationType="slide" transparent>
+      <Modal
+        visible={rescheduleModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setRescheduleModalVisible(false)}
+      >
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalSurface}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setRescheduleModalVisible(false)}
+          />
+          <View style={styles.modalSurface} pointerEvents="auto">
             <View style={styles.modalHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <RotateCcw size={18} color={Colors.heavenlyGold} />
                 <Text style={styles.modalTitle}>Reschedule Sit-Down</Text>
               </View>
-              <TouchableOpacity onPress={() => setRescheduleModalVisible(false)} style={{ padding: 4 }}>
+              <TouchableOpacity
+                onPress={() => setRescheduleModalVisible(false)}
+                style={styles.modalHeaderCloseBtn}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
                 <X size={18} color={Colors.textPrimary} />
               </TouchableOpacity>
             </View>
@@ -366,15 +380,29 @@ export function PostApptWrapUpCard({
       </Modal>
 
       {/* No-Show / Declined Modal */}
-      <Modal visible={noShowModalVisible} animationType="slide" transparent>
+      <Modal
+        visible={noShowModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setNoShowModalVisible(false)}
+      >
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalSurface}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setNoShowModalVisible(false)}
+          />
+          <View style={styles.modalSurface} pointerEvents="auto">
             <View style={styles.modalHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <AlertTriangle size={18} color="#F59E0B" />
                 <Text style={styles.modalTitle}>Sit-Down Conclusion</Text>
               </View>
-              <TouchableOpacity onPress={() => setNoShowModalVisible(false)} style={{ padding: 4 }}>
+              <TouchableOpacity
+                onPress={() => setNoShowModalVisible(false)}
+                style={styles.modalHeaderCloseBtn}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
                 <X size={18} color={Colors.textPrimary} />
               </TouchableOpacity>
             </View>
@@ -647,6 +675,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 6,
+  },
+  modalHeaderCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
   },
   modalTitle: {
     fontSize: 16,

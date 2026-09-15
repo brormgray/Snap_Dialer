@@ -149,8 +149,12 @@ export function BatchDripDispatchModal({
               </Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.closeBtn} onPress={handleClose}>
-            <X size={20} color="#FFFFFF" />
+          <TouchableOpacity
+            style={styles.closeBtn}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            onPress={handleClose}
+          >
+            <X size={18} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
 
@@ -406,7 +410,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   closeBtn: {
-    padding: 6,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   content: {
     flex: 1,

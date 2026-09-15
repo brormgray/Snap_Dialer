@@ -61,9 +61,14 @@ export default function ZoomableImageModal({
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={handleClose}>
       <View style={styles.modalBackdrop}>
-        <SafeAreaView style={styles.safeContainer}>
+        <TouchableOpacity
+          style={StyleSheet.absoluteFill}
+          activeOpacity={1}
+          onPress={handleClose}
+        />
+        <SafeAreaView style={styles.safeContainer} pointerEvents="box-none">
           {/* Header */}
-          <View style={styles.header}>
+          <View style={styles.header} pointerEvents="auto">
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>{title}</Text>
               {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
@@ -92,13 +97,17 @@ export default function ZoomableImageModal({
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity style={styles.closeBtn} onPress={handleClose}>
-              <X size={22} color={Colors.textPrimary} />
+            <TouchableOpacity
+              style={styles.closeBtn}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              onPress={handleClose}
+            >
+              <X size={20} color={Colors.textPrimary} />
             </TouchableOpacity>
           </View>
 
           {/* Interactive Zoomable Viewport */}
-          <View style={styles.viewportContainer}>
+          <View style={styles.viewportContainer} pointerEvents="auto">
             <ScrollView
               style={styles.scrollView}
               contentContainerStyle={[

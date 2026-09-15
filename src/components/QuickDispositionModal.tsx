@@ -343,7 +343,15 @@ export function QuickDispositionModal({
     <>
       <Modal visible={visible && !isApptModalVisible && !isCallbackModalVisible} animationType="slide" transparent onRequestClose={onClose}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => {
+              HapticsService.tick().catch(() => {});
+              onClose();
+            }}
+          />
+          <View style={styles.modalCard} pointerEvents="auto">
             {/* Header: Call Status & Educator Summary */}
             <View style={styles.header}>
               <View style={{ flex: 1 }}>
@@ -369,8 +377,15 @@ export function QuickDispositionModal({
                 </Text>
               </View>
 
-              <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-                <X size={20} color={Colors.textSecondary} />
+              <TouchableOpacity
+                style={styles.closeBtn}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                onPress={() => {
+                  HapticsService.tick().catch(() => {});
+                  onClose();
+                }}
+              >
+                <X size={18} color={Colors.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -653,9 +668,14 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   closeBtn: {
-    padding: 4,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: Colors.surfaceSubtle,
-    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
   },
   callControlStrip: {
     flexDirection: 'row',

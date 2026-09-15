@@ -1629,14 +1629,30 @@ export default function DialerHudScreen({ route, navigation }: any) {
         onRequestClose={() => setNoteModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              {isSettingAppt
-                ? `🎯 Appointment Set: ${currentLead.name}`
-                : isOtherDisposition
-                ? `📋 Other Outcome: ${currentLead.name}`
-                : `Call Notes: ${currentLead.name}`}
-            </Text>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setNoteModalVisible(false)}
+          />
+          <View style={styles.modalContent} pointerEvents="auto">
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={styles.modalTitle}>
+                  {isSettingAppt
+                    ? `🎯 Appointment Set: ${currentLead.name}`
+                    : isOtherDisposition
+                    ? `📋 Other Outcome: ${currentLead.name}`
+                    : `Call Notes: ${currentLead.name}`}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.modalHeaderCloseBtn}
+                onPress={() => setNoteModalVisible(false)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <X size={18} color={Colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
             <Text style={{ color: Colors.textSecondary, fontSize: 13, marginBottom: 8 }}>
               {isSettingAppt
                 ? 'Record the confirmed date, time, and classroom room number for your sit-down:'
@@ -1854,7 +1870,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
         </View>
       </Modal>
 
-      {/* Live Objection Battlecards Modal */}
+      {/* Live Objection Battlecards & Scripts Modal */}
       <Modal
         visible={objectionsModalVisible}
         animationType="slide"
@@ -1862,21 +1878,36 @@ export default function DialerHudScreen({ route, navigation }: any) {
         onRequestClose={() => setObjectionsModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: '85%', paddingBottom: 20 }]}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => {
+              HapticsService.tick();
+              setObjectionsModalVisible(false);
+            }}
+          />
+          <View style={[styles.modalContent, { maxHeight: '88%', paddingBottom: 16 }]} pointerEvents="auto">
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, paddingRight: 8 }}>
                 <ShieldCheck size={20} color={Colors.heavenlyGold} />
-                <Text style={styles.modalTitle}>FRS Objection Battlecards</Text>
+                <Text style={styles.modalTitle} numberOfLines={1}>FRS Scripts & Battlecards</Text>
               </View>
-              <TouchableOpacity onPress={() => setObjectionsModalVisible(false)} style={{ padding: 4 }}>
-                <X size={20} color={Colors.livingWhite} />
+              <TouchableOpacity
+                onPress={() => {
+                  HapticsService.tick();
+                  setObjectionsModalVisible(false);
+                }}
+                style={styles.modalHeaderCloseBtn}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <X size={18} color={Colors.textPrimary} />
               </TouchableOpacity>
             </View>
             <Text style={{ color: Colors.textSecondary, fontSize: 12, marginBottom: 12 }}>
               Tap any objection to view verbatim, word-for-word Florida educator talk-tracks:
             </Text>
 
-            <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+            <ScrollView style={{ maxHeight: 390 }} showsVerticalScrollIndicator={false}>
               {FRS_OBJECTIONS.map((item) => {
                 const isExpanded = selectedObjection?.id === item.id;
                 return (
@@ -1909,6 +1940,17 @@ export default function DialerHudScreen({ route, navigation }: any) {
                 );
               })}
             </ScrollView>
+
+            <TouchableOpacity
+              style={styles.modalDoneFooterBtn}
+              onPress={() => {
+                HapticsService.tick();
+                setObjectionsModalVisible(false);
+              }}
+            >
+              <CheckCircle2 size={16} color="#FFFFFF" />
+              <Text style={styles.modalDoneFooterBtnText}>Done / Return to Calling</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -1921,8 +1963,24 @@ export default function DialerHudScreen({ route, navigation }: any) {
         onRequestClose={() => setFollowUpModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Schedule Callback: {currentLead.name}</Text>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setFollowUpModalVisible(false)}
+          />
+          <View style={styles.modalContent} pointerEvents="auto">
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={styles.modalTitle}>Schedule Callback: {currentLead.name}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.modalHeaderCloseBtn}
+                onPress={() => setFollowUpModalVisible(false)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <X size={18} color={Colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
             <Text style={{ color: '#94A3B8', fontSize: 13, marginBottom: 12 }}>
               Choose a quick callback window based on educator availability:
             </Text>
@@ -1997,25 +2055,51 @@ export default function DialerHudScreen({ route, navigation }: any) {
         }}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => {
+              if (isNoAnswerSmsPrompt) {
+                handleSkipNoAnswerSms();
+              } else {
+                setSmsModalVisible(false);
+              }
+            }}
+          />
+          <View style={styles.modalContent} pointerEvents="auto">
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <Text style={styles.modalTitle}>
                 {isNoAnswerSmsPrompt ? 'Draft Follow-Up Text' : 'Draft Text Message'}
               </Text>
-              <TouchableOpacity
-                style={styles.aiGenerateBtn}
-                onPress={() => handleGenerateAiSms()}
-                disabled={isGeneratingAi}
-              >
-                {isGeneratingAi ? (
-                  <ActivityIndicator size="small" color="#38BDF8" />
-                ) : (
-                  <>
-                    <Sparkles size={14} color="#38BDF8" />
-                    <Text style={styles.aiGenerateBtnText}>AI Re-Draft</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <TouchableOpacity
+                  style={styles.aiGenerateBtn}
+                  onPress={() => handleGenerateAiSms()}
+                  disabled={isGeneratingAi}
+                >
+                  {isGeneratingAi ? (
+                    <ActivityIndicator size="small" color="#38BDF8" />
+                  ) : (
+                    <>
+                      <Sparkles size={14} color="#38BDF8" />
+                      <Text style={styles.aiGenerateBtnText}>AI Re-Draft</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalHeaderCloseBtn}
+                  onPress={() => {
+                    if (isNoAnswerSmsPrompt) {
+                      handleSkipNoAnswerSms();
+                    } else {
+                      setSmsModalVisible(false);
+                    }
+                  }}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <X size={18} color={Colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <Text style={{ color: '#94A3B8', fontSize: 12, marginBottom: 8 }}>
@@ -2099,7 +2183,12 @@ export default function DialerHudScreen({ route, navigation }: any) {
         onRequestClose={() => setNotesModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: '85%', width: '92%' }]}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setNotesModalVisible(false)}
+          />
+          <View style={[styles.modalContent, { maxHeight: '85%', width: '92%' }]} pointerEvents="auto">
             {/* Modal Header */}
             <View style={styles.modalHeaderRow}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
@@ -2111,8 +2200,9 @@ export default function DialerHudScreen({ route, navigation }: any) {
               <TouchableOpacity
                 style={styles.modalCloseButton}
                 onPress={() => setNotesModalVisible(false)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
-                <X size={18} color={Colors.livingWhite} />
+                <X size={18} color={Colors.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -2231,7 +2321,12 @@ export default function DialerHudScreen({ route, navigation }: any) {
         onRequestClose={() => setEditLeadModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: '90%', width: '92%' }]}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setEditLeadModalVisible(false)}
+          />
+          <View style={[styles.modalContent, { maxHeight: '90%', width: '92%' }]} pointerEvents="auto">
             <View style={styles.modalHeaderRow}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
                 <Edit3 size={18} color={Colors.heavenlyGold} />
@@ -2240,8 +2335,9 @@ export default function DialerHudScreen({ route, navigation }: any) {
               <TouchableOpacity
                 style={styles.modalCloseButton}
                 onPress={() => setEditLeadModalVisible(false)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
-                <X size={18} color={Colors.livingWhite} />
+                <X size={18} color={Colors.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -3155,7 +3251,39 @@ const styles = StyleSheet.create<any>({
     borderBottomColor: Colors.borderSubtle,
   },
   modalCloseButton: {
-    padding: 4,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  modalHeaderCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  modalDoneFooterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.brandPrimary,
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginTop: 14,
+    gap: 8,
+  },
+  modalDoneFooterBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
   noteItemCard: {
     backgroundColor: Colors.surfaceSubtle,

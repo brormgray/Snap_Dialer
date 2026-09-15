@@ -1012,13 +1012,27 @@ export default function SettingsScreen({ navigation }: any) {
       </ScrollView>
 
       {/* Import CSV Modal */}
-      <Modal visible={csvModalVisible} transparent animationType="slide">
+      <Modal
+        visible={csvModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setCsvModalVisible(false)}
+      >
         <View style={styles.modalBackdrop}>
-          <SafeAreaView style={styles.modalContainer}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setCsvModalVisible(false)}
+          />
+          <SafeAreaView style={styles.modalContainer} pointerEvents="auto">
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Import School Roster CSV</Text>
-              <TouchableOpacity onPress={() => setCsvModalVisible(false)}>
-                <X size={24} color="#F8FAFC" />
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                onPress={() => setCsvModalVisible(false)}
+              >
+                <X size={18} color={Colors.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -1055,13 +1069,27 @@ export default function SettingsScreen({ navigation }: any) {
       </Modal>
 
       {/* Paste JSON Modal */}
-      <Modal visible={pasteModalVisible} transparent animationType="slide">
+      <Modal
+        visible={pasteModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPasteModalVisible(false)}
+      >
         <View style={styles.modalBackdrop}>
-          <SafeAreaView style={styles.modalContainer}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setPasteModalVisible(false)}
+          />
+          <SafeAreaView style={styles.modalContainer} pointerEvents="auto">
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Paste Backup JSON</Text>
-              <TouchableOpacity onPress={() => setPasteModalVisible(false)}>
-                <X size={24} color="#F8FAFC" />
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                onPress={() => setPasteModalVisible(false)}
+              >
+                <X size={18} color={Colors.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -1100,16 +1128,30 @@ export default function SettingsScreen({ navigation }: any) {
       </Modal>
 
       {/* Set PIN Modal */}
-      <Modal visible={showPinSetupModal} transparent animationType="fade">
+      <Modal
+        visible={showPinSetupModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPinSetupModal(false)}
+      >
         <View style={styles.modalBackdrop}>
-          <SafeAreaView style={styles.modalContainer}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setShowPinSetupModal(false)}
+          />
+          <SafeAreaView style={styles.modalContainer} pointerEvents="auto">
             <View style={styles.modalHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Lock size={20} color={Colors.heavenlyGold} />
                 <Text style={styles.modalTitle}>Set 4-Digit Field PIN</Text>
               </View>
-              <TouchableOpacity onPress={() => setShowPinSetupModal(false)}>
-                <X size={20} color={Colors.textMuted} />
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                onPress={() => setShowPinSetupModal(false)}
+              >
+                <X size={18} color={Colors.textPrimary} />
               </TouchableOpacity>
             </View>
             <Text style={styles.modalDesc}>
@@ -1347,6 +1389,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
   },
   modalTitle: {
     fontSize: 18,

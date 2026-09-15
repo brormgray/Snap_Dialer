@@ -168,7 +168,15 @@ export function CallbackSchedulerModal({
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
+        <TouchableOpacity
+          style={StyleSheet.absoluteFill}
+          activeOpacity={1}
+          onPress={() => {
+            HapticsService.tick().catch(() => {});
+            onClose();
+          }}
+        />
+        <View style={styles.modalContent} pointerEvents="auto">
           <View style={styles.modalHeader}>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -179,8 +187,15 @@ export function CallbackSchedulerModal({
                 {lead.name} • {lead.school || 'VOL'}{lead.planning_period ? ` (${lead.planning_period})` : ''}
               </Text>
             </View>
-            <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-              <X size={20} color={Colors.textSecondary} />
+            <TouchableOpacity
+              style={styles.closeBtn}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              onPress={() => {
+                HapticsService.tick().catch(() => {});
+                onClose();
+              }}
+            >
+              <X size={18} color={Colors.textPrimary} />
             </TouchableOpacity>
           </View>
 
@@ -377,7 +392,14 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   closeBtn: {
-    padding: 4,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
   },
   sectionLabel: {
     fontSize: 11,
