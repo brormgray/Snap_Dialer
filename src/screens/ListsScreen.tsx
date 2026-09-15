@@ -177,6 +177,7 @@ export default function ListsScreen({ navigation }: any) {
     if (l.attempts_count && l.attempts_count > 0) return true;
     if (l.last_attempt_at) return true;
     if (l.last_disposition && l.last_disposition !== 'pending') return true;
+    if (callLogs && callLogs.some((log) => String(log.lead_id).trim() === String(l.id).trim())) return true;
     return false;
   };
 

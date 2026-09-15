@@ -76,6 +76,36 @@ class WebDatabase implements IDatabase {
           // Non-fatal
         }
       }
+      // 4. Data integrity self-healing: ensure any leads with call logs reflect proper attempts & last_disposition
+      if (this.leads.length > 0 && this.call_logs.length > 0) {
+        let healed = false;
+        for (const lead of this.leads) {
+          const leadLogs = this.call_logs.filter((log) => String(log.lead_id).trim() === String(lead.id).trim());
+          if (leadLogs.length > 0) {
+            if (!lead.attempts_count || lead.attempts_count < leadLogs.length) {
+              lead.attempts_count = leadLogs.length;
+              healed = true;
+            }
+            const sortedLogs = [...leadLogs].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+            const latestLog = sortedLogs[0];
+            if (latestLog?.created_at && (!lead.last_attempt_at || latestLog.created_at > lead.last_attempt_at)) {
+              lead.last_attempt_at = latestLog.created_at;
+              healed = true;
+            }
+            if (
+              latestLog?.disposition &&
+              (!lead.last_disposition || lead.last_disposition === 'pending') &&
+              latestLog.disposition !== 'pending'
+            ) {
+              lead.last_disposition = latestLog.disposition;
+              healed = true;
+            }
+          }
+        }
+        if (healed) {
+          await this.saveToStorage();
+        }
+      }
       this.isInitialized = true;
     } catch (e) {
       console.warn('WebDatabase init fallback:', e);
@@ -584,7 +614,25 @@ class WebDatabase implements IDatabase {
             } catch { lead.meeting_preferences = []; }
             lead.updated_at = params[14] || new Date().toISOString();
           }
-        } else if (s.includes('follow_up_at = null') || s.includes('follow_up_at=null')) {
+        } else if (
+          s.includes('last_disposition = ?') &&
+          s.includes('attempts_count = ?')
+        ) {
+          lead.last_disposition = params[0] || lead.last_disposition;
+          lead.attempts_count = Number(params[1]) || (lead.attempts_count || 0) + 1;
+          lead.cadence_step = Number(params[2]) || (lead.cadence_step || 0) + 1;
+          lead.last_attempt_at = params[3] || new Date().toISOString();
+          if (s.includes('follow_up_at = null') || s.includes('follow_up_at=null') || lead.last_disposition !== 'callback_requested') {
+            lead.follow_up_at = null;
+          }
+          if (params[4] !== undefined && params[4] !== null) {
+            lead.notes = params[4];
+          }
+          lead.updated_at = params[5] || new Date().toISOString();
+        } else if (
+          (s.includes('follow_up_at = null') || s.includes('follow_up_at=null')) &&
+          !s.includes('last_disposition = ?')
+        ) {
           lead.follow_up_at = null;
           if (lead.last_disposition === 'callback_requested') {
             lead.last_disposition = 'pending';
