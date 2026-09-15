@@ -342,4 +342,52 @@ test('Pipeline Filtering & Search Hardening Suite', async (t) => {
     const isRealLeadCalled = hasEverBeenCalled(realLead, validLogs);
     assert.equal(isRealLeadCalled, true);
   });
+
+  await t.test('5. Custom Callback Date & Time scheduling calculation', () => {
+    // Helper replicating custom callback date/time computation
+    function computeCustomCallbackDate(dateKey, hour12, minute, amPm) {
+      const [y, mo, d] = dateKey.split('-').map(Number);
+      let h = hour12;
+      if (amPm === 'PM' && h < 12) h += 12;
+      if (amPm === 'AM' && h === 12) h = 0;
+      return new Date(y, mo - 1, d, h, minute, 0, 0);
+    }
+
+    // 1. Afternoon callback: Sep 18, 2026 at 2:30 PM
+    const cb1 = computeCustomCallbackDate('2026-09-18', 2, 30, 'PM');
+    assert.equal(cb1.getFullYear(), 2026);
+    assert.equal(cb1.getMonth(), 8); // 0-indexed September
+    assert.equal(cb1.getDate(), 18);
+    assert.equal(cb1.getHours(), 14);
+    assert.equal(cb1.getMinutes(), 30);
+
+    // 2. Morning callback: Sep 19, 2026 at 9:15 AM
+    const cb2 = computeCustomCallbackDate('2026-09-19', 9, 15, 'AM');
+    assert.equal(cb2.getHours(), 9);
+    assert.equal(cb2.getMinutes(), 15);
+
+    // 3. 12:00 PM (Noon) callback
+    const cbNoon = computeCustomCallbackDate('2026-09-20', 12, 0, 'PM');
+    assert.equal(cbNoon.getHours(), 12);
+    assert.equal(cbNoon.getMinutes(), 0);
+
+    // 4. Lead with scheduled custom callback is included in 'callback' filter tab
+    const leadWithCustomCallback = {
+      id: 'lead-custom-cb',
+      name: 'Custom Scheduled Lead',
+      phone: '555-999-0000',
+      school: 'Deltona High',
+      attempts_count: 1,
+      last_disposition: 'callback_requested',
+      follow_up_at: cb1.toISOString(),
+    };
+
+    const res = filterLeadsPipeline({
+      leads: [leadWithCustomCallback],
+      filterTab: 'callback',
+    });
+    assert.equal(res.length, 1);
+    assert.equal(res[0].id, 'lead-custom-cb');
+    assert.equal(res[0].follow_up_at, cb1.toISOString());
+  });
 });
