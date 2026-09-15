@@ -21,6 +21,7 @@ import {
   Flame,
   CheckCircle2,
   CalendarCheck,
+  ClipboardList,
 } from 'lucide-react-native';
 import { LeadsRepository } from '../db/leadsRepository';
 import { CalendarService } from '../services/calendarService';
@@ -29,11 +30,18 @@ import { TelephonyService } from '../services/telephonyService';
 import { getScheduleForSchool, matchPeriodId, getCurrentlyActivePeriodId } from '../data/bellSchedules';
 import { Lead } from '../types';
 import { Colors } from '../theme/colors';
+import { QuickDispositionModal } from '../components/QuickDispositionModal';
 
 export default function PlanningHeatmapScreen({ navigation }: any) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedSchool, setSelectedSchool] = useState<string>('All');
+
+  // Live Call & Quick Disposition State
+  const [quickDispoLead, setQuickDispoLead] = useState<Lead | null>(null);
+  const [isCallActive, setIsCallActive] = useState<boolean>(false);
+  const [callStartTime, setCallStartTime] = useState<number | null>(null);
+  const [isQuickDispoVisible, setIsQuickDispoVisible] = useState<boolean>(false);
 
   useEffect(() => {
     loadPlanningData();
@@ -48,6 +56,25 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleHeatmapCall = async (lead: Lead) => {
+    if (!lead.phone) return;
+    await HapticsService.medium();
+    const startTime = Date.now();
+    setCallStartTime(startTime);
+    setQuickDispoLead(lead);
+    setIsCallActive(true);
+    setIsQuickDispoVisible(true);
+    await TelephonyService.makeCall(lead.phone);
+  };
+
+  const handleHeatmapDispo = async (lead: Lead) => {
+    await HapticsService.tick();
+    setCallStartTime(null);
+    setQuickDispoLead(lead);
+    setIsCallActive(false);
+    setIsQuickDispoVisible(true);
   };
 
   const schoolOptions = ['All', ...Array.from(new Set(leads.map((l) => l.school || 'VOL').filter(Boolean)))];
@@ -194,17 +221,25 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
                             </Text>
                           </View>
 
-                          <TouchableOpacity
-                            style={styles.quickDialPill}
-                            onPress={async () => {
-                              if (!lead.phone) return;
-                              await HapticsService.medium();
-                              await TelephonyService.makeCall(lead.phone);
-                              navigation.navigate('LeadDetail', { leadId: lead.id });
-                            }}
-                          >
-                            <PhoneCall size={14} color="#FFFFFF" />
-                          </TouchableOpacity>
+                          <View style={styles.actionPillRow}>
+                            <TouchableOpacity
+                              style={styles.quickDispoPill}
+                              onPress={() => handleHeatmapDispo(lead)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Disposition ${lead.name}`}
+                            >
+                              <ClipboardList size={13} color="#8B5CF6" />
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={styles.quickDialPill}
+                              onPress={() => handleHeatmapCall(lead)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Call ${lead.name}`}
+                            >
+                              <PhoneCall size={14} color="#FFFFFF" />
+                            </TouchableOpacity>
+                          </View>
                         </TouchableOpacity>
                       );
                     })}
@@ -215,6 +250,23 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
           })}
         </ScrollView>
       )}
+
+      {/* Universal Live Call & Quick Disposition Modal */}
+      <QuickDispositionModal
+        visible={isQuickDispoVisible}
+        lead={quickDispoLead}
+        isCallActive={isCallActive}
+        initialStartTime={callStartTime}
+        onClose={() => {
+          setIsQuickDispoVisible(false);
+          setQuickDispoLead(null);
+          setCallStartTime(null);
+          setIsCallActive(false);
+        }}
+        onDispositionComplete={() => {
+          loadPlanningData();
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -390,11 +442,25 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: 2,
   },
+  actionPillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 8,
+  },
+  quickDispoPill: {
+    backgroundColor: 'rgba(139, 92, 246, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.4)',
+    padding: 7,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   quickDialPill: {
     backgroundColor: Colors.callActive,
     padding: 8,
     borderRadius: 20,
-    marginLeft: 8,
   },
   activePeriodBadge: {
     backgroundColor: '#10B981',

@@ -441,7 +441,7 @@ export class LeadsRepository {
       const stats = await db.getFirstAsync<{ total: number; completed: number; connected: number }>(
         `SELECT 
            COUNT(*) as total,
-           SUM(CASE WHEN last_disposition IN ('connected', 'spoke', 'appointment_set', 'bad_number', 'do_not_call') THEN 1 ELSE 0 END) as completed,
+           SUM(CASE WHEN last_disposition IN ('connected', 'spoke', 'appointment_set', 'bad_number', 'do_not_call', 'other') THEN 1 ELSE 0 END) as completed,
            SUM(CASE WHEN last_disposition IN ('connected', 'spoke', 'appointment_set') THEN 1 ELSE 0 END) as connected
          FROM leads WHERE list_id = ?`,
         [lead.list_id]

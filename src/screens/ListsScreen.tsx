@@ -42,6 +42,7 @@ import {
   MapPin,
   Award,
   SlidersHorizontal,
+  ClipboardList,
 } from 'lucide-react-native';
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
@@ -55,6 +56,7 @@ import ZoomableImageModal from '../components/ZoomableImageModal';
 import { TodayCockpitCard } from '../components/TodayCockpitCard';
 import { BatchDripDispatchModal } from '../components/BatchDripDispatchModal';
 import { FilterBottomSheet } from '../components/FilterBottomSheet';
+import { QuickDispositionModal } from '../components/QuickDispositionModal';
 import { DripDispatcherService } from '../services/dripDispatcherService';
 import { PipelineStateService } from '../services/pipelineStateService';
 
@@ -77,6 +79,12 @@ export default function ListsScreen({ navigation }: any) {
   const [isDeduplicating, setIsDeduplicating] = useState<boolean>(false);
   const [dripModalVisible, setDripModalVisible] = useState<boolean>(false);
   const [filterSheetVisible, setFilterSheetVisible] = useState<boolean>(false);
+
+  // Universal Live Call & Quick Disposition Modal
+  const [quickDispoLead, setQuickDispoLead] = useState<Lead | null>(null);
+  const [isCallActive, setIsCallActive] = useState<boolean>(false);
+  const [callStartTime, setCallStartTime] = useState<number | null>(null);
+  const [isQuickDispoVisible, setIsQuickDispoVisible] = useState<boolean>(false);
 
   // Calculate duplicates count across the current pipeline
   const duplicateCount = React.useMemo(() => {
@@ -208,7 +216,7 @@ export default function ListsScreen({ navigation }: any) {
       result = result.filter((l) => ['connected', 'spoke'].includes(l.last_disposition || ''));
     } else if (filterTab === 'callback') {
       result = result.filter((l) => {
-        const isAnswered = ['appointment_set', 'connected', 'spoke', 'do_not_call', 'bad_number'].includes(l.last_disposition || '');
+        const isAnswered = ['appointment_set', 'connected', 'spoke', 'do_not_call', 'bad_number', 'other'].includes(l.last_disposition || '');
         if (isAnswered) return false;
         const hasValidFollowUp = l.follow_up_at && !isNaN(new Date(l.follow_up_at).getTime());
         return l.last_disposition === 'callback_requested' || !!hasValidFollowUp;
@@ -277,8 +285,20 @@ export default function ListsScreen({ navigation }: any) {
 
   const handleDirectCall = async (lead: Lead) => {
     await HapticsService.medium();
-    TelephonyService.makeCall(lead.phone);
-    navigation.navigate('LeadDetail', { leadId: lead.id });
+    const startTime = Date.now();
+    setCallStartTime(startTime);
+    setQuickDispoLead(lead);
+    setIsCallActive(true);
+    setIsQuickDispoVisible(true);
+    await TelephonyService.makeCall(lead.phone);
+  };
+
+  const handleOpenQuickDispo = async (lead: Lead) => {
+    await HapticsService.tick();
+    setCallStartTime(null);
+    setQuickDispoLead(lead);
+    setIsCallActive(false);
+    setIsQuickDispoVisible(true);
   };
 
   const handleDeleteLead = async (leadId: string, name: string) => {
@@ -354,11 +374,17 @@ export default function ListsScreen({ navigation }: any) {
     if (disp === 'callback_requested' || hasValidFollowUp) {
       return { label: 'Callback Scheduled', bg: Colors.badgeWarningBg, color: Colors.badgeWarningText };
     }
+    if (disp === 'other') {
+      return { label: '📋 Other / Noted', bg: 'rgba(139, 92, 246, 0.15)', color: '#8B5CF6' };
+    }
     if (disp === 'voicemail') {
       return { label: `Voicemail (${lead.attempts_count})`, bg: Colors.badgeNeutralBg, color: Colors.badgeNeutralText };
     }
     if (disp === 'no_answer') {
       return { label: `No Answer (${lead.attempts_count})`, bg: Colors.badgeNeutralBg, color: Colors.badgeNeutralText };
+    }
+    if (disp === 'bad_number') {
+      return { label: '⚠️ Bad Number', bg: Colors.badgeDangerBg, color: Colors.badgeDangerText };
     }
     if (disp === 'do_not_call') {
       return { label: 'Do Not Call', bg: Colors.badgeDangerBg, color: Colors.badgeDangerText };
@@ -388,9 +414,9 @@ export default function ListsScreen({ navigation }: any) {
   // 'Appts Set': Strictly reflects active confirmed sit-downs in 1:1 parity with the filter tab
   const appointmentCount = upcomingCount;
 
-  // 'Callbacks': Leads scheduled for a callback, removed once called back and answered (connected/spoke/appt/dnc/bad_number)
+  // 'Callbacks': Leads scheduled for a callback, removed once called back and answered (connected/spoke/appt/dnc/bad_number/other)
   const callbackCount = scopedLeads.filter((l) => {
-    const isAnswered = ['appointment_set', 'connected', 'spoke', 'do_not_call', 'bad_number'].includes(l.last_disposition || '');
+    const isAnswered = ['appointment_set', 'connected', 'spoke', 'do_not_call', 'bad_number', 'other'].includes(l.last_disposition || '');
     if (isAnswered) return false;
     const hasValidFollowUp = l.follow_up_at && !isNaN(new Date(l.follow_up_at).getTime());
     return l.last_disposition === 'callback_requested' || !!hasValidFollowUp;
@@ -867,14 +893,24 @@ export default function ListsScreen({ navigation }: any) {
                   {PipelineStateService.isDispoNeeded(item) ? (
                     <TouchableOpacity
                       style={[styles.cardActionBtn, styles.dispoActionBtn]}
-                      onPress={() => navigation.navigate('LeadDetail', { leadId: item.id, openDispo: true })}
+                      onPress={() => handleOpenQuickDispo(item)}
                     >
                       <Clock size={15} color="#D97706" />
                       <Text style={[styles.cardActionBtnText, { color: '#D97706', fontWeight: '800' }]}>
                         Record Dispo
                       </Text>
                     </TouchableOpacity>
-                  ) : null}
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.cardActionBtn, styles.quickDispoActionBtn]}
+                      onPress={() => handleOpenQuickDispo(item)}
+                    >
+                      <ClipboardList size={15} color="#8B5CF6" />
+                      <Text style={[styles.cardActionBtnText, { color: '#8B5CF6', fontWeight: '700' }]}>
+                        Dispo
+                      </Text>
+                    </TouchableOpacity>
+                  )}
 
                   <TouchableOpacity
                     style={[styles.cardActionBtn, styles.callActionBtn]}
@@ -947,6 +983,23 @@ export default function ListsScreen({ navigation }: any) {
           setSelectedSchool('all');
           setSelectedListId('all');
           setPriorityFilter('all');
+        }}
+      />
+
+      {/* Universal Live Call & Quick Disposition Modal */}
+      <QuickDispositionModal
+        visible={isQuickDispoVisible}
+        lead={quickDispoLead}
+        isCallActive={isCallActive}
+        initialStartTime={callStartTime}
+        onClose={() => {
+          setIsQuickDispoVisible(false);
+          setQuickDispoLead(null);
+          setCallStartTime(null);
+          setIsCallActive(false);
+        }}
+        onDispositionComplete={() => {
+          loadLeads();
         }}
       />
     </SafeAreaView>
@@ -1382,6 +1435,10 @@ const styles = StyleSheet.create({
   dispoActionBtn: {
     backgroundColor: 'rgba(217, 119, 6, 0.15)',
     borderColor: '#D97706',
+  },
+  quickDispoActionBtn: {
+    backgroundColor: 'rgba(139, 92, 246, 0.12)',
+    borderColor: 'rgba(139, 92, 246, 0.4)',
   },
   deleteLeadBtn: {
     padding: 8,

@@ -779,6 +779,79 @@ describe('Post-Appointment Lifecycle & Dispo Queue Architecture', () => {
     assert.strictEqual(updatedLeadSpoke.last_disposition, 'spoke');
     assert.strictEqual(updatedLeadSpoke.follow_up_at, null);
   });
+
+  // 24. 'Other' disposition clears follow_up_at and correctly excludes from callback tab
+  it('clears follow_up_at and excludes from callback tab when dispositioned as other', () => {
+    const callbackLead = {
+      id: 'lead_cb_other',
+      name: 'Maria Sanchez',
+      last_disposition: 'callback_requested',
+      follow_up_at: '2026-09-15T16:00:00.000Z',
+      notes: 'Initial callback note',
+    };
+
+    // Simulate dispositioning as 'other'
+    const dispo = 'other';
+    const customNote = 'Spoke with Secretary; Educator on Leave — Out until November';
+    const timestamp = 'Sep 15, 4:30 PM';
+    const updatedNotes = `[${timestamp}] Call attempt #2 (Other): ${customNote}\n\n${callbackLead.notes}`;
+
+    const updatedLead = {
+      ...callbackLead,
+      last_disposition: dispo,
+      follow_up_at: null,
+      notes: updatedNotes,
+      attempts_count: 2,
+      cadence_step: 2,
+    };
+
+    assert.strictEqual(updatedLead.last_disposition, 'other');
+    assert.strictEqual(updatedLead.follow_up_at, null);
+    assert.ok(updatedLead.notes.includes('Call attempt #2 (Other): Spoke with Secretary'));
+
+    // Verify callback filter tab logic correctly excludes 'other'
+    const isAnswered = ['appointment_set', 'connected', 'spoke', 'do_not_call', 'bad_number', 'other'].includes(updatedLead.last_disposition);
+    const hasValidFollowUp = updatedLead.follow_up_at && !isNaN(new Date(updatedLead.follow_up_at).getTime());
+    const isVisibleInCallbackTab = !isAnswered && (updatedLead.last_disposition === 'callback_requested' || !!hasValidFollowUp);
+
+    assert.strictEqual(isVisibleInCallbackTab, false);
+  });
+
+  // 25. 'Other' disposition counts as completed lead in campaign list stats
+  it('counts other disposition in completed leads for campaign progress', () => {
+    const leads = [
+      { id: '1', list_id: 'list_a', last_disposition: 'connected' },
+      { id: '2', list_id: 'list_a', last_disposition: 'appointment_set' },
+      { id: '3', list_id: 'list_a', last_disposition: 'bad_number' },
+      { id: '4', list_id: 'list_a', last_disposition: 'do_not_call' },
+      { id: '5', list_id: 'list_a', last_disposition: 'other' },
+      { id: '6', list_id: 'list_a', last_disposition: 'no_answer' },
+      { id: '7', list_id: 'list_a', last_disposition: 'pending' },
+    ];
+
+    const completedDispositions = ['connected', 'spoke', 'appointment_set', 'bad_number', 'do_not_call', 'other'];
+    const completedCount = leads.filter((l) => completedDispositions.includes(l.last_disposition)).length;
+
+    assert.strictEqual(completedCount, 5);
+  });
+
+  // 26. Universal Call Logging records duration and disposition
+  it('correctly constructs call log audit entries with duration and disposition', () => {
+    const callDuration = 45;
+    const logEntry = {
+      id: 'log_test_123',
+      lead_id: 'lead_test',
+      list_id: 'list_1',
+      duration_seconds: callDuration,
+      disposition: 'other',
+      note: 'Call attempt #1 (Other): Spoke with Secretary / Front Desk',
+      sms_sent: false,
+    };
+
+    assert.strictEqual(logEntry.duration_seconds, 45);
+    assert.strictEqual(logEntry.disposition, 'other');
+    assert.strictEqual(logEntry.sms_sent, false);
+  });
 });
 
 

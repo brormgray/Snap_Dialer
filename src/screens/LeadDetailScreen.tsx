@@ -43,6 +43,7 @@ import {
   Edit3,
   Plus,
   Award,
+  ClipboardList,
 } from 'lucide-react-native';
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
@@ -86,6 +87,9 @@ export default function LeadDetailScreen({ route, navigation }: any) {
   const [callStartTime, setCallStartTime] = useState<number | null>(null);
   const [apptSchedulerVisible, setApptSchedulerVisible] = useState<boolean>(false);
   const [callbackModalVisible, setCallbackModalVisible] = useState<boolean>(false);
+  const [otherModalVisible, setOtherModalVisible] = useState<boolean>(false);
+  const [otherDispoNote, setOtherDispoNote] = useState<string>('');
+  const [otherDispoChips, setOtherDispoChips] = useState<string[]>([]);
 
   // Edit form state
   const [name, setName] = useState<string>('');
@@ -104,8 +108,14 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       if (route.params?.autoOpenSms && loadedLead) {
         openSmsModal(loadedLead);
       }
+      if (route.params?.openDispo) {
+        setShowDispositionRow(true);
+      }
+      if (route.params?.startCall && loadedLead) {
+        handleCall();
+      }
     });
-  }, [leadId]);
+  }, [leadId, route.params?.openDispo, route.params?.startCall]);
 
   const loadLeadData = async (): Promise<Lead | null> => {
     const [l, lists] = await Promise.all([
@@ -310,7 +320,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     showToast(`✓ Confirmed Sit-Down: ${dateFormatted} @ ${timeFormatted}`);
   };
 
-  const handleLogCallOutcome = async (disposition: CallDisposition) => {
+  const handleLogCallOutcome = async (disposition: CallDisposition, customNote?: string) => {
     if (!lead) return;
     await HapticsService.success();
 
@@ -321,6 +331,13 @@ export default function LeadDetailScreen({ route, navigation }: any) {
 
     if (disposition === 'callback_requested') {
       setCallbackModalVisible(true);
+      return;
+    }
+
+    if (disposition === 'other' && !customNote) {
+      setOtherDispoNote('');
+      setOtherDispoChips([]);
+      setOtherModalVisible(true);
       return;
     }
 
@@ -335,9 +352,16 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         ? 'Direct profile call: No Answer.'
         : disposition === 'voicemail'
         ? 'Direct profile call: Left Voicemail.'
+        : disposition === 'bad_number'
+        ? 'Direct profile call: Bad Number / Disconnected.'
+        : disposition === 'do_not_call'
+        ? 'Direct profile call: Flagged Do Not Call.'
+        : disposition === 'other'
+        ? `Direct profile call (Other): ${customNote || 'Custom outcome recorded.'}`
         : `Direct profile call: ${disposition}.`;
 
-    const updatedNotes = NotesService.addNote(lead.notes, defaultNote);
+    const noteToRecord = customNote || defaultNote;
+    const updatedNotes = NotesService.addNote(lead.notes, noteToRecord);
     await LeadsRepository.updateLeadDisposition(lead.id, disposition, updatedNotes);
 
     await CallLogsRepository.logCall({
@@ -345,7 +369,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       listId: lead.list_id,
       durationSeconds,
       disposition,
-      note: defaultNote,
+      note: noteToRecord,
     });
 
     await loadLeadData();
@@ -379,6 +403,32 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     } else {
       showToast('✓ Callback Scheduled.');
     }
+  };
+
+  const toggleOtherChip = (chip: string) => {
+    HapticsService.tick().catch(() => {});
+    if (otherDispoChips.includes(chip)) {
+      setOtherDispoChips(otherDispoChips.filter((c) => c !== chip));
+    } else {
+      setOtherDispoChips([...otherDispoChips, chip]);
+    }
+  };
+
+  const handleSaveOtherDispo = () => {
+    setOtherModalVisible(false);
+    const chipText = otherDispoChips.join('; ');
+    const userText = otherDispoNote.trim();
+    let combinedNote = '';
+    if (chipText && userText) {
+      combinedNote = `${chipText} — ${userText}`;
+    } else if (chipText) {
+      combinedNote = chipText;
+    } else if (userText) {
+      combinedNote = userText;
+    } else {
+      combinedNote = 'Non-standard outcome recorded.';
+    }
+    handleLogCallOutcome('other', combinedNote);
   };
 
   const handleClearCallback = async () => {
@@ -694,6 +744,8 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         return Colors.badgeSuccessText;
       case 'callback_requested':
         return Colors.badgeWarningText;
+      case 'other':
+        return '#8B5CF6';
       case 'no_answer':
       case 'voicemail':
         return Colors.badgeNeutralText;
@@ -713,6 +765,8 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         return Colors.badgeSuccessBg;
       case 'callback_requested':
         return Colors.badgeWarningBg;
+      case 'other':
+        return 'rgba(139, 92, 246, 0.15)';
       case 'no_answer':
       case 'voicemail':
         return Colors.badgeNeutralBg;
@@ -733,6 +787,8 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         return '💬 SPOKE / CONNECTED';
       case 'callback_requested':
         return '📅 CALLBACK';
+      case 'other':
+        return '📋 OTHER / NOTED';
       case 'no_answer':
         return '📞 NO ANSWER';
       case 'voicemail':
@@ -1440,6 +1496,27 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                     >
                       <Text style={[styles.detailDispBtnText, { color: Colors.badgeWarningText }]}>📅 Callback</Text>
                     </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.detailDispBtn, { backgroundColor: 'rgba(139, 92, 246, 0.12)', borderColor: '#8B5CF6' }]}
+                      onPress={() => handleLogCallOutcome('other')}
+                    >
+                      <Text style={[styles.detailDispBtnText, { color: '#8B5CF6' }]}>📋 Other...</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.detailDispBtn, { backgroundColor: Colors.badgeDangerBg, borderColor: Colors.badgeDangerText }]}
+                      onPress={() => handleLogCallOutcome('do_not_call')}
+                    >
+                      <Text style={[styles.detailDispBtnText, { color: Colors.badgeDangerText }]}>🛡️ DNC</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.detailDispBtn, { backgroundColor: Colors.badgeNeutralBg, borderColor: Colors.badgeWarningText }]}
+                      onPress={() => handleLogCallOutcome('bad_number')}
+                    >
+                      <Text style={[styles.detailDispBtnText, { color: Colors.badgeWarningText }]}>⚠️ Bad #</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
               )}
@@ -1617,7 +1694,26 @@ export default function LeadDetailScreen({ route, navigation }: any) {
             activeOpacity={0.8}
           >
             <PhoneCall size={18} color="#FFFFFF" />
-            <Text style={styles.stickyCallButtonText}>Call Educator</Text>
+            <Text style={styles.stickyCallButtonText}>Call</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.stickyDispoButton,
+              showDispositionRow && styles.stickyDispoButtonActive,
+            ]}
+            onPress={() => {
+              HapticsService.tick();
+              setShowDispositionRow((prev) => !prev);
+            }}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Toggle disposition deck"
+          >
+            <ClipboardList size={18} color={showDispositionRow ? '#FFFFFF' : '#8B5CF6'} />
+            <Text style={[styles.stickyDispoButtonText, showDispositionRow && styles.stickyDispoButtonTextActive]}>
+              Dispo
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -1626,7 +1722,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
             activeOpacity={0.8}
           >
             <MessageSquare size={18} color="#FFFFFF" />
-            <Text style={styles.stickySmsButtonText}>AI Messages</Text>
+            <Text style={styles.stickySmsButtonText}>AI Text</Text>
           </TouchableOpacity>
 
           {/* Standalone Callback Scheduling Button */}
@@ -1840,6 +1936,93 @@ export default function LeadDetailScreen({ route, navigation }: any) {
           onSave={handleConfirmCallback}
           onClear={lead.follow_up_at ? handleClearCallback : undefined}
         />
+      )}
+
+      {/* Other Disposition Custom Note Modal */}
+      {lead && (
+        <Modal
+          visible={otherModalVisible}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setOtherModalVisible(false)}
+        >
+          <View style={styles.otherModalOverlay}>
+            <View style={styles.otherModalCard}>
+              <View style={styles.otherModalHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.otherModalTitle}>📋 Other Disposition</Text>
+                  <Text style={styles.otherModalSubtitle}>
+                    {lead.name} • {lead.school || 'Campus'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.otherModalCloseBtn}
+                  onPress={() => setOtherModalVisible(false)}
+                >
+                  <X size={18} color={Colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+                <Text style={styles.otherSectionLabel}>SELECT QUICK REASON CHIPS</Text>
+                <View style={styles.otherChipsGrid}>
+                  {[
+                    'Spoke with Secretary / Front Desk',
+                    'Wrong Extension / Transferred',
+                    'Educator on Leave / Sabbatical',
+                    'Retired / Transferred District',
+                    'Hung Up Immediately',
+                    'Gatekeeper Refusal',
+                    'Requested Email First',
+                    'Part-time / Split Campus',
+                  ].map((chip) => {
+                    const isSelected = otherDispoChips.includes(chip);
+                    return (
+                      <TouchableOpacity
+                        key={chip}
+                        style={[styles.otherChip, isSelected && styles.otherChipActive]}
+                        onPress={() => toggleOtherChip(chip)}
+                      >
+                        <Text style={[styles.otherChipText, isSelected && styles.otherChipTextActive]}>
+                          {isSelected ? '✓ ' : '+ '}{chip}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={[styles.otherSectionLabel, { marginTop: 14 }]}>WRITE-IN DISPOSITION NOTE</Text>
+                <TextInput
+                  style={styles.otherTextArea}
+                  placeholder="e.g. Spoke with front desk, educator only on campus Tuesdays and Thursdays..."
+                  placeholderTextColor={Colors.textMuted}
+                  value={otherDispoNote}
+                  onChangeText={setOtherDispoNote}
+                  multiline
+                  numberOfLines={4}
+                  autoFocus
+                />
+
+                <View style={styles.otherModalActionRow}>
+                  <TouchableOpacity
+                    style={styles.otherCancelBtn}
+                    onPress={() => setOtherModalVisible(false)}
+                  >
+                    <Text style={styles.otherCancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.otherSaveBtn}
+                    onPress={handleSaveOtherDispo}
+                  >
+                    <CheckCircle2 size={16} color="#FFFFFF" />
+                    <Text style={styles.otherSaveBtnText}>Save 'Other' Outcome</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
       )}
     </SafeAreaView>
   );
@@ -2700,6 +2883,30 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
   },
+  stickyDispoButton: {
+    width: 68,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(139, 92, 246, 0.12)',
+    paddingVertical: 13,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.4)',
+    gap: 4,
+  },
+  stickyDispoButtonActive: {
+    backgroundColor: '#8B5CF6',
+    borderColor: '#7C3AED',
+  },
+  stickyDispoButtonText: {
+    color: '#8B5CF6',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  stickyDispoButtonTextActive: {
+    color: '#FFFFFF',
+  },
   stickySmsButton: {
     flex: 2,
     flexDirection: 'row',
@@ -2902,5 +3109,126 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: '#10B981',
+  },
+  // Other Disposition Modal Styles
+  otherModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  otherModalCard: {
+    width: '100%',
+    maxWidth: 480,
+    backgroundColor: Colors.surfaceCard,
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  otherModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderSubtle,
+    marginBottom: 12,
+  },
+  otherModalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  otherModalSubtitle: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  otherModalCloseBtn: {
+    padding: 4,
+    borderRadius: 8,
+    backgroundColor: Colors.surfaceSubtle,
+  },
+  otherSectionLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    letterSpacing: 0.8,
+    marginBottom: 8,
+  },
+  otherChipsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 6,
+  },
+  otherChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: Colors.surfaceSubtle,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  otherChipActive: {
+    backgroundColor: 'rgba(139, 92, 246, 0.2)',
+    borderColor: '#8B5CF6',
+  },
+  otherChipText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  otherChipTextActive: {
+    color: '#8B5CF6',
+    fontWeight: '700',
+  },
+  otherTextArea: {
+    backgroundColor: Colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    borderRadius: 8,
+    padding: 12,
+    color: Colors.textPrimary,
+    fontSize: 13,
+    textAlignVertical: 'top',
+    minHeight: 80,
+  },
+  otherModalActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.borderSubtle,
+  },
+  otherCancelBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  otherCancelBtnText: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  otherSaveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#8B5CF6',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  otherSaveBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

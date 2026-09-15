@@ -51,6 +51,7 @@ import {
   Edit3,
   Trash2,
   Plus,
+  ClipboardList,
 } from 'lucide-react-native';
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
@@ -110,6 +111,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
   const [noteModalVisible, setNoteModalVisible] = useState<boolean>(false);
   const [apptSchedulerVisible, setApptSchedulerVisible] = useState<boolean>(false);
   const [isSettingAppt, setIsSettingAppt] = useState<boolean>(false);
+  const [isOtherDisposition, setIsOtherDisposition] = useState<boolean>(false);
   const [selectedApptDate, setSelectedApptDate] = useState<Date | null>(null);
   const [callNote, setCallNote] = useState<string>('');
 
@@ -704,7 +706,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
     await HapticsService.success();
     setNoteModalVisible(false);
 
-    const disposition: CallDisposition = isSettingAppt ? 'appointment_set' : 'connected';
+    const disposition: CallDisposition = isSettingAppt ? 'appointment_set' : isOtherDisposition ? 'other' : 'connected';
     
     // Ensure the date shown as visually selected is passed even if user didn't re-click the active pill
     let apptDateToUse: Date | undefined = undefined;
@@ -739,6 +741,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
     await handleDisposition(disposition, callNote, true, apptDateToUse);
     setCallNote('');
     setIsSettingAppt(false);
+    setIsOtherDisposition(false);
     setSelectedApptDate(null);
   };
 
@@ -1541,10 +1544,37 @@ export default function DialerHudScreen({ route, navigation }: any) {
 
           {/* Bottom Actions Row */}
           <View style={styles.bottomActionsRow}>
-            <TouchableOpacity style={styles.dncLinkButton} onPress={handleMarkDNC}>
-              <ShieldAlert size={14} color={Colors.badgeDangerText} />
-              <Text style={styles.dncLinkText}>Block / DNC</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+              <TouchableOpacity style={styles.dncLinkButton} onPress={handleMarkDNC}>
+                <ShieldAlert size={14} color={Colors.badgeDangerText} />
+                <Text style={styles.dncLinkText}>DNC</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.dncLinkButton}
+                onPress={async () => {
+                  cancelAutoAdvanceTimer();
+                  await handleDisposition('bad_number', 'Bad / Disconnected number', true);
+                }}
+              >
+                <AlertTriangle size={14} color={Colors.badgeWarningText} />
+                <Text style={[styles.dncLinkText, { color: Colors.badgeWarningText }]}>Bad #</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.dncLinkButton}
+                onPress={() => {
+                  cancelAutoAdvanceTimer();
+                  setIsSettingAppt(false);
+                  setIsOtherDisposition(true);
+                  setCallNote('');
+                  setNoteModalVisible(true);
+                }}
+              >
+                <ClipboardList size={14} color="#8B5CF6" />
+                <Text style={[styles.dncLinkText, { color: '#8B5CF6' }]}>Other...</Text>
+              </TouchableOpacity>
+            </View>
 
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
               {currentIndex > 0 && (
@@ -1601,18 +1631,69 @@ export default function DialerHudScreen({ route, navigation }: any) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              {isSettingAppt ? `🎯 Appointment Set: ${currentLead.name}` : `Call Notes: ${currentLead.name}`}
+              {isSettingAppt
+                ? `🎯 Appointment Set: ${currentLead.name}`
+                : isOtherDisposition
+                ? `📋 Other Outcome: ${currentLead.name}`
+                : `Call Notes: ${currentLead.name}`}
             </Text>
             <Text style={{ color: Colors.textSecondary, fontSize: 13, marginBottom: 8 }}>
               {isSettingAppt
                 ? 'Record the confirmed date, time, and classroom room number for your sit-down:'
+                : isOtherDisposition
+                ? 'Select quick reason chips or enter custom outcome notes:'
                 : 'Record key conversation takeaways and follow-up points:'}
             </Text>
+
+            {isOtherDisposition && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                {[
+                  'Spoke with Secretary / Front Desk',
+                  'Wrong Extension / Transferred',
+                  'Educator on Leave / Sabbatical',
+                  'Retired / Transferred District',
+                  'Hung Up Immediately',
+                  'Gatekeeper Refusal',
+                  'Requested Email First',
+                  'Part-time / Split Campus',
+                ].map((chip) => {
+                  const isIncluded = callNote.includes(chip);
+                  return (
+                    <TouchableOpacity
+                      key={chip}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        borderRadius: 16,
+                        backgroundColor: isIncluded ? 'rgba(139, 92, 246, 0.2)' : Colors.surfaceSubtle,
+                        borderWidth: 1,
+                        borderColor: isIncluded ? '#8B5CF6' : Colors.borderSubtle,
+                      }}
+                      onPress={() => {
+                        HapticsService.tick().catch(() => {});
+                        if (isIncluded) {
+                          setCallNote((prev) => prev.replace(chip, '').replace(/^;\s*|;\s*$/g, '').trim());
+                        } else {
+                          setCallNote((prev) => (prev.trim() ? `${prev.trim()}; ${chip}` : chip));
+                        }
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, color: isIncluded ? '#8B5CF6' : Colors.textSecondary, fontWeight: '600' }}>
+                        {isIncluded ? '✓ ' : '+ '}{chip}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+
             <TextInput
               style={styles.modalInput}
               placeholder={
                 isSettingAppt
                   ? 'e.g. Confirmed sit-down for Thursday at 1:15 PM (Period 5) in Room 204...'
+                  : isOtherDisposition
+                  ? 'Enter custom notes (e.g. educator out on leave, call back in spring)...'
                   : 'Enter conversation notes, retirement goals, or follow-up details...'
               }
               placeholderTextColor={Colors.textMuted}
@@ -1765,7 +1846,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
                 onPress={handleSaveNote}
               >
                 <Text style={styles.modalSaveText}>
-                  {isSettingAppt ? 'Save Appt & Next' : 'Save & Next'}
+                  {isSettingAppt ? 'Save Appt & Next' : isOtherDisposition ? 'Save Other & Next' : 'Save & Next'}
                 </Text>
               </TouchableOpacity>
             </View>
