@@ -49,8 +49,9 @@ export function TodayCockpitCard({
   const callbacksDue = useMemo(() => {
     return leads.filter((l) => {
       if (['connected', 'spoke', 'do_not_call', 'bad_number', 'appointment_set'].includes(l.last_disposition || '')) return false;
-      if (l.last_disposition === 'callback_requested' || l.follow_up_at) {
-        if (l.follow_up_at) {
+      const hasValidFollowUp = l.follow_up_at && !isNaN(new Date(l.follow_up_at).getTime());
+      if (l.last_disposition === 'callback_requested' || hasValidFollowUp) {
+        if (hasValidFollowUp && l.follow_up_at) {
           return l.follow_up_at.slice(0, 10) <= todayStr;
         }
         return l.last_disposition === 'callback_requested';

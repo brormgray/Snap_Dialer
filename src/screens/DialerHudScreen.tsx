@@ -592,6 +592,26 @@ export default function DialerHudScreen({ route, navigation }: any) {
             updatedNotes || undefined
           );
         }
+        if (disposition !== 'callback_requested') {
+          currentLead.follow_up_at = null;
+        }
+        currentLead.last_disposition = disposition;
+        setQueue((prev) => {
+          const next = [...prev];
+          if (next[currentIndex]) {
+            next[currentIndex] = {
+              ...next[currentIndex],
+              notes: updatedNotes,
+              last_disposition: disposition,
+              follow_up_at: disposition === 'callback_requested' ? next[currentIndex].follow_up_at : null,
+              appointment_scheduled_at:
+                disposition === 'appointment_set'
+                  ? currentLead.appointment_scheduled_at || next[currentIndex].appointment_scheduled_at
+                  : next[currentIndex].appointment_scheduled_at,
+            };
+          }
+          return next;
+        });
         await LeadsRepository.updateLeadDisposition(currentLead.id, disposition, updatedNotes || undefined);
 
         await CallLogsRepository.logCall({
@@ -635,10 +655,25 @@ export default function DialerHudScreen({ route, navigation }: any) {
 
       const followUpDate = new Date();
       followUpDate.setHours(followUpDate.getHours() + presetHours);
+      const followUpISO = followUpDate.toISOString();
+
+      currentLead.follow_up_at = followUpISO;
+      currentLead.last_disposition = 'callback_requested';
+      setQueue((prev) => {
+        const next = [...prev];
+        if (next[currentIndex]) {
+          next[currentIndex] = {
+            ...next[currentIndex],
+            last_disposition: 'callback_requested',
+            follow_up_at: followUpISO,
+          };
+        }
+        return next;
+      });
 
       await LeadsRepository.scheduleFollowUp(
         currentLead.id,
-        followUpDate.toISOString(),
+        followUpISO,
         followUpNote || 'Scheduled Callback'
       );
 

@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -51,7 +51,12 @@ export function CallbackSchedulerModal({
   );
 
   // Form State
-  const [selectedDate, setSelectedDate] = useState<Date>(() => initialDate || new Date(Date.now() + 2 * 3600 * 1000));
+  const [selectedDate, setSelectedDate] = useState<Date>(() => {
+    if (initialDate && !isNaN(new Date(initialDate).getTime())) {
+      return new Date(initialDate);
+    }
+    return new Date(Date.now() + 2 * 3600 * 1000);
+  });
   const [activePreset, setActivePreset] = useState<string | null>('2h');
   const [selectedPeriod, setSelectedPeriod] = useState<BellPeriod | null>(() => matchedPeriod || null);
   const [note, setNote] = useState<string>(initialNote);
@@ -60,7 +65,7 @@ export function CallbackSchedulerModal({
   // Synchronize when opened
   useEffect(() => {
     if (visible) {
-      if (initialDate) {
+      if (initialDate && !isNaN(new Date(initialDate).getTime())) {
         setSelectedDate(new Date(initialDate));
         setActivePreset(null);
       } else {
@@ -143,12 +148,16 @@ export function CallbackSchedulerModal({
     setIsSaving(true);
     try {
       await HapticsService.success();
+      const validDate =
+        selectedDate && !isNaN(selectedDate.getTime())
+          ? selectedDate
+          : new Date(Date.now() + 2 * 3600 * 1000);
       const periodLabel = selectedPeriod ? ` (${selectedPeriod.name})` : '';
       const fullNote = note.trim()
         ? `${note.trim()}${periodLabel}`
         : `Scheduled callback${periodLabel}`;
       await onSave({
-        followUpDateISO: selectedDate.toISOString(),
+        followUpDateISO: validDate.toISOString(),
         note: fullNote,
       });
     } finally {
@@ -265,7 +274,9 @@ export function CallbackSchedulerModal({
               <View style={{ flex: 1 }}>
                 <Text style={styles.targetPreviewLabel}>CONFIRMED CALLBACK TARGET</Text>
                 <Text style={styles.targetPreviewValue}>
-                  {selectedDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} @ {selectedDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                  {selectedDate && !isNaN(selectedDate.getTime())
+                    ? `${selectedDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} @ ${selectedDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+                    : 'Select callback time'}
                   {selectedPeriod ? ` • ${selectedPeriod.name}` : ''}
                 </Text>
               </View>
@@ -304,7 +315,7 @@ export function CallbackSchedulerModal({
           </ScrollView>
 
           <View style={styles.modalButtonsRow}>
-            {onClear && initialDate && (
+            {onClear && (
               <TouchableOpacity style={styles.clearBtn} onPress={onClear}>
                 <RotateCcw size={14} color={Colors.badgeDangerText} />
                 <Text style={styles.clearBtnText}>Clear</Text>

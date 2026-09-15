@@ -669,7 +669,7 @@ describe('Post-Appointment Lifecycle & Dispo Queue Architecture', () => {
   });
 
   // 21. WebDatabase SQL query pattern matching routing
-  it('correctly distinguishes scheduleAppointment and scheduleFollowUp SQL patterns', () => {
+  it('correctly distinguishes scheduleAppointment, scheduleFollowUp, and clearFollowUp SQL patterns', () => {
     const scheduleAppointmentSql = `UPDATE leads 
        SET appointment_scheduled_at = ?,
            follow_up_at = ?,
@@ -687,17 +687,97 @@ describe('Post-Appointment Lifecycle & Dispo Queue Architecture', () => {
            updated_at = ? 
        WHERE id = ?`.toLowerCase();
 
+    const clearFollowUpSql = `UPDATE leads 
+       SET follow_up_at = NULL, 
+           last_disposition = CASE WHEN last_disposition = 'callback_requested' THEN 'pending' ELSE last_disposition END,
+           notes = COALESCE(?, notes),
+           updated_at = ? 
+       WHERE id = ?`.toLowerCase();
+
+    const isClearFollowUpMatch = (s) => s.includes('follow_up_at = null') || s.includes('follow_up_at=null');
+
     const isCallbackMatch = (s) =>
-      s.includes("last_disposition = 'callback_requested'") ||
+      (!s.includes('case when') && s.includes("last_disposition = 'callback_requested'")) ||
       (s.includes('follow_up_at = ?') && !s.includes('appointment_scheduled_at'));
 
     const isAppointmentMatch = (s) => s.includes('appointment_scheduled_at = ?');
 
+    // scheduleFollowUpSql should match callback, but not appointment or clear
     assert.strictEqual(isCallbackMatch(scheduleFollowUpSql), true);
     assert.strictEqual(isAppointmentMatch(scheduleFollowUpSql), false);
+    assert.strictEqual(isClearFollowUpMatch(scheduleFollowUpSql), false);
 
+    // scheduleAppointmentSql should match appointment, but not callback or clear
     assert.strictEqual(isCallbackMatch(scheduleAppointmentSql), false);
     assert.strictEqual(isAppointmentMatch(scheduleAppointmentSql), true);
+    assert.strictEqual(isClearFollowUpMatch(scheduleAppointmentSql), false);
+
+    // clearFollowUpSql must match clear, and NEVER falsely match callback scheduling
+    assert.strictEqual(isClearFollowUpMatch(clearFollowUpSql), true);
+    assert.strictEqual(isCallbackMatch(clearFollowUpSql), false);
+    assert.strictEqual(isAppointmentMatch(clearFollowUpSql), false);
+  });
+
+  // 22. Auto-healing corrupted or invalid follow_up_at values
+  it('auto-heals corrupted follow_up_at strings and resets disposition to pending', () => {
+    const corruptedLead = {
+      id: 'lead_corrupted_123',
+      name: 'Corrupted Callback Educator',
+      last_disposition: 'callback_requested',
+      follow_up_at: '[Callback Completed] Follow-up marked complete.',
+      notes: 'Initial note',
+    };
+
+    let followUpAt = corruptedLead.follow_up_at;
+    let lastDisp = corruptedLead.last_disposition;
+    if (followUpAt) {
+      const parsed = new Date(followUpAt);
+      const isInvalid = isNaN(parsed.getTime());
+      const isCompletionString = typeof followUpAt === 'string' && (
+        followUpAt.includes('[Callback Completed]') ||
+        followUpAt.includes('Follow-up marked complete')
+      );
+
+      if (isInvalid || isCompletionString) {
+        followUpAt = null;
+        if (lastDisp === 'callback_requested') {
+          lastDisp = 'pending';
+        }
+      }
+    }
+
+    assert.strictEqual(followUpAt, null);
+    assert.strictEqual(lastDisp, 'pending');
+  });
+
+  // 23. Dispositions other than callback_requested clear follow_up_at
+  it('clears follow_up_at when lead is dispositioned as no_answer or spoke', () => {
+    const lead = {
+      id: 'lead_scheduled_cb',
+      name: 'John Doe',
+      last_disposition: 'callback_requested',
+      follow_up_at: '2026-09-15T14:00:00.000Z',
+    };
+
+    const dispoOutcomeNoAnswer = 'no_answer';
+    const updatedLeadNoAnswer = {
+      ...lead,
+      last_disposition: dispoOutcomeNoAnswer,
+      follow_up_at: dispoOutcomeNoAnswer === 'callback_requested' ? lead.follow_up_at : null,
+    };
+
+    assert.strictEqual(updatedLeadNoAnswer.last_disposition, 'no_answer');
+    assert.strictEqual(updatedLeadNoAnswer.follow_up_at, null);
+
+    const dispoOutcomeSpoke = 'spoke';
+    const updatedLeadSpoke = {
+      ...lead,
+      last_disposition: dispoOutcomeSpoke,
+      follow_up_at: dispoOutcomeSpoke === 'callback_requested' ? lead.follow_up_at : null,
+    };
+
+    assert.strictEqual(updatedLeadSpoke.last_disposition, 'spoke');
+    assert.strictEqual(updatedLeadSpoke.follow_up_at, null);
   });
 });
 

@@ -584,11 +584,6 @@ class WebDatabase implements IDatabase {
             } catch { lead.meeting_preferences = []; }
             lead.updated_at = params[14] || new Date().toISOString();
           }
-        } else if (s.includes("last_disposition = 'callback_requested'") || (s.includes('follow_up_at = ?') && !s.includes('appointment_scheduled_at'))) {
-          lead.follow_up_at = params[0];
-          lead.last_disposition = 'callback_requested';
-          if (params[1] !== undefined && params[1] !== null) lead.notes = params[1];
-          lead.updated_at = params[2] || new Date().toISOString();
         } else if (s.includes('follow_up_at = null') || s.includes('follow_up_at=null')) {
           lead.follow_up_at = null;
           if (lead.last_disposition === 'callback_requested') {
@@ -596,6 +591,14 @@ class WebDatabase implements IDatabase {
           }
           if (params[0] !== undefined && params[0] !== null) lead.notes = params[0];
           lead.updated_at = params[1] || new Date().toISOString();
+        } else if (
+          (!s.includes('case when') && s.includes("last_disposition = 'callback_requested'")) ||
+          (s.includes('follow_up_at = ?') && !s.includes('appointment_scheduled_at'))
+        ) {
+          lead.follow_up_at = params[0];
+          lead.last_disposition = 'callback_requested';
+          if (params[1] !== undefined && params[1] !== null) lead.notes = params[1];
+          lead.updated_at = params[2] || new Date().toISOString();
         } else if (s.includes('name = ?')) {
           lead.name = params[0];
           lead.phone = params[1];
@@ -752,6 +755,9 @@ class WebDatabase implements IDatabase {
           lead.attempts_count = params[1];
           lead.cadence_step = params[2];
           lead.last_attempt_at = params[3];
+          if (lead.last_disposition !== 'callback_requested' || s.includes('follow_up_at = null') || s.includes('follow_up_at=null')) {
+            lead.follow_up_at = null;
+          }
           if (params[4] !== undefined && params[4] !== null) lead.notes = params[4];
           lead.updated_at = params[5] || new Date().toISOString();
         }

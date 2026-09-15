@@ -410,17 +410,32 @@ export class LeadsRepository {
 
     await db.withTransactionAsync(async () => {
       // Update lead
-      await db.runAsync(
-        `UPDATE leads 
-         SET last_disposition = ?, 
-             attempts_count = ?, 
-             cadence_step = ?, 
-             last_attempt_at = ?, 
-             notes = COALESCE(?, notes),
-             updated_at = ?
-         WHERE id = ?`,
-        [disposition, newAttempts, newCadenceStep, now, note || null, now, leadId]
-      );
+      if (disposition === 'callback_requested') {
+        await db.runAsync(
+          `UPDATE leads 
+           SET last_disposition = ?, 
+               attempts_count = ?, 
+               cadence_step = ?, 
+               last_attempt_at = ?, 
+               notes = COALESCE(?, notes),
+               updated_at = ?
+           WHERE id = ?`,
+          [disposition, newAttempts, newCadenceStep, now, note || null, now, leadId]
+        );
+      } else {
+        await db.runAsync(
+          `UPDATE leads 
+           SET last_disposition = ?, 
+               attempts_count = ?, 
+               cadence_step = ?, 
+               last_attempt_at = ?, 
+               follow_up_at = NULL,
+               notes = COALESCE(?, notes),
+               updated_at = ?
+           WHERE id = ?`,
+          [disposition, newAttempts, newCadenceStep, now, note || null, now, leadId]
+        );
+      }
 
       // Recalculate list stats
       const stats = await db.getFirstAsync<{ total: number; completed: number; connected: number }>(
@@ -1220,16 +1235,37 @@ export class LeadsRepository {
       needsHealing = true;
     }
 
+    // Auto-healing rule 4: Defensive follow_up_at sanitization and recovery
+    let followUpAt = raw.follow_up_at || null;
+    if (followUpAt) {
+      const parsed = new Date(followUpAt);
+      const isInvalid = isNaN(parsed.getTime());
+      const isCompletionString = typeof followUpAt === 'string' && (
+        followUpAt.includes('[Callback Completed]') ||
+        followUpAt.includes('Follow-up marked complete')
+      );
+
+      if (isInvalid || isCompletionString) {
+        followUpAt = null;
+        if (lastDisp === 'callback_requested') {
+          lastDisp = 'pending';
+        }
+        needsHealing = true;
+      }
+    }
+
     // In-memory normalization without spawning hundreds of concurrent background writes on every read
     if (needsHealing) {
       raw.appointment_outcome = apptOutcome;
       raw.appointment_completed_at = apptCompletedAt;
       raw.last_disposition = lastDisp;
       raw.appointment_scheduled_at = apptScheduledAt;
+      raw.follow_up_at = followUpAt;
     }
 
     return {
       ...raw,
+      follow_up_at: followUpAt,
       priority_tier: raw.priority_tier !== undefined && raw.priority_tier !== null ? Number(raw.priority_tier) : 1,
       cadence_step: raw.cadence_step !== undefined && raw.cadence_step !== null ? Number(raw.cadence_step) : 1,
       attempts_count: raw.attempts_count !== undefined && raw.attempts_count !== null ? Number(raw.attempts_count) : 0,

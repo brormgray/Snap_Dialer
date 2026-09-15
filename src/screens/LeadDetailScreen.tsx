@@ -372,9 +372,13 @@ export default function LeadDetailScreen({ route, navigation }: any) {
 
     await loadLeadData();
     const followUpDate = new Date(followUpDateISO);
-    const dateFormatted = followUpDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    const timeFormatted = followUpDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    showToast(`✓ Callback Scheduled: ${dateFormatted} @ ${timeFormatted}`);
+    if (!isNaN(followUpDate.getTime())) {
+      const dateFormatted = followUpDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const timeFormatted = followUpDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      showToast(`✓ Callback Scheduled: ${dateFormatted} @ ${timeFormatted}`);
+    } else {
+      showToast('✓ Callback Scheduled.');
+    }
   };
 
   const handleClearCallback = async () => {
@@ -1073,29 +1077,40 @@ export default function LeadDetailScreen({ route, navigation }: any) {
 
               {/* Scheduled Callback Reminder Card */}
               {(lead.last_disposition === 'callback_requested' || !!lead.follow_up_at) && lead.last_disposition !== 'appointment_set' && (() => {
-                const followUpDate = lead.follow_up_at ? new Date(lead.follow_up_at) : new Date();
+                const followUpDate = lead.follow_up_at && !isNaN(new Date(lead.follow_up_at).getTime())
+                  ? new Date(lead.follow_up_at)
+                  : null;
+
+                if (!followUpDate && lead.last_disposition !== 'callback_requested') {
+                  return null;
+                }
+
                 const now = new Date();
-                const isOverdue = followUpDate.getTime() < now.getTime();
-                const isToday = followUpDate.toDateString() === now.toDateString();
+                const isOverdue = followUpDate ? followUpDate.getTime() < now.getTime() : false;
+                const isToday = followUpDate ? followUpDate.toDateString() === now.toDateString() : false;
                 const tomorrow = new Date(now);
                 tomorrow.setDate(tomorrow.getDate() + 1);
-                const isTomorrow = followUpDate.toDateString() === tomorrow.toDateString();
+                const isTomorrow = followUpDate ? followUpDate.toDateString() === tomorrow.toDateString() : false;
 
                 let relativeTimeStr = '';
-                const diffMs = followUpDate.getTime() - now.getTime();
-                const diffHours = Math.round(diffMs / (1000 * 60 * 60));
-                const diffMins = Math.round(diffMs / (1000 * 60));
+                if (followUpDate) {
+                  const diffMs = followUpDate.getTime() - now.getTime();
+                  const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+                  const diffMins = Math.round(diffMs / (1000 * 60));
 
-                if (isOverdue) {
-                  const overdueMins = Math.abs(diffMins);
-                  relativeTimeStr = overdueMins < 60 ? `${overdueMins}m overdue` : `${Math.abs(diffHours)}h overdue`;
-                } else if (isToday) {
-                  relativeTimeStr = diffMins < 60 ? `In ${diffMins} mins` : `Today at ${followUpDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
-                } else if (isTomorrow) {
-                  relativeTimeStr = `Tomorrow at ${followUpDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+                  if (isOverdue) {
+                    const overdueMins = Math.abs(diffMins);
+                    relativeTimeStr = overdueMins < 60 ? `${overdueMins}m overdue` : `${Math.abs(diffHours)}h overdue`;
+                  } else if (isToday) {
+                    relativeTimeStr = diffMins < 60 ? `In ${diffMins} mins` : `Today at ${followUpDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+                  } else if (isTomorrow) {
+                    relativeTimeStr = `Tomorrow at ${followUpDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+                  } else {
+                    relativeTimeStr = followUpDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) +
+                      ` at ${followUpDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+                  }
                 } else {
-                  relativeTimeStr = followUpDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) +
-                    ` at ${followUpDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+                  relativeTimeStr = 'Pending Scheduling';
                 }
 
                 // Extract latest callback note
@@ -1122,7 +1137,9 @@ export default function LeadDetailScreen({ route, navigation }: any) {
 
                     <View style={styles.callbackTimeRow}>
                       <Text style={styles.callbackTimePrimary}>
-                        {followUpDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} @ {followUpDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                        {followUpDate
+                          ? `${followUpDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} @ ${followUpDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+                          : 'Callback Requested'}
                       </Text>
                       <Text style={[styles.callbackTimeRelative, isOverdue && { color: Colors.badgeDangerText, fontWeight: '700' }]}>
                         ({relativeTimeStr})
@@ -1818,7 +1835,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         <CallbackSchedulerModal
           visible={callbackModalVisible}
           lead={lead}
-          initialDate={lead.follow_up_at ? new Date(lead.follow_up_at) : null}
+          initialDate={lead.follow_up_at && !isNaN(new Date(lead.follow_up_at).getTime()) ? new Date(lead.follow_up_at) : null}
           onClose={() => setCallbackModalVisible(false)}
           onSave={handleConfirmCallback}
           onClear={lead.follow_up_at ? handleClearCallback : undefined}

@@ -210,7 +210,8 @@ export default function ListsScreen({ navigation }: any) {
       result = result.filter((l) => {
         const isAnswered = ['appointment_set', 'connected', 'spoke', 'do_not_call', 'bad_number'].includes(l.last_disposition || '');
         if (isAnswered) return false;
-        return l.last_disposition === 'callback_requested' || !!l.follow_up_at;
+        const hasValidFollowUp = l.follow_up_at && !isNaN(new Date(l.follow_up_at).getTime());
+        return l.last_disposition === 'callback_requested' || !!hasValidFollowUp;
       });
     } else if (filterTab === 'unanswered') {
       result = result.filter((l) => ['no_answer', 'voicemail'].includes(l.last_disposition || ''));
@@ -349,7 +350,8 @@ export default function ListsScreen({ navigation }: any) {
     if (disp === 'connected' || disp === 'spoke') {
       return { label: '💬 Spoke / Connected', bg: Colors.badgeSuccessBg, color: Colors.badgeSuccessText };
     }
-    if (disp === 'callback_requested' || lead.follow_up_at) {
+    const hasValidFollowUp = lead.follow_up_at && !isNaN(new Date(lead.follow_up_at).getTime());
+    if (disp === 'callback_requested' || hasValidFollowUp) {
       return { label: 'Callback Scheduled', bg: Colors.badgeWarningBg, color: Colors.badgeWarningText };
     }
     if (disp === 'voicemail') {
@@ -390,7 +392,8 @@ export default function ListsScreen({ navigation }: any) {
   const callbackCount = scopedLeads.filter((l) => {
     const isAnswered = ['appointment_set', 'connected', 'spoke', 'do_not_call', 'bad_number'].includes(l.last_disposition || '');
     if (isAnswered) return false;
-    return l.last_disposition === 'callback_requested' || !!l.follow_up_at;
+    const hasValidFollowUp = l.follow_up_at && !isNaN(new Date(l.follow_up_at).getTime());
+    return l.last_disposition === 'callback_requested' || !!hasValidFollowUp;
   }).length;
 
   const unansweredCount = scopedLeads.filter(
