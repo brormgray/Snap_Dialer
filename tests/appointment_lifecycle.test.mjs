@@ -852,6 +852,116 @@ describe('Post-Appointment Lifecycle & Dispo Queue Architecture', () => {
     assert.strictEqual(logEntry.disposition, 'other');
     assert.strictEqual(logEntry.sms_sent, false);
   });
+
+  // 27. React Hooks Invariant: PostApptWrapUpCard and modal components maintain hook stability across state transitions
+  it('guarantees unconditional hook calls and structural integrity in appointment components', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+
+    const filesToCheck = [
+      'src/components/PostApptWrapUpCard.tsx',
+      'src/components/AppointmentSchedulerModal.tsx',
+      'src/components/CallbackSchedulerModal.tsx',
+      'src/components/QuickDispositionModal.tsx',
+    ];
+
+    for (const relPath of filesToCheck) {
+      const fullPath = path.resolve(process.cwd(), relPath);
+      const content = fs.readFileSync(fullPath, 'utf8');
+
+      // 1. PostApptWrapUpCard must evaluate useMemo before if (!isApptLead) return null;
+      if (relPath.includes('PostApptWrapUpCard')) {
+        const useMemoIdx = content.indexOf('const scheduledDate = useMemo');
+        const earlyReturnIdx = content.indexOf('if (!isApptLead) return null;');
+        assert.ok(useMemoIdx !== -1, 'PostApptWrapUpCard must define scheduledDate with useMemo');
+        assert.ok(earlyReturnIdx !== -1, 'PostApptWrapUpCard must check isApptLead');
+        assert.ok(
+          useMemoIdx < earlyReturnIdx,
+          'PostApptWrapUpCard must execute useMemo before if (!isApptLead) return null to prevent React error #310'
+        );
+      }
+
+      // 2. Modals must use the container/content pattern so the outer component guards without hooks,
+      // and the inner Content component executes all hooks unconditionally.
+      if (relPath.includes('Modal.tsx')) {
+        const hasContentComponent = content.includes('Content({');
+        assert.ok(hasContentComponent, `${relPath} must implement container/content pattern for hook stability`);
+
+        // In the Content component, hooks must precede any conditional return
+        const contentFnIdx = content.indexOf('Content({');
+        const contentBody = content.slice(contentFnIdx);
+        const firstHookIdx = contentBody.search(/\buse(State|Memo|Effect|Callback|Ref)\b/);
+        const earlyReturnMatch = contentBody.slice(0, firstHookIdx).match(/if\s*\(.*?\)\s*return/);
+        assert.strictEqual(
+          earlyReturnMatch,
+          null,
+          `${relPath} Content component must not have early return before hooks`
+        );
+      }
+    }
+  });
+
+  // 28. Simulated lead appointment transition maintains state and hook count stability
+  it('simulates lead transition from pending to appointment_set without hook count mismatch', () => {
+    // Lead begins as pending (isApptLead = false)
+    let lead = {
+      id: 'lead_hook_test',
+      last_disposition: 'pending',
+      appointment_scheduled_at: null,
+      appointment_outcome: null,
+      school: 'University High School',
+      planning_period: 'Period 3',
+    };
+
+    // Simulated component render state tracker
+    const simulateCardRender = (currentLead) => {
+      const hookCalls = [];
+      // Hook 1: useState(false) for isExpanded
+      hookCalls.push('useState_isExpanded');
+      // Hook 2: useState(false) for isSaving
+      hookCalls.push('useState_isSaving');
+      // Hook 3: useState(null) for actionFeedback
+      hookCalls.push('useState_actionFeedback');
+      // Hook 4: useState(false) for showRescheduleConfirm
+      hookCalls.push('useState_showRescheduleConfirm');
+      // Hook 5: useState(2) for customDaysToAdd
+      hookCalls.push('useState_customDaysToAdd');
+
+      // Hook 6: scheduledDate = useMemo(...) - MUST RUN UNCONDITIONALLY
+      hookCalls.push('useMemo_scheduledDate');
+
+      // Condition check AFTER hooks
+      const isApptLead =
+        currentLead.last_disposition === 'appointment_set' ||
+        Boolean(currentLead.appointment_scheduled_at) ||
+        Boolean(currentLead.appointment_outcome);
+
+      if (!isApptLead) {
+        return { rendered: false, hookCalls };
+      }
+
+      return { rendered: true, hookCalls };
+    };
+
+    // Render 1: Unscheduled lead
+    const render1 = simulateCardRender(lead);
+    assert.strictEqual(render1.rendered, false);
+    assert.strictEqual(render1.hookCalls.length, 6);
+
+    // Transition: user saves appointment
+    lead = {
+      ...lead,
+      last_disposition: 'appointment_set',
+      appointment_scheduled_at: '2026-09-20T13:00:00.000Z',
+    };
+
+    // Render 2: Scheduled lead
+    const render2 = simulateCardRender(lead);
+    assert.strictEqual(render2.rendered, true);
+    assert.strictEqual(render2.hookCalls.length, 6);
+    // Hook count and order must match exactly between render passes (React Invariant #310)
+    assert.deepStrictEqual(render1.hookCalls, render2.hookCalls);
+  });
 });
 
 

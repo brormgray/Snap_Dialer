@@ -51,15 +51,7 @@ export function PostApptWrapUpCard({
   // Custom reschedule state
   const [customDaysToAdd, setCustomDaysToAdd] = useState<number>(2);
 
-  // If lead never had an appointment booked and no outcome exists, do not render
-  const isApptLead =
-    lead.last_disposition === 'appointment_set' ||
-    Boolean(lead.appointment_scheduled_at) ||
-    Boolean(lead.appointment_outcome);
-
-  if (!isApptLead) return null;
-
-  // Resolve scheduled date
+  // Resolve scheduled date (unconditionally called before any return)
   const scheduledDate = useMemo(() => {
     if (lead.appointment_scheduled_at) {
       const parsed = new Date(lead.appointment_scheduled_at);
@@ -67,6 +59,14 @@ export function PostApptWrapUpCard({
     }
     return CalendarService.calculateNextPlanningDate(lead.planning_period, lead.school);
   }, [lead.appointment_scheduled_at, lead.planning_period, lead.school]);
+
+  // If lead never had an appointment booked and no outcome exists, do not render
+  const isApptLead =
+    lead.last_disposition === 'appointment_set' ||
+    Boolean(lead.appointment_scheduled_at) ||
+    Boolean(lead.appointment_outcome);
+
+  if (!isApptLead) return null;
 
   const dateStr = scheduledDate.toLocaleDateString('en-US', {
     weekday: 'short',

@@ -36,7 +36,12 @@ export interface CallbackSchedulerModalProps {
   onClear?: () => Promise<void>;
 }
 
-export function CallbackSchedulerModal({
+export function CallbackSchedulerModal(props: CallbackSchedulerModalProps) {
+  if (!props.visible || !props.lead) return null;
+  return <CallbackSchedulerModalContent {...props} lead={props.lead} />;
+}
+
+function CallbackSchedulerModalContent({
   visible,
   lead,
   initialDate,
@@ -44,9 +49,7 @@ export function CallbackSchedulerModal({
   onClose,
   onSave,
   onClear,
-}: CallbackSchedulerModalProps) {
-  if (!visible || !lead) return null;
-
+}: CallbackSchedulerModalProps & { lead: Lead }) {
   // School bell schedule resolution
   const schoolSchedule = useMemo(() => getScheduleForSchool(lead.school), [lead.school]);
   const educatorPeriodId = useMemo(() => matchPeriodId(lead.planning_period), [lead.planning_period]);

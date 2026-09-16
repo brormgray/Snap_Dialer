@@ -55,16 +55,19 @@ const OTHER_CHIPS = [
   'Part-time / Split Campus',
 ];
 
-export function QuickDispositionModal({
+export function QuickDispositionModal(props: QuickDispositionModalProps) {
+  if (!props.visible || !props.lead) return null;
+  return <QuickDispositionModalContent {...props} lead={props.lead} />;
+}
+
+function QuickDispositionModalContent({
   visible,
   lead,
   isCallActive = false,
   initialStartTime,
   onClose,
   onDispositionComplete,
-}: QuickDispositionModalProps) {
-  if (!visible || !lead) return null;
-
+}: QuickDispositionModalProps & { lead: Lead }) {
   // Live Call Timer state
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [callEnded, setCallEnded] = useState<boolean>(!isCallActive);

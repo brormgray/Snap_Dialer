@@ -45,16 +45,19 @@ export interface AppointmentSchedulerModalProps {
   }) => Promise<void>;
 }
 
-export function AppointmentSchedulerModal({
+export function AppointmentSchedulerModal(props: AppointmentSchedulerModalProps) {
+  if (!props.visible || !props.lead) return null;
+  return <AppointmentSchedulerModalContent {...props} lead={props.lead} />;
+}
+
+function AppointmentSchedulerModalContent({
   visible,
   lead,
   initialDate,
   initialNotes = '',
   onClose,
   onSave,
-}: AppointmentSchedulerModalProps) {
-  if (!lead) return null;
-
+}: AppointmentSchedulerModalProps & { lead: Lead }) {
   // 1. School schedule and free planning period
   const schoolSchedule = useMemo(() => getScheduleForSchool(lead.school), [lead.school]);
   const educatorPeriodId = useMemo(() => matchPeriodId(lead.planning_period), [lead.planning_period]);
@@ -288,8 +291,6 @@ export function AppointmentSchedulerModal({
       setIsSaving(false);
     }
   };
-
-  if (!visible) return null;
 
   return (
     <Modal
