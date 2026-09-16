@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -56,6 +56,13 @@ export default function ScanSheetScreen({ navigation }: any) {
   const [newListName, setNewListName] = useState<string>('');
   const [existingLeads, setExistingLeads] = useState<Lead[]>([]);
 
+  // Saving & Batch Import Progress State
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [savingAction, setSavingAction] = useState<'dial' | 'pipeline' | null>(null);
+  const [savingStatusText, setSavingStatusText] = useState<string>('Saving educator to pipeline...');
+  const [savingProgress, setSavingProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
+  const isSavingRef = useRef<boolean>(false);
+
   useEffect(() => {
     SettingsRepository.getSettings().then((s) => {
       if (s.gemini_api_key) {
@@ -68,7 +75,16 @@ export default function ScanSheetScreen({ navigation }: any) {
     LeadsRepository.getAllLeads().then((leads) => {
       setExistingLeads(leads);
     });
-  }, []);
+
+    const unsubscribe = navigation?.addListener ? navigation.addListener('blur', () => {
+      setIsSaving(false);
+      isSavingRef.current = false;
+    }) : undefined;
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [navigation]);
 
   // Offline text paste modal state
   const [pasteModalVisible, setPasteModalVisible] = useState<boolean>(false);
@@ -263,6 +279,8 @@ export default function ScanSheetScreen({ navigation }: any) {
   };
 
   const handleSaveLead = async (andDial: boolean = false) => {
+    if (isSavingRef.current || isSaving) return;
+
     const invalidPhoneLeads = extractedLeads.filter(
       (l) => l.name.trim() && !isValidDialablePhone(l.phone)
     );
@@ -280,14 +298,29 @@ export default function ScanSheetScreen({ navigation }: any) {
       return;
     }
 
+    isSavingRef.current = true;
+    setIsSaving(true);
+    setSavingAction(andDial ? 'dial' : 'pipeline');
+    setSavingProgress({ current: 0, total: validLeads.length });
+
     try {
       await HapticsService.success();
 
       let targetListId = selectedListId;
       if (isCreatingNewList && newListName.trim()) {
+        setSavingStatusText('Creating new call list...');
         const createdList = await LeadsRepository.createNewNamedList(newListName.trim());
         targetListId = createdList.id;
       }
+
+      setSavingProgress({ current: 1, total: validLeads.length });
+      setSavingStatusText(
+        validLeads.length > 1
+          ? `Importing educator 1 of ${validLeads.length} into pipeline...`
+          : andDial
+          ? 'Preparing educator for Call HUD...'
+          : 'Importing educator into pipeline...'
+      );
 
       const primaryLead = {
         ...validLeads[0],
@@ -301,6 +334,8 @@ export default function ScanSheetScreen({ navigation }: any) {
 
       // If multiple leads were on the sheet or from batch intake, save the rest too
       for (let i = 1; i < validLeads.length; i++) {
+        setSavingProgress({ current: i + 1, total: validLeads.length });
+        setSavingStatusText(`Importing educator ${i + 1} of ${validLeads.length} into pipeline...`);
         await LeadsRepository.addSingleLead(
           {
             ...validLeads[i],
@@ -312,6 +347,7 @@ export default function ScanSheetScreen({ navigation }: any) {
       }
 
       if (andDial) {
+        setSavingStatusText('Preparing Dialer HUD...');
         const listObj = availableLists.find((l) => l.id === targetListId);
         const listTitle = listObj ? listObj.title : 'ValuTeachers Calling Queue';
         if (typeof window !== 'undefined' && window.localStorage) {
@@ -322,11 +358,14 @@ export default function ScanSheetScreen({ navigation }: any) {
         }
         navigation.replace('DialerHUD', { listId: targetListId, listTitle });
       } else {
+        setSavingStatusText('Opening Educator Pipeline...');
         navigation.navigate('Lists');
       }
     } catch (e) {
       console.error(e);
       Alert.alert('Error', 'Failed to save lead to local database.');
+      setIsSaving(false);
+      isSavingRef.current = false;
     }
   };
 
@@ -337,7 +376,8 @@ export default function ScanSheetScreen({ navigation }: any) {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
-          style={styles.backButton}
+          style={[styles.backButton, isSaving && { opacity: 0.5 }]}
+          disabled={isSaving}
           onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Lists'))}
         >
           <ArrowLeft size={22} color="#FFFFFF" />
@@ -729,21 +769,35 @@ export default function ScanSheetScreen({ navigation }: any) {
             {/* Action Buttons */}
             <View style={styles.actionButtonsContainer}>
               <TouchableOpacity
-                style={styles.saveAndDialBtn}
+                style={[styles.saveAndDialBtn, isSaving && styles.btnDisabled]}
                 onPress={() => handleSaveLead(true)}
                 activeOpacity={0.8}
+                disabled={isSaving}
               >
-                <PhoneCall size={18} color="#FFFFFF" />
-                <Text style={styles.saveAndDialBtnText}>Save & Open Call HUD</Text>
+                {isSaving && savingAction === 'dial' ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <PhoneCall size={18} color="#FFFFFF" />
+                )}
+                <Text style={styles.saveAndDialBtnText}>
+                  {isSaving && savingAction === 'dial' ? 'Preparing Call HUD...' : 'Save & Open Call HUD'}
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.saveOnlyBtn}
+                style={[styles.saveOnlyBtn, isSaving && styles.btnDisabled]}
                 onPress={() => handleSaveLead(false)}
                 activeOpacity={0.8}
+                disabled={isSaving}
               >
-                <Check size={18} color="#FFFFFF" />
-                <Text style={styles.saveOnlyBtnText}>Save Educator to Pipeline</Text>
+                {isSaving && savingAction === 'pipeline' ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Check size={18} color="#FFFFFF" />
+                )}
+                <Text style={styles.saveOnlyBtnText}>
+                  {isSaving && savingAction === 'pipeline' ? 'Saving to Pipeline...' : 'Save Educator to Pipeline'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -798,6 +852,56 @@ export default function ScanSheetScreen({ navigation }: any) {
         subtitle="1-tap zoom & verify handwriting"
         onClose={() => setIsZoomModalVisible(false)}
       />
+
+      {/* Saving / Batch Ingestion Progress Overlay Modal */}
+      <Modal
+        visible={isSaving}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {}}
+      >
+        <View style={styles.savingModalBackdrop}>
+          <View style={styles.savingModalCard}>
+            <View
+              style={[
+                styles.savingIconCircle,
+                savingAction === 'dial' ? styles.savingIconCircleDial : styles.savingIconCirclePipeline,
+              ]}
+            >
+              <ActivityIndicator
+                size="large"
+                color={savingAction === 'dial' ? Colors.callActive : Colors.brandAccent}
+              />
+            </View>
+
+            <Text style={styles.savingModalTitle}>
+              {savingAction === 'dial' ? 'Saving & Opening Call HUD' : 'Importing to Pipeline'}
+            </Text>
+
+            <Text style={styles.savingModalSubtitle}>
+              {savingStatusText}
+            </Text>
+
+            {savingProgress.total > 1 && (
+              <View style={styles.savingProgressBarTrack}>
+                <View
+                  style={[
+                    styles.savingProgressBarFill,
+                    {
+                      width: `${Math.min(100, Math.round((savingProgress.current / savingProgress.total) * 100))}%`,
+                      backgroundColor: savingAction === 'dial' ? Colors.callActive : Colors.brandAccent,
+                    },
+                  ]}
+                />
+              </View>
+            )}
+
+            <Text style={styles.savingModalFootnote}>
+              Saving educator records and archiving card photos...
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1220,5 +1324,80 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '800',
     fontSize: 15,
+  },
+  btnDisabled: {
+    opacity: 0.65,
+  },
+  savingModalBackdrop: {
+    flex: 1,
+    backgroundColor: Colors.bgModal,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  savingModalCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: Colors.surfaceCard,
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  savingIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+    borderWidth: 1.5,
+  },
+  savingIconCircleDial: {
+    backgroundColor: Colors.badgeSuccessBg,
+    borderColor: Colors.callActive,
+  },
+  savingIconCirclePipeline: {
+    backgroundColor: Colors.surfaceSubtle,
+    borderColor: Colors.brandAccent,
+  },
+  savingModalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  savingModalSubtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.brandAccent,
+    textAlign: 'center',
+    marginBottom: 14,
+  },
+  savingProgressBarTrack: {
+    width: '100%',
+    height: 6,
+    backgroundColor: Colors.surfaceSubtle,
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  savingProgressBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  savingModalFootnote: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    textAlign: 'center',
   },
 });

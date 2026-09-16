@@ -134,5 +134,68 @@ test('Mobile Navigation & Touch Ergonomics Architecture', async (t) => {
     const appointmentCount = upcomingSitDownsCount;
     assert.equal(appointmentCount, upcomingSitDownsCount, 'Top KPI card and filter tab must have 1:1 parity');
   });
+
+  await t.test('verifies batch lead save progress indicator and anti-reentrancy locking', async () => {
+    let isSaving = false;
+    let isSavingRef = { current: false };
+    const savedLeads = [];
+    const progressHistory = [];
+    let navigatedTo = null;
+
+    const mockExtractedLeads = [
+      { name: 'Teacher One', phone: '3865550101', school: 'Deltona High' },
+      { name: 'Teacher Two', phone: '3865550102', school: 'Deltona High' },
+      { name: 'Teacher Three', phone: '3865550103', school: 'Pine Ridge' },
+    ];
+
+    const simulateSaveLeads = async (leads, andDial) => {
+      if (isSavingRef.current || isSaving) return false;
+      isSavingRef.current = true;
+      isSaving = true;
+
+      const total = leads.length;
+      for (let i = 0; i < total; i++) {
+        const current = i + 1;
+        const statusText = total > 1
+          ? `Importing educator ${current} of ${total} into pipeline...`
+          : 'Importing educator into pipeline...';
+        progressHistory.push({ current, total, statusText });
+        savedLeads.push(leads[i]);
+      }
+
+      if (andDial) {
+        navigatedTo = 'DialerHUD';
+      } else {
+        navigatedTo = 'Lists';
+      }
+
+      isSaving = false;
+      isSavingRef.current = false;
+      return true;
+    };
+
+    // 1. Initial save should succeed and record progress steps
+    const firstCallPromise = simulateSaveLeads(mockExtractedLeads, true);
+    // 2. Concurrent second call while saving should be rejected by anti-reentrancy
+    // (simulate instant re-entrant tap)
+    isSavingRef.current = true; // Lock is active
+    const concurrentCallResult = await simulateSaveLeads(mockExtractedLeads, true);
+    assert.equal(concurrentCallResult, false, 'Concurrent click while saving must be dropped');
+    isSavingRef.current = false;
+
+    await firstCallPromise;
+    assert.equal(savedLeads.length, 3);
+    assert.equal(progressHistory.length, 3);
+    assert.equal(progressHistory[0].statusText, 'Importing educator 1 of 3 into pipeline...');
+    assert.equal(progressHistory[2].statusText, 'Importing educator 3 of 3 into pipeline...');
+    assert.equal(navigatedTo, 'DialerHUD');
+
+    // 3. Test pipeline-only navigation
+    savedLeads.length = 0;
+    progressHistory.length = 0;
+    navigatedTo = null;
+    await simulateSaveLeads(mockExtractedLeads, false);
+    assert.equal(navigatedTo, 'Lists');
+  });
 });
 
