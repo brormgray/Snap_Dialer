@@ -103,7 +103,7 @@ export function ProductionKpiSection({ leads }: ProductionKpiSectionProps) {
       <View style={styles.headerRow}>
         <View style={styles.titleGroup}>
           <TrendingUp size={16} color={Colors.heavenlyGold} />
-          <Text style={styles.sectionTitle}>ADVISOR PRODUCTION LEDGER</Text>
+          <Text style={styles.sectionTitle} numberOfLines={1} ellipsizeMode="tail">ADVISOR PRODUCTION LEDGER</Text>
         </View>
         <View style={styles.clientCounterBadge}>
           <Award size={13} color="#10B981" />
@@ -205,15 +205,19 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   titleGroup: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    marginRight: 8,
   },
   sectionTitle: {
     color: Colors.heavenlyGold,
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.8,
+    flexShrink: 1,
   },
   clientCounterBadge: {
     flexDirection: 'row',
@@ -225,6 +229,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 10,
+    flexShrink: 0,
   },
   clientCounterText: {
     color: '#10B981',

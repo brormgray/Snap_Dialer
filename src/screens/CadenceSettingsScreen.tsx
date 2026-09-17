@@ -405,7 +405,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderWidth: 1,
     borderColor: Colors.borderStrong,
-    fontSize: 14,
+    fontSize: 16,
   },
   textArea: {
     height: 100,

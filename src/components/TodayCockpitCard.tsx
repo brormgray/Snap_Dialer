@@ -80,7 +80,7 @@ export function TodayCockpitCard({
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <Zap size={16} color={Colors.heavenlyGold} />
-          <Text style={styles.headerTitle}>TODAY'S ADVISOR PLAYBOOK</Text>
+          <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">TODAY'S ADVISOR PLAYBOOK</Text>
           {dispoNeededLeads.length > 0 && isCollapsed && (
             <TouchableOpacity
               style={styles.dispoMiniBadge}
@@ -93,7 +93,7 @@ export function TodayCockpitCard({
             </TouchableOpacity>
           )}
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <Text style={styles.todayDateText}>
             {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
           </Text>
@@ -202,7 +202,7 @@ export function TodayCockpitCard({
             <Text style={[styles.triadNumber, { color: '#38BDF8' }]}>{totalCallsDue}</Text>
           </View>
           <Text style={styles.triadLabel}>Calls Due</Text>
-          <Text style={styles.triadSub}>
+          <Text style={styles.triadSub} numberOfLines={1}>
             {callbacksDue.length > 0 ? `${callbacksDue.length} callback${callbacksDue.length !== 1 ? 's' : ''}` : 'Fresh queue'}
           </Text>
         </TouchableOpacity>
@@ -223,12 +223,13 @@ export function TodayCockpitCard({
                 styles.triadNumber,
                 { color: dueDripsCount > 0 ? Colors.heavenlyGold : Colors.textMuted },
               ]}
+              numberOfLines={1}
             >
               {dueDripsCount}
             </Text>
           </View>
           <Text style={styles.triadLabel}>Drips Ready</Text>
-          <Text style={styles.triadSub}>
+          <Text style={styles.triadSub} numberOfLines={1}>
             {dueDripsCount > 0 ? 'Tap to dispatch' : 'All caught up'}
           </Text>
         </TouchableOpacity>
@@ -246,10 +247,10 @@ export function TodayCockpitCard({
         >
           <View style={styles.triadTop}>
             <Calendar size={14} color="#10B981" />
-            <Text style={[styles.triadNumber, { color: '#10B981' }]}>{todaySitDowns.length}</Text>
+            <Text style={[styles.triadNumber, { color: '#10B981' }]} numberOfLines={1}>{todaySitDowns.length}</Text>
           </View>
           <Text style={styles.triadLabel}>Sit-Downs</Text>
-          <Text style={styles.triadSub}>
+          <Text style={styles.triadSub} numberOfLines={1}>
             {todaySitDowns.length > 0
               ? `${todaySitDowns.length} Today`
               : allUpcomingSitDowns.length > 0
@@ -279,9 +280,9 @@ export function TodayCockpitCard({
             <View style={styles.dispoAlertIconBadge}>
               <Clock size={16} color="#D97706" />
             </View>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={styles.dispoAlertTitle}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <Text style={styles.dispoAlertTitle} numberOfLines={1}>
                   {dispoNeededLeads.length} Sit-Down{dispoNeededLeads.length > 1 ? 's' : ''} Need Dispo
                 </Text>
                 <View style={styles.actionRequiredBadge}>
@@ -320,7 +321,7 @@ export function TodayCockpitCard({
           activeOpacity={0.8}
         >
           <MessageSquare size={15} color="#000000" />
-          <Text style={styles.dispatchActionBtnText}>
+          <Text style={styles.dispatchActionBtnText} numberOfLines={1} ellipsizeMode="tail">
             Dispatch {dueDripsCount} Due Drip{dueDripsCount !== 1 ? 's' : ''} & Reviews (1-Tap)
           </Text>
           <ChevronRight size={16} color="#000000" />
@@ -394,15 +395,19 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   titleRow: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    marginRight: 8,
   },
   headerTitle: {
     color: Colors.heavenlyGold,
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.8,
+    flexShrink: 1,
   },
   todayDateText: {
     color: Colors.textMuted,
@@ -415,6 +420,10 @@ const styles = StyleSheet.create({
   },
   triadBox: {
     flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    minHeight: 66,
+    justifyContent: 'space-between',
     backgroundColor: '#1E293B',
     borderRadius: 10,
     padding: 8,
@@ -434,6 +443,7 @@ const styles = StyleSheet.create({
   triadNumber: {
     fontSize: 16,
     fontWeight: '900',
+    flexShrink: 1,
   },
   triadLabel: {
     color: '#FFFFFF',
@@ -460,6 +470,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     flex: 1,
+    minWidth: 0,
     marginHorizontal: 8,
   },
   sitDownsSection: {
@@ -539,12 +550,14 @@ const styles = StyleSheet.create({
     color: '#D97706',
     fontSize: 13,
     fontWeight: '800',
+    flexShrink: 1,
   },
   actionRequiredBadge: {
     backgroundColor: '#B45309',
     paddingHorizontal: 6,
     paddingVertical: 1.5,
     borderRadius: 6,
+    flexShrink: 0,
   },
   actionRequiredText: {
     color: '#FFFFFF',
@@ -566,6 +579,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 8,
     gap: 3,
+    flexShrink: 0,
   },
   dispoReviewBtnText: {
     color: '#B45309',

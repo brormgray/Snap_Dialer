@@ -415,7 +415,7 @@ const styles = StyleSheet.create({
   currencyInput: {
     flex: 1,
     height: 40,
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
     color: Colors.textPrimary,
   },
@@ -432,7 +432,7 @@ const styles = StyleSheet.create({
   dateInput: {
     flex: 1,
     height: 40,
-    fontSize: 13,
+    fontSize: 16,
     color: Colors.textPrimary,
   },
   segmentContainer: {

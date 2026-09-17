@@ -797,7 +797,7 @@ export default function ListsScreen({ navigation }: any) {
               >
                 {/* Top Row: Name + Status */}
                 <View style={styles.cardHeaderRow}>
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 120 }}>
                     <Text style={styles.leadName}>{item.name}</Text>
                     <View style={styles.metaRow}>
                       <Building size={13} color={Colors.textMuted} />
@@ -811,7 +811,7 @@ export default function ListsScreen({ navigation }: any) {
                     </View>
                   </View>
 
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 1 }}>
                     {item.is_client && (
                       <View
                         style={{
@@ -1215,6 +1215,7 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.surfaceCard,
@@ -1228,7 +1229,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     color: Colors.textPrimary,
-    fontSize: 13,
+    fontSize: 16,
   },
   filterTriggerButton: {
     width: 44,
@@ -1438,6 +1439,7 @@ const styles = StyleSheet.create({
   cardActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     marginTop: 12,
     gap: 8,
   },
@@ -1458,6 +1460,7 @@ const styles = StyleSheet.create({
   },
   callActionBtn: {
     flex: 1,
+    minWidth: 130,
     backgroundColor: Colors.callActive,
     borderColor: Colors.callActive,
     justifyContent: 'center',

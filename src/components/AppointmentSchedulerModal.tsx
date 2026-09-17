@@ -758,6 +758,8 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.borderSubtle,
   },
   titleRow: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -767,6 +769,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: Colors.brandPrimary,
     letterSpacing: 0.4,
+    flexShrink: 1,
   },
   leadSubHeader: {
     fontSize: 12,
@@ -1187,7 +1190,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.borderSubtle,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    fontSize: 13,
+    fontSize: 16,
     color: Colors.textPrimary,
   },
   notesInput: {
@@ -1197,7 +1200,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.borderSubtle,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    fontSize: 12,
+    fontSize: 16,
     color: Colors.textPrimary,
     minHeight: 52,
   },
@@ -1228,10 +1231,12 @@ const styles = StyleSheet.create({
   },
   calendarButtonsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   calSyncBtn: {
     flex: 1,
+    minWidth: 90,
     backgroundColor: 'rgba(255, 255, 255, 0.12)',
     paddingVertical: 7,
     borderRadius: 8,

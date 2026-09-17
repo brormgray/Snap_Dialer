@@ -373,14 +373,18 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.borderSubtle,
   },
   headerLeft: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginRight: 8,
   },
   headerTitle: {
     fontSize: 16,
     fontWeight: '800',
     color: Colors.textPrimary,
+    flexShrink: 1,
   },
   filterCountBadge: {
     backgroundColor: Colors.badgeSuccessBg,
@@ -498,5 +502,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '800',
+    textAlign: 'center',
+    flexShrink: 1,
   },
 });

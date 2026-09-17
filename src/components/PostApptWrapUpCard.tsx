@@ -133,9 +133,9 @@ export function PostApptWrapUpCard({
     return (
       <View style={styles.completedCard}>
         <View style={styles.completedHeaderRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
             <CheckCircle2 size={16} color="#10B981" />
-            <Text style={styles.completedCardTitle}>SIT-DOWN OUTCOME RECORDED</Text>
+            <Text style={styles.completedCardTitle} numberOfLines={1}>SIT-DOWN OUTCOME RECORDED</Text>
           </View>
           <TouchableOpacity
             style={styles.editOutcomeBtn}
@@ -164,13 +164,13 @@ export function PostApptWrapUpCard({
   return (
     <View style={styles.cardContainer}>
       <View style={styles.headerRow}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
           <View style={styles.iconCircle}>
             <Calendar size={18} color={Colors.heavenlyGold} />
           </View>
-          <View>
-            <Text style={styles.cardTitle}>POST-APPOINTMENT SIT-DOWN WRAP-UP</Text>
-            <Text style={styles.cardSubtitle}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.cardTitle} numberOfLines={1}>POST-APPOINTMENT SIT-DOWN WRAP-UP</Text>
+            <Text style={styles.cardSubtitle} numberOfLines={2}>
               Scheduled: <Text style={{ fontWeight: '800', color: Colors.textPrimary }}>{dateStr} @ {timeStr}</Text>
               {lead.planning_period ? ` (${lead.planning_period})` : ''}
               {lead.room_number ? ` • Rm ${lead.room_number}` : ''}
@@ -321,7 +321,7 @@ export function PostApptWrapUpCard({
             >
               <View style={styles.modalOptionLeft}>
                 <Clock size={16} color={Colors.heavenlyGold} />
-                <View>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.modalOptionTitle}>Next Planning Period</Text>
                   <Text style={styles.modalOptionDesc}>Automatic bell schedule alignment</Text>
                 </View>
@@ -341,7 +341,7 @@ export function PostApptWrapUpCard({
             >
               <View style={styles.modalOptionLeft}>
                 <Calendar size={16} color="#38BDF8" />
-                <View>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.modalOptionTitle}>+2 Days (Afternoon)</Text>
                   <Text style={styles.modalOptionDesc}>48-hour follow-up buffer</Text>
                 </View>
@@ -361,7 +361,7 @@ export function PostApptWrapUpCard({
             >
               <View style={styles.modalOptionLeft}>
                 <Calendar size={16} color="#10B981" />
-                <View>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.modalOptionTitle}>+1 Week (Same Time)</Text>
                   <Text style={styles.modalOptionDesc}>Next week's school visit</Text>
                 </View>
@@ -420,7 +420,7 @@ export function PostApptWrapUpCard({
             >
               <View style={styles.modalOptionLeft}>
                 <UserX size={16} color="#F59E0B" />
-                <View>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={[styles.modalOptionTitle, { color: '#B45309' }]}>
                     Educator was No-Show / Unavailable
                   </Text>
@@ -441,7 +441,7 @@ export function PostApptWrapUpCard({
             >
               <View style={styles.modalOptionLeft}>
                 <X size={16} color="#EF4444" />
-                <View>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={[styles.modalOptionTitle, { color: '#DC2626' }]}>
                     Educator Declined / Not Interested
                   </Text>
@@ -517,6 +517,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#0B3B60',
     letterSpacing: 0.5,
+    flexShrink: 1,
   },
   cardSubtitle: {
     fontSize: 12,
@@ -619,6 +620,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#10B981',
     letterSpacing: 0.5,
+    flexShrink: 1,
   },
   editOutcomeBtn: {
     paddingVertical: 3,
@@ -713,11 +715,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     flex: 1,
+    minWidth: 0,
   },
   modalOptionTitle: {
     fontSize: 13,
     fontWeight: '700',
     color: Colors.textPrimary,
+    flexShrink: 1,
   },
   modalOptionDesc: {
     fontSize: 11,

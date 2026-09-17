@@ -567,6 +567,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: Colors.textPrimary,
+    flex: 1,
+    minWidth: 0,
+    marginRight: 8,
   },
   funnelCount: {
     fontSize: 15,
@@ -637,10 +640,11 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
   },
   statCard: {
-    width: '48%',
+    width: '47%',
+    minWidth: 130,
     backgroundColor: Colors.surfaceCard,
     borderRadius: 16,
     padding: 16,

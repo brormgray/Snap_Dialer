@@ -555,7 +555,7 @@ const styles = StyleSheet.create({
   },
   messageInput: {
     color: Colors.livingWhite,
-    fontSize: 15,
+    fontSize: 16,
     lineHeight: 22,
     minHeight: 120,
     textAlignVertical: 'top',

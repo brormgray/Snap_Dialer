@@ -89,6 +89,32 @@ export default function App() {
       window.addEventListener('keydown', handleUserActivity, { passive: true });
     }
 
+    // Inject mobile viewport & input zoom lock CSS on Web
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      if (!document.getElementById('mobile-ux-viewport-lock')) {
+        const styleEl = document.createElement('style');
+        styleEl.id = 'mobile-ux-viewport-lock';
+        styleEl.innerHTML = `
+          html, body, #root {
+            overflow-x: hidden !important;
+            width: 100% !important;
+            max-width: 100vw !important;
+            touch-action: pan-y manipulation !important;
+            -webkit-text-size-adjust: 100% !important;
+            -webkit-tap-highlight-color: transparent;
+            overscroll-behavior-y: none;
+          }
+          input, textarea, select {
+            font-size: 16px !important;
+          }
+          * {
+            box-sizing: border-box;
+          }
+        `;
+        document.head.appendChild(styleEl);
+      }
+    }
+
     // Register PWA Service Worker on Web for 100% Offline Resilience & Auto-Updates
     if (Platform.OS === 'web' && typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       const registerSW = () => {

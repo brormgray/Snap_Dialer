@@ -2820,7 +2820,7 @@ const styles = StyleSheet.create<any>({
     gap: 6,
   },
   dispositionButton: {
-    width: '48.8%',
+    width: '48%',
     paddingVertical: 10,
     paddingHorizontal: 6,
     borderRadius: 10,
@@ -3082,7 +3082,7 @@ const styles = StyleSheet.create<any>({
     borderWidth: 1,
     borderColor: Colors.borderStrong,
     textAlignVertical: 'top',
-    fontSize: 14,
+    fontSize: 16,
   },
   modalButtons: {
     flexDirection: 'row',
@@ -3388,7 +3388,7 @@ const styles = StyleSheet.create<any>({
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    fontSize: 14,
+    fontSize: 16,
     color: Colors.textPrimary,
   },
   dayPill: {

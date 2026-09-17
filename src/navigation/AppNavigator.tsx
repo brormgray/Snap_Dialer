@@ -36,8 +36,8 @@ function MainTabs() {
           backgroundColor: Colors.surfaceCard,
           borderTopColor: Colors.borderSubtle,
           borderTopWidth: 1,
-          height: Platform.OS === 'ios' ? 84 : 64,
-          paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+          height: Platform.OS === 'ios' ? 84 : 70,
+          paddingBottom: Platform.OS === 'ios' ? 24 : 14,
           paddingTop: 8,
         },
         tabBarLabelStyle: {

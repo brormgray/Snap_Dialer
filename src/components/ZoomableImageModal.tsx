@@ -8,7 +8,7 @@ import {
   Image,
   ScrollView,
   SafeAreaView,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { X, ZoomIn, ZoomOut, ShieldCheck } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
@@ -22,8 +22,6 @@ interface ZoomableImageModalProps {
   onClose: () => void;
 }
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
 export default function ZoomableImageModal({
   visible,
   imageUri,
@@ -32,6 +30,7 @@ export default function ZoomableImageModal({
   onClose,
 }: ZoomableImageModalProps) {
   const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
   const handleZoomIn = async () => {
     await HapticsService.tick();
@@ -55,8 +54,8 @@ export default function ZoomableImageModal({
 
   if (!visible || !imageUri) return null;
 
-  const baseImageWidth = SCREEN_WIDTH - 32;
-  const baseImageHeight = Math.min(SCREEN_HEIGHT * 0.65, 520);
+  const baseImageWidth = windowWidth - 32;
+  const baseImageHeight = Math.min(windowHeight * 0.65, 520);
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={handleClose}>
@@ -69,9 +68,9 @@ export default function ZoomableImageModal({
         <SafeAreaView style={styles.safeContainer} pointerEvents="box-none">
           {/* Header */}
           <View style={styles.header} pointerEvents="auto">
-            <View style={{ flex: 1 }}>
-              <Text style={styles.title}>{title}</Text>
-              {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+            <View style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
+              <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">{title}</Text>
+              {subtitle ? <Text style={styles.subtitle} numberOfLines={1} ellipsizeMode="tail">{subtitle}</Text> : null}
             </View>
 
             {/* Floating Zoom Controls in Header */}

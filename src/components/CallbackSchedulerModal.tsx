@@ -498,7 +498,7 @@ function CallbackSchedulerModalContent({
                 }}
               >
                 <Text style={styles.customToggleBtnText}>
-                  {isCustomOpen || activePreset === 'custom' ? 'Collapse Custom Picker' : 'Set Custom Date & Time'}
+                  {isCustomOpen || activePreset === 'custom' ? 'Collapse' : 'Custom Time'}
                 </Text>
                 {isCustomOpen || activePreset === 'custom' ? (
                   <ChevronUp size={14} color={Colors.brandAccent} />
@@ -699,7 +699,7 @@ function CallbackSchedulerModalContent({
               <Clock size={16} color={Colors.badgeWarningText} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.targetPreviewLabel}>CONFIRMED CALLBACK TARGET</Text>
-                <Text style={styles.targetPreviewValue}>
+                <Text style={styles.targetPreviewValue} numberOfLines={2}>
                   {selectedDate && !isNaN(selectedDate.getTime())
                     ? `${selectedDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} @ ${selectedDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
                     : 'Select callback time'}
@@ -913,6 +913,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
     marginTop: 14,
     marginBottom: 8,
   },
@@ -924,6 +925,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 6,
     backgroundColor: 'rgba(2, 132, 199, 0.10)',
+    flexShrink: 0,
   },
   customToggleBtnText: {
     fontSize: 11,
@@ -1204,7 +1206,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.borderStrong,
     borderRadius: 10,
     padding: 10,
-    fontSize: 13,
+    fontSize: 16,
     color: Colors.textPrimary,
     minHeight: 65,
     textAlignVertical: 'top',

@@ -375,7 +375,7 @@ function QuickDispositionModalContent({
                 </View>
 
                 <Text style={styles.leadName}>{lead.name}</Text>
-                <Text style={styles.leadDetails}>
+                <Text style={styles.leadDetails} numberOfLines={1} ellipsizeMode="tail">
                   {lead.phone} • {lead.school || 'Campus'}{lead.planning_period ? ` • ${lead.planning_period}` : ''}
                 </Text>
               </View>
@@ -684,6 +684,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 6,
     backgroundColor: 'rgba(239, 68, 68, 0.08)',
     borderWidth: 1,
     borderColor: 'rgba(239, 68, 68, 0.25)',
@@ -696,6 +698,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textSecondary,
     flex: 1,
+    minWidth: 160,
     marginRight: 8,
   },
   hangupPill: {
@@ -729,9 +732,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   dispoCard: {
-    width: '31%',
+    width: '47%',
     flexGrow: 1,
-    minWidth: 125,
+    minWidth: 110,
     backgroundColor: Colors.surfaceSubtle,
     borderRadius: 12,
     paddingVertical: 14,
@@ -864,7 +867,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     color: Colors.textPrimary,
-    fontSize: 13,
+    fontSize: 16,
     textAlignVertical: 'top',
     minHeight: 80,
   },

@@ -197,5 +197,82 @@ test('Mobile Navigation & Touch Ergonomics Architecture', async (t) => {
     await simulateSaveLeads(mockExtractedLeads, false);
     assert.equal(navigatedTo, 'Lists');
   });
+
+  await t.test('verifies mobile viewport meta lockdown and global CSS overflow-x reset', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+
+    // Read deploy-surge.js
+    const deploySurgeContent = fs.readFileSync(path.resolve('deploy-surge.js'), 'utf8');
+
+    // Assert strict viewport meta tag presence
+    assert.ok(
+      deploySurgeContent.includes('maximum-scale=1.0, user-scalable=no, viewport-fit=cover'),
+      'deploy-surge.js must inject strict maximum-scale=1.0, user-scalable=no viewport meta'
+    );
+
+    // Assert global mobile CSS reset
+    assert.ok(
+      deploySurgeContent.includes('overflow-x: hidden !important'),
+      'deploy-surge.js must inject global overflow-x: hidden lock'
+    );
+    assert.ok(
+      deploySurgeContent.includes('font-size: 16px !important'),
+      'deploy-surge.js must inject font-size: 16px !important on inputs to block iOS auto-zoom'
+    );
+    assert.ok(
+      deploySurgeContent.includes('touch-action: pan-y manipulation !important'),
+      'deploy-surge.js must inject touch-action: pan-y manipulation'
+    );
+
+    // Check App.tsx runtime web style injection
+    const appContent = fs.readFileSync(path.resolve('App.tsx'), 'utf8');
+    assert.ok(
+      appContent.includes('mobile-ux-viewport-lock'),
+      'App.tsx must inject mobile-ux-viewport-lock on web'
+    );
+    assert.ok(
+      appContent.includes('font-size: 16px !important'),
+      'App.tsx must ensure 16px font-size protection dynamically'
+    );
+  });
+
+  await t.test('verifies all TextInput styles have minimum fontSize: 16 across screens and components', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+
+    const filesToCheck = [
+      { file: 'src/screens/ListsScreen.tsx', styleKey: 'searchInput' },
+      { file: 'src/screens/SettingsScreen.tsx', styleKey: 'input' },
+      { file: 'src/screens/LeadDetailScreen.tsx', styleKey: 'input' },
+      { file: 'src/screens/LeadDetailScreen.tsx', styleKey: 'addNoteInput' },
+      { file: 'src/screens/LeadDetailScreen.tsx', styleKey: 'modalInput' },
+      { file: 'src/screens/DialerHudScreen.tsx', styleKey: 'modalInput' },
+      { file: 'src/screens/DialerHudScreen.tsx', styleKey: 'editInput' },
+      { file: 'src/screens/ScanSheetScreen.tsx', styleKey: 'rowInput' },
+      { file: 'src/screens/ScanSheetScreen.tsx', styleKey: 'newListNameInput' },
+      { file: 'src/screens/CadenceSettingsScreen.tsx', styleKey: 'input' },
+      { file: 'src/components/AppointmentSchedulerModal.tsx', styleKey: 'roomInput' },
+      { file: 'src/components/AppointmentSchedulerModal.tsx', styleKey: 'notesInput' },
+      { file: 'src/components/CallbackSchedulerModal.tsx', styleKey: 'noteInput' },
+      { file: 'src/components/QuickDispositionModal.tsx', styleKey: 'textArea' },
+      { file: 'src/components/ClientPortfolioCard.tsx', styleKey: 'currencyInput' },
+      { file: 'src/components/ClientPortfolioCard.tsx', styleKey: 'dateInput' },
+      { file: 'src/components/BatchDripDispatchModal.tsx', styleKey: 'messageInput' },
+    ];
+
+    for (const { file, styleKey } of filesToCheck) {
+      const content = fs.readFileSync(path.resolve(file), 'utf8');
+      const regex = new RegExp(`${styleKey}:\\s*\\{[^}]*fontSize:\\s*(\\d+)`, 's');
+      const match = content.match(regex);
+      assert.ok(match, `Could not find ${styleKey} style block in ${file}`);
+      const fontSize = parseInt(match[1], 10);
+      assert.ok(
+        fontSize >= 16,
+        `Expected ${styleKey} in ${file} to have fontSize >= 16 to prevent iOS auto-zoom, but got ${fontSize}`
+      );
+    }
+  });
 });
+
 

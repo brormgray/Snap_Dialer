@@ -79,8 +79,37 @@ try {
     if (fs.existsSync(indexHtmlPath)) {
       let indexHtml = fs.readFileSync(indexHtmlPath, 'utf8');
 
-      // Strip any previous injected script block
+      // Strip any previous injected script or style blocks
       indexHtml = indexHtml.replace(/<script id="snapdialer-pwa-sw">[\s\S]*?<\/script>/gi, '');
+      indexHtml = indexHtml.replace(/<style id="mobile-ux-viewport-lock">[\s\S]*?<\/style>/gi, '');
+
+      // Enforce strict mobile viewport meta tag (prevents involuntary auto-zoom and bounds shifts)
+      const strictViewportMeta = '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, shrink-to-fit=no" />';
+      if (/<meta name="viewport"[^>]*>/i.test(indexHtml)) {
+        indexHtml = indexHtml.replace(/<meta name="viewport"[^>]*>/i, strictViewportMeta);
+      } else {
+        indexHtml = indexHtml.replace('<head>', `<head>\n    ${strictViewportMeta}`);
+      }
+
+      // Global mobile reset: locks horizontal overflow, disables double-tap zoom, enforces 16px input font-size
+      const mobileStyleLock = `
+    <style id="mobile-ux-viewport-lock">
+      html, body, #root {
+        overflow-x: hidden !important;
+        width: 100% !important;
+        max-width: 100vw !important;
+        touch-action: pan-y manipulation !important;
+        -webkit-text-size-adjust: 100% !important;
+        -webkit-tap-highlight-color: transparent;
+        overscroll-behavior-y: none;
+      }
+      input, textarea, select {
+        font-size: 16px !important;
+      }
+      * {
+        box-sizing: border-box;
+      }
+    </style>`;
 
       const pwaMetaTags = `
     <link rel="manifest" href="/manifest.json" />
@@ -123,13 +152,15 @@ try {
       }
     </script>`;
 
+      let headAdditions = mobileStyleLock;
       if (!indexHtml.includes('rel="manifest"')) {
-        indexHtml = indexHtml.replace('</head>', `${pwaMetaTags}\n${pwaScript}\n  </head>`);
-      } else {
-        indexHtml = indexHtml.replace('</head>', `${pwaScript}\n  </head>`);
+        headAdditions += `\n${pwaMetaTags}`;
       }
+      headAdditions += `\n${pwaScript}`;
+
+      indexHtml = indexHtml.replace('</head>', `${headAdditions}\n  </head>`);
       fs.writeFileSync(indexHtmlPath, indexHtml, 'utf8');
-      console.log('[PWA] Injected updated iOS PWA tags & auto-update script into dist/index.html');
+      console.log('[PWA] Injected mobile viewport lock & auto-update script into dist/index.html');
     }
 
     // 3. Scan dist and build offline pre-cache manifest in dist/sw.js

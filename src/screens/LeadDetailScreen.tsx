@@ -967,6 +967,8 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                         fontSize: 13,
                         color: pInfo.inPlanning ? '#4ADE80' : Colors.heavenlyGold,
                         fontWeight: pInfo.inPlanning ? '700' : '600',
+                        flex: 1,
+                        flexShrink: 1,
                       }}
                     >
                       {pInfo.inPlanning
@@ -1178,9 +1180,9 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                 return (
                   <View style={styles.callbackCardContainer}>
                     <View style={styles.callbackCardHeader}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
                         <Calendar size={16} color={isOverdue ? Colors.badgeDangerText : Colors.badgeWarningText} />
-                        <Text style={[styles.callbackCardTitle, isOverdue && { color: Colors.badgeDangerText }]}>
+                        <Text style={[styles.callbackCardTitle, isOverdue && { color: Colors.badgeDangerText }]} numberOfLines={1}>
                           SCHEDULED CALLBACK REMINDER
                         </Text>
                       </View>
@@ -2442,7 +2444,7 @@ const styles = StyleSheet.create({
     padding: 10,
     borderWidth: 1,
     borderColor: Colors.borderStrong,
-    fontSize: 14,
+    fontSize: 16,
   },
   textArea: {
     height: 70,
@@ -2672,7 +2674,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.borderStrong,
     textAlignVertical: 'top',
-    fontSize: 14,
+    fontSize: 16,
   },
   modalButtons: {
     flexDirection: 'row',
@@ -2836,7 +2838,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    fontSize: 13,
+    fontSize: 16,
     color: Colors.textPrimary,
   },
   addNoteButton: {
@@ -3000,11 +3002,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#B45309',
     letterSpacing: 0.6,
+    flexShrink: 1,
   },
   callbackStatusPill: {
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 8,
+    flexShrink: 0,
   },
   callbackStatusPillText: {
     fontSize: 10,
@@ -3033,6 +3037,7 @@ const styles = StyleSheet.create({
   callbackTimeRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
+    flexWrap: 'wrap',
     gap: 6,
     marginBottom: 4,
   },
@@ -3056,6 +3061,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.brandAccent,
     fontWeight: '600',
+    flex: 1,
+    flexShrink: 1,
   },
   callbackNoteBox: {
     flexDirection: 'row',
@@ -3251,7 +3258,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     color: Colors.textPrimary,
-    fontSize: 13,
+    fontSize: 16,
     textAlignVertical: 'top',
     minHeight: 80,
   },

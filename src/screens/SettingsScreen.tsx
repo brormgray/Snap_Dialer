@@ -1295,7 +1295,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderWidth: 1,
     borderColor: Colors.borderStrong,
-    fontSize: 14,
+    fontSize: 16,
   },
   switchRow: {
     flexDirection: 'row',
@@ -1419,7 +1419,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.borderStrong,
     height: 160,
-    fontSize: 12,
+    fontSize: 16,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     textAlignVertical: 'top',
   },
