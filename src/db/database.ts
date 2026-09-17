@@ -120,6 +120,35 @@ class WebDatabase implements IDatabase {
           await this.saveToStorage();
         }
       }
+
+      // 5. Cadence & Drip assessment self-healing: ensure existing nurture & client leads have active schedules
+      if (this.leads.length > 0) {
+        let dripHealed = false;
+        const today = new Date();
+        const todayStr = today.toISOString().slice(0, 10);
+        for (const lead of this.leads) {
+          if (!lead || !lead.id) continue;
+          if (lead.last_disposition === 'do_not_call' || lead.last_disposition === 'bad_number') continue;
+          if (lead.text_ok === false) continue;
+
+          // Non-closed sit-down outcome without active track
+          if (lead.appointment_outcome === 'nurture_drip' && (!lead.drip_track || lead.drip_track === 'none')) {
+            lead.drip_track = 'prospect_nurture';
+            lead.drip_step = lead.drip_step || 0;
+            if (!lead.next_drip_scheduled_at) {
+              const baseDate = new Date(lead.appointment_completed_at || lead.updated_at || lead.created_at || Date.now());
+              lead.next_drip_scheduled_at = new Date(baseDate.getTime() + 1 * 86400000).toISOString().slice(0, 10);
+            }
+            dripHealed = true;
+          } else if (lead.drip_track && lead.drip_track !== 'none' && !lead.next_drip_scheduled_at) {
+            lead.next_drip_scheduled_at = todayStr;
+            dripHealed = true;
+          }
+        }
+        if (dripHealed) {
+          await this.saveToStorage();
+        }
+      }
       this.isInitialized = true;
     } catch (e) {
       console.warn('WebDatabase init fallback:', e);

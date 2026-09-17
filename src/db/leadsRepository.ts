@@ -713,7 +713,8 @@ export class LeadsRepository {
         [now, now, leadId]
       );
     } else if (payload.outcome === 'nurture_drip') {
-      const nextDate = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      // Sprint Touch 0 scheduled 24-48 hours (+1 day) after sit-down wrap up
+      const nextDate = new Date(Date.now() + 1 * 86400000).toISOString().slice(0, 10);
       await db.runAsync(
         `UPDATE leads 
          SET appointment_outcome = 'nurture_drip', 

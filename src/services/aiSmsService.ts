@@ -4,6 +4,26 @@ import { CallLogsRepository } from '../db/callLogsRepository';
 import { GeminiModelService } from './geminiModelService';
 import { DateTimeAwareService, RelativeTimeInfo } from './dateTimeAwareService';
 
+export type SmsToneFocus =
+  | 'meeting_confirmation'
+  | 'unanswered_followup'
+  | 'drop_bonus_focus'
+  | 'planning_period'
+  | 'address_question'
+  | 'drip_sprint'
+  | 'sprint_summary'
+  | 'sprint_roadblock'
+  | 'drip_bridge'
+  | 'bridge_proof'
+  | 'bridge_reset'
+  | 'bridge_pause'
+  | 'drip_monthly'
+  | 'monthly_insight'
+  | 'drip_client'
+  | 'client_check'
+  | 'annual_review'
+  | (string & {});
+
 export class AiSmsService {
   /**
    * Generates a clean, warm, friendly yet professional personalized SMS message for Florida educators.
@@ -14,7 +34,7 @@ export class AiSmsService {
     lead: Lead,
     currentDisposition?: string,
     providedApiKey?: string,
-    toneFocus?: 'meeting_confirmation' | 'unanswered_followup' | 'drop_bonus_focus' | 'planning_period' | 'address_question',
+    toneFocus?: SmsToneFocus,
     refDate: Date = new Date()
   ): Promise<string> {
     const settings = await SettingsRepository.getSettings();
@@ -90,6 +110,36 @@ OUTREACH TEMPORAL CONTEXT:
 `;
       }
 
+      let dripDirectives = '';
+      if (toneFocus === 'drip_sprint' || toneFocus === 'sprint_summary' || toneFocus === 'sprint_roadblock') {
+        dripDirectives = `
+DRIP SPRINT DIRECTIVES (24-48h POST-APPOINTMENT FOLLOW-UP):
+- Goal: Reduce friction and paperwork terror. Summarize what was discussed in the classroom sit-down.
+- Keep the next step effortless. Ask a single low-commitment question (e.g. "Did the numbers make sense, or did any questions pop up?") or offer to run down transfer paperwork for them.
+- Do NOT re-sell the entire plan.
+`;
+      } else if (toneFocus === 'drip_bridge' || toneFocus === 'bridge_proof' || toneFocus === 'bridge_reset' || toneFocus === 'bridge_pause') {
+        dripDirectives = `
+DRIP BRIDGE DIRECTIVES (WEEKS 2-6 POST-APPOINTMENT CADENCE):
+- Goal: Overcome status-quo inertia without being pushy or nagging.
+- Use social proof (a fellow teacher in the same district), highlight the paycheck cycle cost of delay, use a short 9-word reset ("Are you still looking to optimize your FRS options this semester?"), or offer permission to pause until next term.
+- Keep it concise, friendly, and low-pressure.
+`;
+      } else if (toneFocus === 'drip_monthly' || toneFocus === 'monthly_insight') {
+        dripDirectives = `
+DRIP MONTHLY AUTHORITY DIRECTIVES (LONG-TERM EDUCATOR VALUE):
+- Goal: Build compounding trust and authority.
+- 90% high-value Florida educator retirement education (pension multiplier 1.6% rule, 0% downside floor, pre-tax 403b take-home pay boost, or open enrollment deadlines).
+- 10% subtle P.S. pivot: Conclude with a warm, low-key P.S. offering to recalculate their numbers or catch up during their planning period.
+`;
+      } else if (toneFocus === 'drip_client' || toneFocus === 'client_check' || toneFocus === 'annual_review') {
+        dripDirectives = `
+CLIENT RETENTION & SERVICING DIRECTIVES:
+- Goal: Policy hygiene, peace of mind, and uncovering outside/spouse assets.
+- Confirm payroll deduction is smooth, remind them of 0% floor security, check beneficiaries, or offer to review a spouse's 401(k) / old rollover at no charge.
+`;
+      }
+
       const prompt = `
 You are a warm, professional, and consultative educational retirement advisor for ValuTeachers in Florida.
 You are writing a personalized SMS text message to a Florida public school teacher who filled out a handwritten ValuTeachers Report Card requesting an in-person planning session.
@@ -111,6 +161,7 @@ ${historySummary || 'First outreach.'}
 - ValuTeachers Representative Name: ${agentName}
 ${toneFocus ? `- Tone / Focus Preference: ${toneFocus.replace('_', ' ')}` : ''}
 ${temporalPromptSection}
+${dripDirectives}
 
 WRITING OBJECTIVES & GUIDELINES:
 1. Warm, Friendly & Professional: Approachable Florida educational retirement specialist visiting their campus.
@@ -209,6 +260,29 @@ WRITING OBJECTIVES & GUIDELINES:
       if (rel.isPast) {
         return `Hi ${firstName}, this is ${agentName} with ValuTeachers following up on our sit-down ${rel.shortRelative}${room}. Thank you for your time reviewing your FRS options—please reach out if you have any questions!`;
       }
+    }
+
+    // Drip Cadence Fallback Cases
+    if (toneFocus === 'drip_sprint' || toneFocus === 'sprint_summary') {
+      return `Hi ${firstName}, this is ${agentName} with ValuTeachers. Thank you for taking time to sit down with me at ${school}! Did the numbers we put together make sense, or did any questions pop up when you reflected on it?`;
+    }
+    if (toneFocus === 'sprint_roadblock') {
+      return `Hi ${firstName}, ${agentName} here. Usually the hardest part of finalizing paperwork is tracking down old statements or logins. If that's holding things up, send me what you have and I can run down the transfer paperwork on my side!`;
+    }
+    if (toneFocus === 'drip_bridge' || toneFocus === 'bridge_proof') {
+      return `Hi ${firstName}, this is ${agentName} with ValuTeachers. A teacher I worked with recently at ${school} had the exact same question about protecting their DROP funds. Would 10 mins during planning work to look at bridging that gap?`;
+    }
+    if (toneFocus === 'bridge_reset') {
+      return `Hi ${firstName}, are you still looking to optimize your FRS pension & retirement options this semester? - ${agentName}, ValuTeachers`;
+    }
+    if (toneFocus === 'bridge_pause') {
+      return `Hi ${firstName}, I know how busy things get at school. Should we hit pause on your retirement review until next term, or did you still want to get this off your plate this month? - ${agentName}`;
+    }
+    if (toneFocus === 'drip_monthly' || toneFocus === 'monthly_insight') {
+      return `Hi ${firstName}, ${agentName} with ValuTeachers. Quick reminder: under FRS Pension, 25 years at 1.6% replaces only 40% of your income. PS: Let me know if you want to recalculate your take-home pay during ${lead.planning_period || 'planning'}!`;
+    }
+    if (toneFocus === 'drip_client' || toneFocus === 'client_check') {
+      return `Hi ${firstName}, ${agentName} checking in! Just verifying that your retirement deductions are running smoothly on your pay stub. Let me know if you'd like a quick review of any outside or spouse accounts as well!`;
     }
 
     const prefSlot =

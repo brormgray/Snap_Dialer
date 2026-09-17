@@ -1,4 +1,4 @@
-import { Lead, SMSTemplate, DripTrack } from '../types';
+import { Lead, SMSTemplate, DripTrack, DripStage } from '../types';
 import { NURTURE_DRIP_TEMPLATES, CLIENT_REVIEW_DRIP_TEMPLATES } from '../data/dripTemplates';
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
@@ -10,24 +10,71 @@ export interface DueDripItem {
   formattedMessage: string;
   stepNumber: number;
   track: DripTrack;
+  stage?: DripStage;
+  stageLabel?: string;
+  suggestedNextDate?: string | null;
 }
 
 export class DripDispatcherService {
   /**
-   * Returns the corresponding SMSTemplate for a lead's current drip track and step
+   * Resolves the stage and human-readable label for any step in the cadence
+   */
+  static getStageForStep(track: DripTrack, step: number): { stage: DripStage; label: string } {
+    if (track === 'client_annual_review') {
+      const labels = [
+        'Onboarding (Day 30)',
+        'Policy Hygiene (Day 90)',
+        'Cross-Sell (Day 180)',
+        'Servicing (Anniv -90d)',
+        'Annual Review (Anniv -30d)',
+        'Final Reminder (Anniv -7d)',
+      ];
+      return { stage: 'client', label: labels[step % labels.length] || 'Client Servicing' };
+    }
+
+    if (step === 0) return { stage: 'sprint', label: 'Sprint (24-48h)' };
+    if (step === 1) return { stage: 'sprint', label: 'Sprint (48-72h)' };
+    if (step === 2) return { stage: 'bridge', label: 'Bridge (Week 2)' };
+    if (step === 3) return { stage: 'bridge', label: 'Bridge (Week 3)' };
+    if (step === 4) return { stage: 'bridge', label: 'Bridge (Week 4)' };
+    if (step === 5) return { stage: 'bridge', label: 'Bridge (Week 6)' };
+    if (step === 6) return { stage: 'monthly', label: 'Monthly (Month 2)' };
+    if (step === 7) return { stage: 'monthly', label: 'Monthly (Month 3)' };
+    if (step === 8) return { stage: 'monthly', label: 'Monthly (Month 4)' };
+    if (step === 9) return { stage: 'monthly', label: 'Monthly (Month 5)' };
+    return { stage: 'monthly', label: `Monthly Value (Touch ${step - 5})` };
+  }
+
+  /**
+   * Returns the corresponding SMSTemplate for a lead's current drip track and step.
+   * For prospect nurture, steps 10+ cycle through the monthly authority pool indefinitely.
+   * For client review, steps roll over for annual servicing.
    */
   static getTemplateForLead(lead: Lead): SMSTemplate | null {
     const track = lead.drip_track;
     const step = Number(lead.drip_step) || 0;
 
     if (track === 'prospect_nurture') {
-      const idx = Math.min(step, NURTURE_DRIP_TEMPLATES.length - 1);
-      return NURTURE_DRIP_TEMPLATES[idx] || null;
+      if (step < NURTURE_DRIP_TEMPLATES.length) {
+        return NURTURE_DRIP_TEMPLATES[step] || null;
+      }
+      // Indefinite Monthly Cycling: Cycle through the monthly authority templates (indices 6 to length - 1)
+      const monthlyStartIndex = 6;
+      const monthlyPool = NURTURE_DRIP_TEMPLATES.slice(monthlyStartIndex);
+      if (monthlyPool.length > 0) {
+        const cycleIndex = (step - monthlyStartIndex) % monthlyPool.length;
+        return monthlyPool[cycleIndex] || null;
+      }
+      return NURTURE_DRIP_TEMPLATES[NURTURE_DRIP_TEMPLATES.length - 1] || null;
     }
 
     if (track === 'client_annual_review') {
-      const idx = Math.min(step, CLIENT_REVIEW_DRIP_TEMPLATES.length - 1);
-      return CLIENT_REVIEW_DRIP_TEMPLATES[idx] || null;
+      if (step < CLIENT_REVIEW_DRIP_TEMPLATES.length) {
+        return CLIENT_REVIEW_DRIP_TEMPLATES[step] || null;
+      }
+      // Annual reset cycle for ongoing servicing
+      const cycleIndex = step % CLIENT_REVIEW_DRIP_TEMPLATES.length;
+      return CLIENT_REVIEW_DRIP_TEMPLATES[cycleIndex] || null;
     }
 
     return null;
@@ -35,45 +82,84 @@ export class DripDispatcherService {
 
   /**
    * Calculates the next drip scheduled date (YYYY-MM-DD)
+   * Implements the psychological decay curve:
+   * - Step 0 -> 1: +2 days (Sprint 48-72h)
+   * - Step 1 -> 2: +7 days (Week 2 Bridge)
+   * - Step 2 -> 3: +7 days (Week 3 Bridge)
+   * - Step 3 -> 4: +7 days (Week 4 Bridge)
+   * - Step 4 -> 5: +14 days (Week 6 Bridge)
+   * - Step 5 -> 6: +18 days (Month 2 / ~Day 60)
+   * - Step 6+: +30 days (Monthly indefinitely)
    */
   static calculateNextDripDate(
     track: DripTrack,
     nextStep: number,
     baseDateStr?: string | null,
-    anniversaryStr?: string | null
+    anniversaryStr?: string | null,
+    refDate: Date = new Date()
   ): string | null {
-    const today = new Date();
-
     if (track === 'prospect_nurture') {
-      // Step 0 -> Day 7, Step 1 -> Day 21 (14d later), Step 2 -> Day 45 (24d later), Step 3 -> Day 90 (45d later)
-      const dayDelays = [7, 14, 24, 45];
-      const delayDays = dayDelays[nextStep] !== undefined ? dayDelays[nextStep] : 90;
-      const nextDate = new Date(today.getTime() + delayDays * 86400000);
+      const delaysByNextStep: Record<number, number> = {
+        1: 2,   // Sprint step 1: 48h later
+        2: 7,   // Bridge week 2: +7d
+        3: 7,   // Bridge week 3: +7d
+        4: 7,   // Bridge week 4: +7d
+        5: 14,  // Bridge week 6: +14d
+        6: 18,  // Month 2: +18d (~Day 60)
+      };
+      const delayDays = delaysByNextStep[nextStep] ?? 30; // Step 7+ is 30 days indefinitely
+      const nextDate = new Date(refDate.getTime() + delayDays * 86400000);
       return nextDate.toISOString().slice(0, 10);
     }
 
     if (track === 'client_annual_review') {
-      // Step 0 -> Day 90, Step 1 -> Day 180 (90d later), Step 2 -> Anniv -30d, Step 3 -> Anniv -7d
+      // Step 0 -> Day 30, Step 1 -> Day 90 (+60d), Step 2 -> Day 180 (+90d)
       if (nextStep === 1) {
-        const nextDate = new Date(today.getTime() + 90 * 86400000);
+        const nextDate = new Date(refDate.getTime() + 60 * 86400000);
         return nextDate.toISOString().slice(0, 10);
       }
-      if (nextStep === 2 && anniversaryStr) {
-        const annivDate = new Date(anniversaryStr);
-        if (!isNaN(annivDate.getTime())) {
-          const minus30 = new Date(annivDate.getTime() - 30 * 86400000);
-          return minus30.toISOString().slice(0, 10);
-        }
+      if (nextStep === 2) {
+        const nextDate = new Date(refDate.getTime() + 90 * 86400000);
+        return nextDate.toISOString().slice(0, 10);
       }
+      // Step 3 -> Anniversary -90d
       if (nextStep === 3 && anniversaryStr) {
         const annivDate = new Date(anniversaryStr);
         if (!isNaN(annivDate.getTime())) {
-          const minus7 = new Date(annivDate.getTime() - 7 * 86400000);
-          return minus7.toISOString().slice(0, 10);
+          const minus90 = new Date(annivDate.getTime() - 90 * 86400000);
+          if (minus90.getTime() > refDate.getTime()) {
+            return minus90.toISOString().slice(0, 10);
+          }
         }
+        const fallback = new Date(refDate.getTime() + 90 * 86400000);
+        return fallback.toISOString().slice(0, 10);
       }
-      // After cycle completes, schedule for next year's 90-day check-in
-      const nextYear = new Date(today.getTime() + 90 * 86400000);
+      // Step 4 -> Anniversary -30d
+      if (nextStep === 4 && anniversaryStr) {
+        const annivDate = new Date(anniversaryStr);
+        if (!isNaN(annivDate.getTime())) {
+          const minus30 = new Date(annivDate.getTime() - 30 * 86400000);
+          if (minus30.getTime() > refDate.getTime()) {
+            return minus30.toISOString().slice(0, 10);
+          }
+        }
+        const fallback = new Date(refDate.getTime() + 60 * 86400000);
+        return fallback.toISOString().slice(0, 10);
+      }
+      // Step 5 -> Anniversary -7d
+      if (nextStep === 5 && anniversaryStr) {
+        const annivDate = new Date(anniversaryStr);
+        if (!isNaN(annivDate.getTime())) {
+          const minus7 = new Date(annivDate.getTime() - 7 * 86400000);
+          if (minus7.getTime() > refDate.getTime()) {
+            return minus7.toISOString().slice(0, 10);
+          }
+        }
+        const fallback = new Date(refDate.getTime() + 23 * 86400000);
+        return fallback.toISOString().slice(0, 10);
+      }
+      // After cycle completes, schedule for next year's 30-day onboarding/check-in
+      const nextYear = new Date(refDate.getTime() + 90 * 86400000);
       return nextYear.toISOString().slice(0, 10);
     }
 
@@ -81,20 +167,32 @@ export class DripDispatcherService {
   }
 
   /**
-   * Filters and returns all leads with drips due today or overdue
+   * Filters and returns all leads with drips due today or overdue.
+   * Auto-resolves track for leads marked nurture_drip or clients with missing drip_track.
    */
   static getDueDrips(leads: Lead[], advisorName: string = 'Alex'): DueDripItem[] {
     const todayStr = new Date().toISOString().slice(0, 10);
     const dueItems: DueDripItem[] = [];
 
     for (const lead of leads) {
-      if (!lead.drip_track || lead.drip_track === 'none') continue;
+      // Determine effective track
+      let effectiveTrack: DripTrack = lead.drip_track || 'none';
+      if (effectiveTrack === 'none' || !effectiveTrack) {
+        if (lead.appointment_outcome === 'nurture_drip') {
+          effectiveTrack = 'prospect_nurture';
+        } else if (lead.is_client && lead.drip_track !== 'none') {
+          effectiveTrack = 'client_annual_review';
+        }
+      }
+
+      if (effectiveTrack === 'none') continue;
       if (lead.last_disposition === 'do_not_call' || lead.last_disposition === 'bad_number') continue;
       if (lead.text_ok === false) continue;
       if (!lead.phone || lead.phone.replace(/\D/g, '').length < 7) continue;
 
       let isDue = false;
       const scheduledStr = lead.next_drip_scheduled_at;
+      const currentStep = Number(lead.drip_step) || 0;
 
       if (scheduledStr) {
         const scheduledDatePart = scheduledStr.slice(0, 10);
@@ -102,15 +200,16 @@ export class DripDispatcherService {
           isDue = true;
         }
       } else {
-        // Not yet explicitly scheduled: initialize based on enrollment
-        if ((lead.drip_step || 0) === 0) {
+        // Not yet explicitly scheduled: assess based on enrollment/completion date
+        if (currentStep === 0) {
           const baseDateStr = lead.is_client
             ? lead.client_since || lead.policy_effective_date || lead.created_at
-            : lead.created_at;
+            : lead.appointment_completed_at || lead.created_at;
           if (baseDateStr) {
             const baseDate = new Date(baseDateStr);
             const daysSince = Math.floor((Date.now() - baseDate.getTime()) / 86400000);
-            const threshold = lead.drip_track === 'prospect_nurture' ? 7 : 90;
+            // Sprint starts 1 day (24h) after sit-down; client onboarding starts at 30 days
+            const threshold = effectiveTrack === 'prospect_nurture' ? 1 : 30;
             if (daysSince >= threshold) {
               isDue = true;
             }
@@ -121,15 +220,31 @@ export class DripDispatcherService {
       }
 
       if (isDue) {
-        const template = this.getTemplateForLead(lead);
+        const syntheticLead: Lead = {
+          ...lead,
+          drip_track: effectiveTrack,
+          drip_step: currentStep,
+        };
+        const template = this.getTemplateForLead(syntheticLead);
         if (template) {
-          const formattedMessage = TelephonyService.interpolateTemplate(template, lead, advisorName);
+          const formattedMessage = TelephonyService.interpolateTemplate(template, syntheticLead, advisorName);
+          const stageInfo = this.getStageForStep(effectiveTrack, currentStep);
+          const suggestedNextDate = this.calculateNextDripDate(
+            effectiveTrack,
+            currentStep + 1,
+            lead.policy_effective_date || lead.created_at,
+            lead.annual_review_due_date
+          );
+
           dueItems.push({
-            lead,
+            lead: syntheticLead,
             template,
             formattedMessage,
-            stepNumber: lead.drip_step || 0,
-            track: lead.drip_track,
+            stepNumber: currentStep,
+            track: effectiveTrack,
+            stage: template.stage || stageInfo.stage,
+            stageLabel: template.phase_label || stageInfo.label,
+            suggestedNextDate,
           });
         }
       }
@@ -139,8 +254,101 @@ export class DripDispatcherService {
   }
 
   /**
+   * Assesses existing prospects and clients in the database and initializes their drip
+   * schedules if they are not already set. Ensures no existing data is deleted or harmed.
+   */
+  static async assessAndBackfillLeads(leads: Lead[]): Promise<{ updatedCount: number }> {
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    let updatedCount = 0;
+
+    for (const lead of leads) {
+      if (lead.last_disposition === 'do_not_call' || lead.last_disposition === 'bad_number') continue;
+      if (lead.text_ok === false) continue;
+
+      let shouldUpdate = false;
+      let targetTrack = lead.drip_track;
+      let targetStep = lead.drip_step !== undefined && lead.drip_step !== null ? lead.drip_step : 0;
+      let targetNextScheduled = lead.next_drip_scheduled_at;
+
+      // Rule 1: Non-closed sit-down outcome without active track
+      if (lead.appointment_outcome === 'nurture_drip' && (!targetTrack || targetTrack === 'none')) {
+        targetTrack = 'prospect_nurture';
+        targetStep = 0;
+        shouldUpdate = true;
+      }
+
+      // Rule 2: Active track with missing next_drip_scheduled_at
+      if (targetTrack && targetTrack !== 'none' && !targetNextScheduled) {
+        const baseDateStr = lead.is_client
+          ? lead.client_since || lead.policy_effective_date || lead.created_at
+          : lead.appointment_completed_at || lead.created_at;
+
+        if (baseDateStr) {
+          const baseDate = new Date(baseDateStr);
+          const daysElapsed = Math.max(0, Math.floor((today.getTime() - baseDate.getTime()) / 86400000));
+
+          if (targetTrack === 'prospect_nurture') {
+            if (daysElapsed <= 2) {
+              targetStep = 0;
+              targetNextScheduled = new Date(baseDate.getTime() + 1 * 86400000).toISOString().slice(0, 10);
+            } else if (daysElapsed <= 5) {
+              targetStep = 1;
+              targetNextScheduled = todayStr;
+            } else if (daysElapsed <= 12) {
+              targetStep = 2;
+              targetNextScheduled = todayStr;
+            } else if (daysElapsed <= 19) {
+              targetStep = 3;
+              targetNextScheduled = todayStr;
+            } else if (daysElapsed <= 26) {
+              targetStep = 4;
+              targetNextScheduled = todayStr;
+            } else if (daysElapsed <= 45) {
+              targetStep = 5;
+              targetNextScheduled = todayStr;
+            } else {
+              targetStep = 6;
+              targetNextScheduled = todayStr;
+            }
+          } else if (targetTrack === 'client_annual_review') {
+            if (daysElapsed < 30) {
+              targetStep = 0;
+              targetNextScheduled = new Date(baseDate.getTime() + 30 * 86400000).toISOString().slice(0, 10);
+            } else if (daysElapsed < 90) {
+              targetStep = 1;
+              targetNextScheduled = todayStr;
+            } else if (daysElapsed < 180) {
+              targetStep = 2;
+              targetNextScheduled = todayStr;
+            } else {
+              targetStep = 3;
+              targetNextScheduled = todayStr;
+            }
+          }
+        } else {
+          targetNextScheduled = todayStr;
+        }
+        shouldUpdate = true;
+      }
+
+      if (shouldUpdate) {
+        await LeadsRepository.updateLeadDetails({
+          ...lead,
+          drip_track: targetTrack,
+          drip_step: targetStep,
+          next_drip_scheduled_at: targetNextScheduled,
+        });
+        updatedCount++;
+      }
+    }
+
+    return { updatedCount };
+  }
+
+  /**
    * Records SMS dispatch, advances drip step, schedules next touchpoint,
-   * and records the exact dispatched SMS body (customized or interpolated).
+   * and records the exact dispatched SMS body in call logs.
    */
   static async recordDripDispatched(
     lead: Lead,
@@ -183,3 +391,4 @@ export class DripDispatcherService {
     });
   }
 }
+

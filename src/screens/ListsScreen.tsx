@@ -159,6 +159,13 @@ export default function ListsScreen({ navigation }: any) {
       if (appSettings?.user_name) {
         setAdvisorName(appSettings.user_name);
       }
+
+      // Automatically assess & backfill any existing prospects/clients needing cadence schedules
+      DripDispatcherService.assessAndBackfillLeads(all).then((res) => {
+        if (res.updatedCount > 0) {
+          LeadsRepository.getAllLeads().then((refreshed) => setLeads(refreshed));
+        }
+      }).catch((err) => console.warn('Drip backfill note:', err));
     } catch (e) {
       console.error('Failed to load leads:', e);
     } finally {

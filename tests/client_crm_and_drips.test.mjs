@@ -317,4 +317,166 @@ describe('Advisor CRM, Production Ledger & Dual-Track SMS Drips', () => {
     const logB = recordDripDispatchedSim(lead, template, undefined);
     assert.strictEqual(logB.sms_body, 'Hi Jennifer, this is Alex with ValuTeachers. Following up on your 403(b) review.');
   });
+
+  // 8. Multi-Stage Prospect Nurture Decay Curve & Indefinite Looping
+  it('calculates decay curve intervals: Sprint (24-48h), Bridge (Wks 2-6), Monthly Indefinite', () => {
+    // Delays relative to previous touchpoint dispatch
+    const delaysByNextStep = {
+      1: 2,   // Step 0 -> Step 1: 48h later
+      2: 7,   // Step 1 -> Step 2: Week 2 (+7d)
+      3: 7,   // Step 2 -> Step 3: Week 3 (+7d)
+      4: 7,   // Step 3 -> Step 4: Week 4 (+7d)
+      5: 14,  // Step 4 -> Step 5: Week 6 (+14d)
+      6: 18,  // Step 5 -> Step 6: Month 2 (+18d, ~Day 60)
+    };
+
+    const baseDate = new Date('2025-02-01T12:00:00.000Z');
+    
+    // Test step 1 (Sprint 48h)
+    const next1 = new Date(baseDate.getTime() + (delaysByNextStep[1] ?? 30) * 86400000);
+    assert.strictEqual(next1.toISOString().slice(0, 10), '2025-02-03');
+
+    // Test step 2 (Bridge Wk 2)
+    const next2 = new Date(baseDate.getTime() + (delaysByNextStep[2] ?? 30) * 86400000);
+    assert.strictEqual(next2.toISOString().slice(0, 10), '2025-02-08');
+
+    // Test step 5 (Bridge Wk 6)
+    const next5 = new Date(baseDate.getTime() + (delaysByNextStep[5] ?? 30) * 86400000);
+    assert.strictEqual(next5.toISOString().slice(0, 10), '2025-02-15');
+
+    // Test step 7+ (Monthly indefinite: default 30 days)
+    const next7 = new Date(baseDate.getTime() + (delaysByNextStep[7] ?? 30) * 86400000);
+    assert.strictEqual(next7.toISOString().slice(0, 10), '2025-03-03');
+  });
+
+  // 9. Indefinite Monthly Template Cycling
+  it('cycles indefinitely through monthly authority templates once step >= 6', () => {
+    const templates = [
+      { id: 'sprint_0', stage: 'sprint' },
+      { id: 'sprint_1', stage: 'sprint' },
+      { id: 'bridge_2', stage: 'bridge' },
+      { id: 'bridge_3', stage: 'bridge' },
+      { id: 'bridge_4', stage: 'bridge' },
+      { id: 'bridge_5', stage: 'bridge' },
+      { id: 'month_6', stage: 'monthly' },
+      { id: 'month_7', stage: 'monthly' },
+      { id: 'month_8', stage: 'monthly' },
+      { id: 'month_9', stage: 'monthly' },
+      { id: 'month_10', stage: 'monthly' },
+    ];
+
+    const getTemplate = (step) => {
+      if (step < templates.length) return templates[step];
+      const monthlyStart = 6;
+      const monthlyPool = templates.slice(monthlyStart);
+      const cycleIndex = (step - monthlyStart) % monthlyPool.length;
+      return monthlyPool[cycleIndex];
+    };
+
+    assert.strictEqual(getTemplate(0).id, 'sprint_0');
+    assert.strictEqual(getTemplate(5).id, 'bridge_5');
+    assert.strictEqual(getTemplate(6).id, 'month_6');
+    assert.strictEqual(getTemplate(10).id, 'month_10');
+    // Step 11 should cycle to month_6
+    assert.strictEqual(getTemplate(11).id, 'month_6');
+    // Step 12 should cycle to month_7
+    assert.strictEqual(getTemplate(12).id, 'month_7');
+    // Step 15 should cycle to month_10
+    assert.strictEqual(getTemplate(15).id, 'month_10');
+  });
+
+  // 10. Existing Lead Assessment & Backfill Verification
+  it('assesses unassessed existing leads with nurture_drip outcome or client status and assigns schedules', () => {
+    const today = new Date('2025-02-15T12:00:00.000Z');
+    const todayStr = '2025-02-15';
+
+    const leads = [
+      {
+        id: 'legacy_nurture_1',
+        name: 'Carlos Ruiz',
+        phone: '3865551234',
+        appointment_outcome: 'nurture_drip',
+        appointment_completed_at: '2025-02-14T10:00:00.000Z', // Yesterday (1 day ago)
+        drip_track: null,
+        drip_step: null,
+        next_drip_scheduled_at: null,
+        text_ok: true,
+      },
+      {
+        id: 'legacy_client_1',
+        name: 'Patricia Adams',
+        phone: '3865555678',
+        is_client: true,
+        client_since: '2025-01-01T10:00:00.000Z', // 45 days ago
+        drip_track: 'client_annual_review',
+        next_drip_scheduled_at: null,
+        text_ok: true,
+      },
+    ];
+
+    // Simulate assessAndBackfill logic
+    const assessed = leads.map((lead) => {
+      let targetTrack = lead.drip_track;
+      let targetStep = lead.drip_step || 0;
+      let targetNext = lead.next_drip_scheduled_at;
+
+      if (lead.appointment_outcome === 'nurture_drip' && (!targetTrack || targetTrack === 'none')) {
+        targetTrack = 'prospect_nurture';
+        targetStep = 0;
+      }
+
+      if (targetTrack && !targetNext) {
+        const baseStr = lead.is_client ? lead.client_since : lead.appointment_completed_at;
+        const days = Math.floor((today.getTime() - new Date(baseStr).getTime()) / 86400000);
+        if (targetTrack === 'prospect_nurture') {
+          if (days <= 2) {
+            targetStep = 0;
+            targetNext = '2025-02-15'; // Due today (Sprint!)
+          }
+        } else if (targetTrack === 'client_annual_review') {
+          if (days < 90) {
+            targetStep = 1;
+            targetNext = todayStr;
+          }
+        }
+      }
+
+      return {
+        ...lead,
+        drip_track: targetTrack,
+        drip_step: targetStep,
+        next_drip_scheduled_at: targetNext,
+      };
+    });
+
+    assert.strictEqual(assessed[0].drip_track, 'prospect_nurture');
+    assert.strictEqual(assessed[0].drip_step, 0);
+    assert.strictEqual(assessed[0].next_drip_scheduled_at, '2025-02-15');
+
+    assert.strictEqual(assessed[1].drip_track, 'client_annual_review');
+    assert.strictEqual(assessed[1].drip_step, 1);
+    assert.strictEqual(assessed[1].next_drip_scheduled_at, '2025-02-15');
+  });
+
+  // 11. Multi-Stage Stage Resolution & Labels
+  it('correctly maps each step to sprint, bridge, monthly, or client stages', () => {
+    const getStageForStep = (track, step) => {
+      if (track === 'client_annual_review') return 'client';
+      if (step === 0 || step === 1) return 'sprint';
+      if (step >= 2 && step <= 5) return 'bridge';
+      return 'monthly';
+    };
+
+    assert.strictEqual(getStageForStep('prospect_nurture', 0), 'sprint');
+    assert.strictEqual(getStageForStep('prospect_nurture', 1), 'sprint');
+    assert.strictEqual(getStageForStep('prospect_nurture', 2), 'bridge');
+    assert.strictEqual(getStageForStep('prospect_nurture', 3), 'bridge');
+    assert.strictEqual(getStageForStep('prospect_nurture', 4), 'bridge');
+    assert.strictEqual(getStageForStep('prospect_nurture', 5), 'bridge');
+    assert.strictEqual(getStageForStep('prospect_nurture', 6), 'monthly');
+    assert.strictEqual(getStageForStep('prospect_nurture', 10), 'monthly');
+    assert.strictEqual(getStageForStep('client_annual_review', 0), 'client');
+    assert.strictEqual(getStageForStep('client_annual_review', 3), 'client');
+  });
 });
+

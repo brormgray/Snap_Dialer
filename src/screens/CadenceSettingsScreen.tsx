@@ -16,7 +16,7 @@ import { TelephonyService } from '../services/telephonyService';
 import { CadenceRule, SMSTemplate, Lead } from '../types';
 import { Colors } from '../theme/colors';
 
-type TemplateCategory = 'all' | 'nurture' | 'client_review' | 'dialer';
+type TemplateCategory = 'all' | 'sprint' | 'bridge' | 'monthly' | 'client_review' | 'dialer';
 
 export default function CadenceSettingsScreen({ navigation }: any) {
   const [rules, setRules] = useState<CadenceRule[]>([]);
@@ -49,11 +49,37 @@ export default function CadenceSettingsScreen({ navigation }: any) {
 
   const filteredTemplates = templates.filter((tpl) => {
     if (category === 'all') return true;
-    if (category === 'nurture') return tpl.id.startsWith('tpl_nurture_');
-    if (category === 'client_review') return tpl.id.startsWith('tpl_client_');
-    if (category === 'dialer') return !tpl.id.startsWith('tpl_nurture_') && !tpl.id.startsWith('tpl_client_');
+    if (category === 'sprint') {
+      return tpl.stage === 'sprint' || tpl.id.includes('sprint');
+    }
+    if (category === 'bridge') {
+      return (
+        tpl.stage === 'bridge' ||
+        tpl.id.includes('bridge') ||
+        (tpl.id.startsWith('tpl_nurture_day') && !tpl.id.includes('day90'))
+      );
+    }
+    if (category === 'monthly') {
+      return (
+        tpl.stage === 'monthly' ||
+        tpl.id.includes('month') ||
+        tpl.id.includes('day90')
+      );
+    }
+    if (category === 'client_review') {
+      return tpl.stage === 'client' || tpl.id.startsWith('tpl_client_');
+    }
+    if (category === 'dialer') {
+      return !tpl.id.startsWith('tpl_nurture_') && !tpl.id.startsWith('tpl_client_');
+    }
     return true;
   });
+
+  useEffect(() => {
+    if (filteredTemplates.length > 0 && !filteredTemplates.some((t) => t.id === activeTemplate?.id)) {
+      setActiveTemplate(filteredTemplates[0]);
+    }
+  }, [category, templates]);
 
   // Sample lead for live preview
   const sampleLead: Lead = {
@@ -101,7 +127,7 @@ export default function CadenceSettingsScreen({ navigation }: any) {
         <View style={styles.infoBox}>
           <Zap size={20} color={Colors.brandAccent} />
           <Text style={styles.infoText}>
-            Dual-Track Touch Engine: Multi-touch outreach for active dialing, 4-stage prospect nurture, and client annual review reminders.
+            Multi-Stage Touch Engine: Sprint (24-48h friction reduction) → Bridge (Wks 2-6 overcoming inertia) → Indefinite Monthly Value (pension insights + subtle P.S. pivot), plus Client Servicing & reviews.
           </Text>
         </View>
 
@@ -128,41 +154,59 @@ export default function CadenceSettingsScreen({ navigation }: any) {
 
         <Text style={[styles.sectionHeader, { marginTop: 24 }]}>SMS TEMPLATE LIBRARY</Text>
 
-        {/* Category Filter Pills */}
-        <View style={styles.categoryBar}>
-          <TouchableOpacity
-            style={[styles.catBtn, category === 'all' && styles.catBtnActive]}
-            onPress={() => setCategory('all')}
-          >
-            <Text style={[styles.catBtnText, category === 'all' && styles.catBtnTextActive]}>
-              All ({templates.length})
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.catBtn, category === 'nurture' && styles.catBtnActive]}
-            onPress={() => setCategory('nurture')}
-          >
-            <Text style={[styles.catBtnText, category === 'nurture' && styles.catBtnTextActive]}>
-              Track A: Nurture
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.catBtn, category === 'client_review' && styles.catBtnActive]}
-            onPress={() => setCategory('client_review')}
-          >
-            <Text style={[styles.catBtnText, category === 'client_review' && styles.catBtnTextActive]}>
-              Track B: Clients
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.catBtn, category === 'dialer' && styles.catBtnActive]}
-            onPress={() => setCategory('dialer')}
-          >
-            <Text style={[styles.catBtnText, category === 'dialer' && styles.catBtnTextActive]}>
-              Dialer
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {/* Category Filter Pills (Horizontal Scrolling) */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+          <View style={styles.categoryBar}>
+            <TouchableOpacity
+              style={[styles.catBtn, category === 'all' && styles.catBtnActive]}
+              onPress={() => setCategory('all')}
+            >
+              <Text style={[styles.catBtnText, category === 'all' && styles.catBtnTextActive]}>
+                All ({templates.length})
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.catBtn, category === 'sprint' && styles.catBtnActive]}
+              onPress={() => setCategory('sprint')}
+            >
+              <Text style={[styles.catBtnText, category === 'sprint' && styles.catBtnTextActive]}>
+                ⚡ Sprint (24-48h)
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.catBtn, category === 'bridge' && styles.catBtnActive]}
+              onPress={() => setCategory('bridge')}
+            >
+              <Text style={[styles.catBtnText, category === 'bridge' && styles.catBtnTextActive]}>
+                🌉 Bridge (Wks 2-6)
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.catBtn, category === 'monthly' && styles.catBtnActive]}
+              onPress={() => setCategory('monthly')}
+            >
+              <Text style={[styles.catBtnText, category === 'monthly' && styles.catBtnTextActive]}>
+                📚 Monthly Value
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.catBtn, category === 'client_review' && styles.catBtnActive]}
+              onPress={() => setCategory('client_review')}
+            >
+              <Text style={[styles.catBtnText, category === 'client_review' && styles.catBtnTextActive]}>
+                💎 Clients
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.catBtn, category === 'dialer' && styles.catBtnActive]}
+              onPress={() => setCategory('dialer')}
+            >
+              <Text style={[styles.catBtnText, category === 'dialer' && styles.catBtnTextActive]}>
+                📞 Dialer
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
 
         {/* Template List Chips */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.templateTabs}>
@@ -338,11 +382,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#1E293B',
     borderRadius: 10,
     padding: 3,
-    marginBottom: 10,
-    gap: 2,
+    gap: 4,
   },
   catBtn: {
-    flex: 1,
+    paddingHorizontal: 12,
     paddingVertical: 7,
     alignItems: 'center',
     borderRadius: 8,

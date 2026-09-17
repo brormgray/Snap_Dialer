@@ -22,6 +22,7 @@ import {
   Sparkles,
   RotateCcw,
   ChevronRight,
+  Zap,
 } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
 import { HapticsService } from '../services/hapticsService';
@@ -79,11 +80,22 @@ export function BatchDripDispatchModal({
     setIsGeneratingAi(true);
     await HapticsService.medium();
     try {
+      const effectiveTone = toneFocus || (
+        currentItem.stage === 'sprint'
+          ? 'drip_sprint'
+          : currentItem.stage === 'bridge'
+          ? 'drip_bridge'
+          : currentItem.stage === 'monthly'
+          ? 'drip_monthly'
+          : currentItem.track === 'client_annual_review'
+          ? 'annual_review'
+          : 'nurture'
+      );
       const generated = await AiSmsService.generatePersuasiveSMS(
         currentItem.lead,
         currentItem.track === 'client_annual_review' ? 'annual_review' : 'nurture',
         undefined,
-        toneFocus
+        effectiveTone
       );
       if (generated && generated.trim().length > 0) {
         setCustomMessage(generated.trim().replace(/^["']|["']$/g, ''));
@@ -181,27 +193,66 @@ export function BatchDripDispatchModal({
                   <Text style={styles.educatorName}>{currentItem.lead.name}</Text>
                   <Text style={styles.educatorPhone}>{currentItem.lead.phone}</Text>
                 </View>
-                {/* Track Badge */}
-                <View
-                  style={[
-                    styles.trackBadge,
-                    currentItem.track === 'client_annual_review' && styles.trackBadgeClient,
-                  ]}
-                >
-                  <Award
-                    size={11}
-                    color={currentItem.track === 'client_annual_review' ? '#10B981' : Colors.heavenlyGold}
-                  />
-                  <Text
+                {/* Badges Container */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <View
                     style={[
-                      styles.trackBadgeText,
-                      currentItem.track === 'client_annual_review' && { color: '#10B981' },
+                      styles.trackBadge,
+                      currentItem.track === 'client_annual_review' && styles.trackBadgeClient,
                     ]}
                   >
-                    {currentItem.track === 'client_annual_review'
-                      ? 'Track B: Client Review'
-                      : 'Track A: Nurture'}
-                  </Text>
+                    <Award
+                      size={11}
+                      color={currentItem.track === 'client_annual_review' ? '#10B981' : Colors.heavenlyGold}
+                    />
+                    <Text
+                      style={[
+                        styles.trackBadgeText,
+                        currentItem.track === 'client_annual_review' && { color: '#10B981' },
+                      ]}
+                    >
+                      {currentItem.track === 'client_annual_review'
+                        ? 'Track B: Client Review'
+                        : 'Track A: Nurture'}
+                    </Text>
+                  </View>
+
+                  {/* Stage Badge */}
+                  {currentItem.stage && (
+                    <View
+                      style={[
+                        styles.stageBadge,
+                        currentItem.stage === 'sprint' && styles.stageBadgeSprint,
+                        currentItem.stage === 'bridge' && styles.stageBadgeBridge,
+                        currentItem.stage === 'monthly' && styles.stageBadgeMonthly,
+                        currentItem.stage === 'client' && styles.stageBadgeClient,
+                      ]}
+                    >
+                      <Zap
+                        size={10}
+                        color={
+                          currentItem.stage === 'sprint'
+                            ? '#F59E0B'
+                            : currentItem.stage === 'bridge'
+                            ? '#38BDF8'
+                            : currentItem.stage === 'monthly'
+                            ? '#C084FC'
+                            : '#10B981'
+                        }
+                      />
+                      <Text
+                        style={[
+                          styles.stageBadgeText,
+                          currentItem.stage === 'sprint' && { color: '#F59E0B' },
+                          currentItem.stage === 'bridge' && { color: '#38BDF8' },
+                          currentItem.stage === 'monthly' && { color: '#C084FC' },
+                          currentItem.stage === 'client' && { color: '#10B981' },
+                        ]}
+                      >
+                        {currentItem.stageLabel || currentItem.stage.toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </View>
 
@@ -268,7 +319,7 @@ export function BatchDripDispatchModal({
               </TouchableOpacity>
             </View>
 
-            {/* Quick Focus Chips */}
+            {/* Stage-Calibrated Focus Chips */}
             <View style={styles.focusChipRow}>
               {(currentItem.lead.custom_questions || currentItem.lead.notes) && (
                 <TouchableOpacity
@@ -279,26 +330,78 @@ export function BatchDripDispatchModal({
                   <Text style={[styles.focusChipText, { color: Colors.heavenlyGold }]}>📝 Address Note</Text>
                 </TouchableOpacity>
               )}
+
+              {currentItem.stage === 'sprint' && (
+                <>
+                  <TouchableOpacity
+                    style={[styles.focusChip, { borderColor: '#F59E0B' }]}
+                    onPress={() => handleGenerateAiSms('sprint_summary')}
+                    disabled={isGeneratingAi}
+                  >
+                    <Text style={[styles.focusChipText, { color: '#F59E0B' }]}>⚡ Next Step</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.focusChip}
+                    onPress={() => handleGenerateAiSms('sprint_roadblock')}
+                    disabled={isGeneratingAi}
+                  >
+                    <Text style={styles.focusChipText}>📄 Roadblock Buster</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              {currentItem.stage === 'bridge' && (
+                <>
+                  <TouchableOpacity
+                    style={[styles.focusChip, { borderColor: '#38BDF8' }]}
+                    onPress={() => handleGenerateAiSms('bridge_proof')}
+                    disabled={isGeneratingAi}
+                  >
+                    <Text style={[styles.focusChipText, { color: '#38BDF8' }]}>👥 Peer Story</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.focusChip}
+                    onPress={() => handleGenerateAiSms('bridge_reset')}
+                    disabled={isGeneratingAi}
+                  >
+                    <Text style={styles.focusChipText}>🎯 9-Word Reset</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.focusChip}
+                    onPress={() => handleGenerateAiSms('bridge_pause')}
+                    disabled={isGeneratingAi}
+                  >
+                    <Text style={styles.focusChipText}>⏸️ Pause Option</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              {currentItem.stage === 'monthly' && (
+                <TouchableOpacity
+                  style={[styles.focusChip, { borderColor: '#C084FC' }]}
+                  onPress={() => handleGenerateAiSms('monthly_insight')}
+                  disabled={isGeneratingAi}
+                >
+                  <Text style={[styles.focusChipText, { color: '#C084FC' }]}>📚 Pension Insight</Text>
+                </TouchableOpacity>
+              )}
+
+              {currentItem.track === 'client_annual_review' && (
+                <TouchableOpacity
+                  style={[styles.focusChip, { borderColor: '#10B981' }]}
+                  onPress={() => handleGenerateAiSms('client_check')}
+                  disabled={isGeneratingAi}
+                >
+                  <Text style={[styles.focusChipText, { color: '#10B981' }]}>💎 Policy Check</Text>
+                </TouchableOpacity>
+              )}
+
               <TouchableOpacity
                 style={styles.focusChip}
                 onPress={() => handleGenerateAiSms('planning_period')}
                 disabled={isGeneratingAi}
               >
                 <Text style={styles.focusChipText}>🏫 Planning</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.focusChip}
-                onPress={() => handleGenerateAiSms('meeting_confirmation')}
-                disabled={isGeneratingAi}
-              >
-                <Text style={styles.focusChipText}>🎯 Meeting</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.focusChip}
-                onPress={() => handleGenerateAiSms('drop_bonus_focus')}
-                disabled={isGeneratingAi}
-              >
-                <Text style={styles.focusChipText}>💰 5% DROP</Text>
               </TouchableOpacity>
             </View>
 
@@ -333,6 +436,16 @@ export function BatchDripDispatchModal({
                 </TouchableOpacity>
               )}
             </View>
+
+            {/* Next Touch Preview */}
+            {currentItem.suggestedNextDate && (
+              <View style={styles.nextTouchRow}>
+                <Clock size={12} color={Colors.heavenlyGold} />
+                <Text style={styles.nextTouchText}>
+                  Next Cadence Touch: scheduled for ~{new Date(currentItem.suggestedNextDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' })}
+                </Text>
+              </View>
+            )}
 
             <Text style={styles.complianceDisclaimer}>
               🔒 1-Tap Advisor Dispatch: Opens your native Messages composer with 1 tap for 100% TCPA & CTIA carrier compliance.
@@ -464,6 +577,53 @@ const styles = StyleSheet.create({
     color: Colors.heavenlyGold,
     fontSize: 10,
     fontWeight: '800',
+  },
+  stageBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+    borderWidth: 1,
+  },
+  stageBadgeSprint: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderColor: 'rgba(245, 158, 11, 0.4)',
+  },
+  stageBadgeBridge: {
+    backgroundColor: 'rgba(14, 165, 233, 0.15)',
+    borderColor: 'rgba(14, 165, 233, 0.4)',
+  },
+  stageBadgeMonthly: {
+    backgroundColor: 'rgba(168, 85, 247, 0.15)',
+    borderColor: 'rgba(168, 85, 247, 0.4)',
+  },
+  stageBadgeClient: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderColor: 'rgba(16, 185, 129, 0.4)',
+  },
+  stageBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  nextTouchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(212, 160, 23, 0.08)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginTop: 8,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 160, 23, 0.2)',
+  },
+  nextTouchText: {
+    color: Colors.heavenlyGold,
+    fontSize: 11,
+    fontWeight: '700',
   },
   metaRow: {
     flexDirection: 'row',

@@ -114,10 +114,15 @@ export interface CadenceRule {
   delay_hours: number;
 }
 
+export type DripStage = 'sprint' | 'bridge' | 'monthly' | 'client';
+
 export interface SMSTemplate {
   id: string;
   title: string;
-  body: string; // supports {{name}}, {{school}}, {{years_in_frs}}, {{meeting_pref}}, {{my_name}}, {{notes}}
+  body: string; // supports {{name}}, {{first_name}}, {{school}}, {{years_in_frs}}, {{meeting_pref}}, {{my_name}}, {{notes}}, {{room_number}}, {{planning_period}}, {{product}}, {{anniversary_date}}
+  stage?: DripStage;
+  phase_label?: string;
+  suggested_delay_days?: number;
 }
 
 export interface ExtractedLeadItem {
