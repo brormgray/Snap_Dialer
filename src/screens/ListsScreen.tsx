@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -84,6 +84,7 @@ export default function ListsScreen({ navigation }: any) {
   const [isCallActive, setIsCallActive] = useState<boolean>(false);
   const [callStartTime, setCallStartTime] = useState<number | null>(null);
   const [isQuickDispoVisible, setIsQuickDispoVisible] = useState<boolean>(false);
+  const flatListRef = useRef<FlatList<Lead>>(null);
 
   // Calculate duplicates count across the current pipeline
   const duplicateCount = React.useMemo(() => {
@@ -472,7 +473,17 @@ export default function ListsScreen({ navigation }: any) {
         onOpenDripModal={() => setDripModalVisible(true)}
         onNavigateLead={(leadId) => navigation.navigate('LeadDetail', { leadId })}
         onStartDialing={handleStartMasterQueue}
-        onFilterDispoDue={() => setFilterTab('dispo_needed')}
+        onFilterDispoDue={() => {
+          const dispoLeads = scopedLeads.filter((l) => PipelineStateService.isDispoNeeded(l, new Date()));
+          if (dispoLeads.length === 1) {
+            navigation.navigate('LeadDetail', { leadId: dispoLeads[0].id });
+          } else {
+            setFilterTab('dispo_needed');
+            setTimeout(() => {
+              flatListRef.current?.scrollToOffset({ offset: isLandscape ? 180 : 320, animated: true });
+            }, 50);
+          }
+        }}
         onFilterAppts={() => setFilterTab('appts')}
       />
 
@@ -742,6 +753,7 @@ export default function ListsScreen({ navigation }: any) {
         </View>
       ) : (
         <FlatList
+          ref={flatListRef}
           data={filteredLeads}
           keyExtractor={(item) => item.id}
           ListHeaderComponent={renderHeader}

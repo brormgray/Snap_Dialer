@@ -167,7 +167,13 @@ export function TodayCockpitCard({
                 style={[styles.collapsedSummaryItem, styles.collapsedAlertItem]}
                 onPress={() => {
                   HapticsService.medium();
-                  if (onFilterDispoDue) onFilterDispoDue();
+                  if (dispoNeededLeads.length === 1) {
+                    onNavigateLead(dispoNeededLeads[0].id);
+                  } else if (onFilterDispoDue) {
+                    onFilterDispoDue();
+                  } else if (dispoNeededLeads.length > 0) {
+                    onNavigateLead(dispoNeededLeads[0].id);
+                  }
                 }}
               >
                 <Clock size={12} color="#D97706" />
@@ -259,7 +265,9 @@ export function TodayCockpitCard({
           style={styles.dispoAlertCard}
           onPress={() => {
             HapticsService.medium();
-            if (onFilterDispoDue) {
+            if (dispoNeededLeads.length === 1) {
+              onNavigateLead(dispoNeededLeads[0].id);
+            } else if (onFilterDispoDue) {
               onFilterDispoDue();
             } else {
               onNavigateLead(dispoNeededLeads[0].id);
@@ -286,10 +294,18 @@ export function TodayCockpitCard({
             </View>
           </View>
 
-          <View style={styles.dispoReviewBtn}>
+          <TouchableOpacity
+            style={styles.dispoReviewBtn}
+            onPress={(e) => {
+              e.stopPropagation?.();
+              HapticsService.medium();
+              onNavigateLead(dispoNeededLeads[0].id);
+            }}
+            activeOpacity={0.8}
+          >
             <Text style={styles.dispoReviewBtnText}>Review</Text>
             <ChevronRight size={14} color="#B45309" />
-          </View>
+          </TouchableOpacity>
         </TouchableOpacity>
       )}
 

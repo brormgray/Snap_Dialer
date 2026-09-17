@@ -600,33 +600,77 @@ describe('Post-Appointment Lifecycle & Dispo Queue Architecture', () => {
     assert.strictEqual(isActiveAppointment(lead), true);
   });
 
-  // 18. Auto-restoration recovers falsely demoted appointments
-  it('auto-restores falsely demoted nurture_drip appointments with scheduled dates', () => {
-    const demotedLead = {
-      id: 'lead_falsely_demoted',
+  // 18. Nurture Drip Wrap-Up Preservation & Forward Auto-Healing
+  it('preserves legitimate nurture_drip post-appointment outcomes and heals trapped leads', () => {
+    // Case A: Post-appointment sit-down concluded and moved to prospect drip
+    const wrappedUpLead = {
+      id: 'lead_nurture_drip_1',
       name: 'Michael Miller',
       last_disposition: 'connected',
       appointment_outcome: 'nurture_drip',
       appointment_completed_at: '2026-09-08T18:00:00.000Z',
-      appointment_scheduled_at: '2026-09-09T14:30:00.000Z',
-      notes: 'Sit-down appointment scheduled for Wednesday',
+      appointment_scheduled_at: '2026-09-08T14:30:00.000Z',
+      notes: '[Sit-Down Wrap-Up] Enrolled in FRS Prospect Nurture Drip (Day 7 Multiplier).',
       drip_track: 'prospect_nurture',
     };
 
-    // Auto-restoration logic
-    let lastDisp = demotedLead.last_disposition;
-    let apptOutcome = demotedLead.appointment_outcome;
-    let apptCompletedAt = demotedLead.appointment_completed_at;
+    // Forward healing / hydration logic simulation
+    const hydrateLeadSim = (raw) => {
+      let lastDisp = raw.last_disposition || 'pending';
+      let apptOutcome = raw.appointment_outcome || null;
+      let apptCompletedAt = raw.appointment_completed_at || null;
+      let dripTrack = raw.drip_track || 'none';
 
-    if (apptOutcome === 'nurture_drip' && (demotedLead.appointment_scheduled_at || /sit-down|appointment/i.test(demotedLead.notes))) {
-      lastDisp = 'appointment_set';
-      apptOutcome = null;
-      apptCompletedAt = null;
-    }
+      const hasNurtureWrapUpNote = typeof raw.notes === 'string' && raw.notes.includes('[Sit-Down Wrap-Up] Enrolled in FRS Prospect Nurture Drip');
+      const isProspectDripWrapUp = apptOutcome === 'nurture_drip' || hasNurtureWrapUpNote || (dripTrack === 'prospect_nurture' && Boolean(raw.appointment_scheduled_at));
 
-    assert.strictEqual(lastDisp, 'appointment_set');
-    assert.strictEqual(apptOutcome, null);
-    assert.strictEqual(apptCompletedAt, null);
+      if (isProspectDripWrapUp) {
+        if (apptOutcome !== 'nurture_drip') {
+          apptOutcome = 'nurture_drip';
+        }
+        if (!apptCompletedAt) {
+          apptCompletedAt = raw.updated_at || raw.created_at || '2026-09-08T18:00:00.000Z';
+        }
+        if (lastDisp === 'appointment_set') {
+          lastDisp = 'connected';
+        }
+      }
+
+      return {
+        ...raw,
+        last_disposition: lastDisp,
+        appointment_outcome: apptOutcome,
+        appointment_completed_at: apptCompletedAt,
+      };
+    };
+
+    const hydratedLead = hydrateLeadSim(wrappedUpLead);
+    assert.strictEqual(hydratedLead.last_disposition, 'connected');
+    assert.strictEqual(hydratedLead.appointment_outcome, 'nurture_drip');
+    assert.strictEqual(hydratedLead.appointment_completed_at, '2026-09-08T18:00:00.000Z');
+
+    const now = new Date('2026-09-08T19:00:00.000Z');
+    assert.strictEqual(isDispoNeeded(hydratedLead, now), false, 'Nurture drip lead must not show in Dispo Due');
+    assert.strictEqual(isUpcomingAppointment(hydratedLead, now), false, 'Nurture drip lead must not show in Appts Set');
+
+    // Case B: Lead that was previously trapped in appointment_set due to the old auto-healing bug
+    const stuckLead = {
+      id: 'lead_stuck_in_appt_set',
+      name: 'Sarah Connor',
+      last_disposition: 'appointment_set', // Was falsely reverted by old bug
+      appointment_outcome: null, // Was falsely wiped by old bug
+      appointment_completed_at: null,
+      appointment_scheduled_at: '2026-09-08T14:30:00.000Z',
+      notes: '[Sit-Down Wrap-Up] Enrolled in FRS Prospect Nurture Drip (Day 7 Multiplier).\n\nInitial notes',
+      drip_track: 'prospect_nurture',
+    };
+
+    const healedStuckLead = hydrateLeadSim(stuckLead);
+    assert.strictEqual(healedStuckLead.last_disposition, 'connected');
+    assert.strictEqual(healedStuckLead.appointment_outcome, 'nurture_drip');
+    assert.ok(healedStuckLead.appointment_completed_at);
+    assert.strictEqual(isDispoNeeded(healedStuckLead, now), false);
+    assert.strictEqual(isUpcomingAppointment(healedStuckLead, now), false);
   });
 
   // 19. scheduleFollowUp preserves historical notes
@@ -961,6 +1005,47 @@ describe('Post-Appointment Lifecycle & Dispo Queue Architecture', () => {
     assert.strictEqual(render2.hookCalls.length, 6);
     // Hook count and order must match exactly between render passes (React Invariant #310)
     assert.deepStrictEqual(render1.hookCalls, render2.hookCalls);
+  });
+
+  // 29. Today's Advisor Playbook Dispo Alert 1-Tap Review Navigation
+  it('routes directly to LeadDetail when exactly 1 sit-down needs dispo review', () => {
+    let navigatedToLeadId = null;
+    let filteredTabSet = null;
+
+    const navigateLead = (leadId) => {
+      navigatedToLeadId = leadId;
+    };
+
+    const filterDispoDue = () => {
+      filteredTabSet = 'dispo_needed';
+    };
+
+    // Scenario 1: Exactly 1 sit-down needs disposition
+    const singleDispoLeads = [{ id: 'lead_review_single', name: 'James Wilson' }];
+
+    const handleBannerPress = (dispoNeededLeads) => {
+      if (dispoNeededLeads.length === 1) {
+        navigateLead(dispoNeededLeads[0].id);
+      } else if (filterDispoDue) {
+        filterDispoDue();
+      }
+    };
+
+    handleBannerPress(singleDispoLeads);
+    assert.strictEqual(navigatedToLeadId, 'lead_review_single', 'Must navigate directly to lead when count is 1');
+    assert.strictEqual(filteredTabSet, null, 'Must not stall on filter tab when exactly 1 lead is ready for review');
+
+    // Scenario 2: Multiple sit-downs need disposition
+    navigatedToLeadId = null;
+    filteredTabSet = null;
+    const multipleDispoLeads = [
+      { id: 'lead_1', name: 'Lead 1' },
+      { id: 'lead_2', name: 'Lead 2' },
+    ];
+
+    handleBannerPress(multipleDispoLeads);
+    assert.strictEqual(filteredTabSet, 'dispo_needed', 'Must filter to dispo_needed tab when multiple leads need review');
+    assert.strictEqual(navigatedToLeadId, null);
   });
 });
 

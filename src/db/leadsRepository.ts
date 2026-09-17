@@ -1219,12 +1219,27 @@ export class LeadsRepository {
       }
     }
 
-    // Auto-healing rule 2: Auto-restore appointments that were erroneously converted to nurture_drip
-    if (apptOutcome === 'nurture_drip' && (raw.appointment_scheduled_at || (raw.notes && /sit-down|appointment/i.test(raw.notes)))) {
-      lastDisp = 'appointment_set';
-      apptOutcome = null;
-      apptCompletedAt = null;
-      needsHealing = true;
+    // Auto-healing rule 2: Protect & recover legitimate nurture_drip post-appointment wrap-ups
+    const hasNurtureWrapUpNote = typeof raw.notes === 'string' && raw.notes.includes('[Sit-Down Wrap-Up] Enrolled in FRS Prospect Nurture Drip');
+    const isProspectDripWrapUp = apptOutcome === 'nurture_drip' || hasNurtureWrapUpNote || (dripTrack === 'prospect_nurture' && Boolean(raw.appointment_scheduled_at));
+
+    if (isProspectDripWrapUp) {
+      if (apptOutcome !== 'nurture_drip') {
+        apptOutcome = 'nurture_drip';
+        needsHealing = true;
+      }
+      if (!apptCompletedAt) {
+        apptCompletedAt = raw.updated_at || raw.created_at || new Date().toISOString();
+        needsHealing = true;
+      }
+      if (lastDisp === 'appointment_set') {
+        lastDisp = 'connected';
+        needsHealing = true;
+      }
+      if (!raw.next_drip_scheduled_at) {
+        raw.next_drip_scheduled_at = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+        needsHealing = true;
+      }
     }
 
     // Auto-healing rule 3: If active appointment_set but appointment_scheduled_at is missing
