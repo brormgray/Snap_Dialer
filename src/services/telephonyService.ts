@@ -1,6 +1,7 @@
 import * as Linking from 'expo-linking';
 import { Platform } from 'react-native';
 import { Lead, SMSTemplate } from '../types';
+import { DateTimeAwareService } from './dateTimeAwareService';
 
 export class TelephonyService {
   /**
@@ -123,9 +124,14 @@ export class TelephonyService {
   }
 
   /**
-   * Replaces dynamic tokens ({{name}}, {{school}}, {{planning_period}}, {{room_number}}, {{years_in_frs}}, {{meeting_pref}}, {{my_name}}) with lead info
+   * Replaces dynamic tokens ({{name}}, {{school}}, {{planning_period}}, {{room_number}}, {{years_in_frs}}, {{meeting_pref}}, {{my_name}}, {{appointment_date}}, {{appointment_time}}, {{appointment_relative}}, {{appointment_day}}, {{appointment_datetime}}) with lead info
    */
-  static interpolateTemplate(template: SMSTemplate, lead: Lead, myName: string = 'Alex'): string {
+  static interpolateTemplate(
+    template: SMSTemplate,
+    lead: Lead,
+    myName: string = 'Alex',
+    refDate: Date = new Date()
+  ): string {
     const primaryMeetingPref =
       lead.meeting_preferences && lead.meeting_preferences.length > 0
         ? lead.meeting_preferences[0].replace(/^[0-9]\.\s*/, '')
@@ -162,6 +168,9 @@ export class TelephonyService {
       } catch {}
     }
 
+    // Time & Date Aware tokens
+    const apptTokens = DateTimeAwareService.getAppointmentTokens(lead, refDate);
+
     return template.body
       .replace(/{{name}}/gi, () => firstName)
       .replace(/{{first_name}}/gi, () => firstName)
@@ -177,6 +186,13 @@ export class TelephonyService {
       .replace(/{{notes}}/gi, () => lead.notes || '')
       .replace(/{{product}}/gi, () => productLabel)
       .replace(/{{anniversary_date}}/gi, () => formattedAnniversary)
+      .replace(/{{appointment_date}}/gi, () => apptTokens.appointmentDate)
+      .replace(/{{appointment_time}}/gi, () => apptTokens.appointmentTime)
+      .replace(/{{appointment_relative}}/gi, () => apptTokens.appointmentRelative)
+      .replace(/{{appointment_day}}/gi, () => apptTokens.appointmentDay)
+      .replace(/{{appointment_datetime}}/gi, () => apptTokens.appointmentDatetime)
+      .replace(/{{time_window}}/gi, () => apptTokens.appointmentRelative)
+      .replace(/{{relative_time}}/gi, () => apptTokens.appointmentRelative)
       .replace(/{{my_name}}/gi, () => myName);
   }
 }

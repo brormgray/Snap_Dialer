@@ -47,10 +47,12 @@ import {
 } from 'lucide-react-native';
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
+import { SettingsRepository } from '../db/settingsRepository';
 import { TelephonyService } from '../services/telephonyService';
 import { HapticsService } from '../services/hapticsService';
 import { AiSmsService } from '../services/aiSmsService';
 import { CalendarService } from '../services/calendarService';
+import { DateTimeAwareService } from '../services/dateTimeAwareService';
 import { isTeacherInPlanningNow } from '../data/bellSchedules';
 import { NotesService, NoteEntry, EDUCATOR_QUICK_TAGS } from '../services/notesService';
 import { Lead, CallLog, CallDisposition, LeadList } from '../types';
@@ -589,13 +591,21 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     launchSmsComposer(l);
   };
 
-  const launchSmsComposer = (targetLead: Lead) => {
-    const firstName = (targetLead.name || 'Educator').split(' ')[0];
-    const defaultTemplate = `Hi ${firstName}, this is with ValuTeachers following up on your FRS Report Card from ${targetLead.school || 'your school'}. When is a good time to connect?`;
+  const launchSmsComposer = async (targetLead: Lead, forcedToneFocus?: any) => {
+    const l = targetLead || lead;
+    if (!l) return;
+
+    const settings = await SettingsRepository.getSettings();
+    const agentName = settings?.user_name || 'Alex';
+
+    const hasAppt = Boolean(l.appointment_scheduled_at) || l.last_disposition === 'appointment_set';
+    const effectiveTone = forcedToneFocus || (hasAppt ? 'meeting_confirmation' : undefined);
+
+    const initialDraft = AiSmsService.getSmartFallbackSMS(l, agentName, effectiveTone);
     userEditedSmsRef.current = false;
-    setSmsBody(defaultTemplate);
+    setSmsBody(initialDraft);
     setSmsModalVisible(true);
-    handleGenerateAiSms(undefined, targetLead);
+    handleGenerateAiSms(effectiveTone, l);
   };
 
   const handleGenerateAiSms = async (toneFocus?: any, targetLead?: Lead) => {
@@ -603,11 +613,15 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     if (!l) return;
     setIsGeneratingAi(true);
     try {
+      const hasAppt = Boolean(l.appointment_scheduled_at) || l.last_disposition === 'appointment_set';
+      const effectiveTone = toneFocus || (hasAppt ? 'meeting_confirmation' : undefined);
+      const effectiveDispo = hasAppt ? 'appointment_set' : (l.last_disposition || 'follow_up');
+
       const generated = await AiSmsService.generatePersuasiveSMS(
         l,
-        l.last_disposition || 'follow_up',
+        effectiveDispo,
         undefined,
-        toneFocus
+        effectiveTone
       );
       if (generated && generated.trim().length > 0) {
         // Only overwrite if the advisor hasn't manually edited the text, or if they explicitly tapped an AI tone chip
@@ -1102,6 +1116,31 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                       >
                         <Text style={{ color: '#38BDF8', fontSize: 12, fontWeight: '700' }}>
                           🌐 Google Calendar
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={{
+                          width: '100%',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: 'rgba(56, 189, 248, 0.14)',
+                          borderColor: '#38BDF8',
+                          borderWidth: 1.5,
+                          paddingVertical: 11,
+                          borderRadius: 10,
+                          gap: 6,
+                          marginTop: 2,
+                        }}
+                        onPress={() => {
+                          HapticsService.medium();
+                          launchSmsComposer(lead, 'meeting_confirmation');
+                        }}
+                      >
+                        <MessageSquare size={16} color="#38BDF8" />
+                        <Text style={{ color: '#38BDF8', fontSize: 13, fontWeight: '800' }}>
+                          📱 Send Time-Aware Confirmation SMS
                         </Text>
                       </TouchableOpacity>
 
@@ -1817,10 +1856,28 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                 </TouchableOpacity>
               )}
               <TouchableOpacity
-                style={styles.focusChip}
+                style={[
+                  styles.focusChip,
+                  (Boolean(lead?.appointment_scheduled_at) || lead?.last_disposition === 'appointment_set') && {
+                    borderColor: '#38BDF8',
+                    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                  },
+                ]}
                 onPress={() => handleGenerateAiSms('meeting_confirmation')}
               >
-                <Text style={styles.focusChipText}>🎯 Meeting Slot</Text>
+                <Text
+                  style={[
+                    styles.focusChipText,
+                    (Boolean(lead?.appointment_scheduled_at) || lead?.last_disposition === 'appointment_set') && {
+                      color: '#38BDF8',
+                      fontWeight: '800',
+                    },
+                  ]}
+                >
+                  {Boolean(lead?.appointment_scheduled_at) || lead?.last_disposition === 'appointment_set'
+                    ? '🎯 Confirm Sit-Down'
+                    : '🎯 Meeting Slot'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.focusChip}

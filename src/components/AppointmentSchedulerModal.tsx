@@ -29,6 +29,9 @@ import { Colors } from '../theme/colors';
 import { getScheduleForSchool, matchPeriodId, BellPeriod } from '../data/bellSchedules';
 import { CalendarService } from '../services/calendarService';
 import { HapticsService } from '../services/hapticsService';
+import { TelephonyService } from '../services/telephonyService';
+import { AiSmsService } from '../services/aiSmsService';
+import { SettingsRepository } from '../db/settingsRepository';
 
 export interface AppointmentSchedulerModalProps {
   visible: boolean;
@@ -269,6 +272,26 @@ function AppointmentSchedulerModalContent({
     const event = CalendarService.buildEducatorEvent(lead, computedScheduledDate, durationMinutes, notes);
     event.location = locationStr;
     CalendarService.openOutlookCalendar(event);
+  };
+
+  const handleTextConfirmation = async () => {
+    await HapticsService.medium();
+    const scheduledISO = computedScheduledDate.toISOString();
+    const settings = await SettingsRepository.getSettings();
+    const agentName = settings?.user_name || 'Alex';
+
+    const tempLead: Lead = {
+      ...lead,
+      appointment_scheduled_at: scheduledISO,
+      last_disposition: 'appointment_set',
+      room_number: roomNumber.trim() || lead.room_number,
+      planning_period: selectedPeriodId
+        ? schoolSchedule.find((p) => p.id === selectedPeriodId)?.name || lead.planning_period
+        : lead.planning_period,
+    };
+
+    const smsText = AiSmsService.getSmartFallbackSMS(tempLead, agentName, 'meeting_confirmation', new Date());
+    await TelephonyService.sendSMS(lead.phone, smsText);
   };
 
   // Submit Handler
@@ -696,6 +719,12 @@ function AppointmentSchedulerModalContent({
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.calSyncBtn} onPress={handleOpenOutlookCal}>
                   <Text style={styles.calSyncBtnText}>📧 Outlook</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.calSyncBtn, { borderColor: '#38BDF8', backgroundColor: 'rgba(56, 189, 248, 0.15)' }]}
+                  onPress={handleTextConfirmation}
+                >
+                  <Text style={[styles.calSyncBtnText, { color: '#38BDF8' }]}>💬 Text SMS</Text>
                 </TouchableOpacity>
               </View>
             </View>

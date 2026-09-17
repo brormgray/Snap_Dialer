@@ -753,6 +753,11 @@ export default function DialerHudScreen({ route, navigation }: any) {
     smsAlreadyLoggedRef.current = false;
     await HapticsService.tick();
 
+    const hasAppt = Boolean(currentLead.appointment_scheduled_at) || currentLead.last_disposition === 'appointment_set';
+    const initialTone = hasAppt ? 'meeting_confirmation' : undefined;
+    const initialDraft = AiSmsService.getSmartFallbackSMS(currentLead, appSettings?.user_name || 'Alex', initialTone);
+    setCustomSmsBody(initialDraft);
+
     if (currentLead.text_ok === false || currentLead.text_ok === (0 as any)) {
       Alert.alert(
         'SMS Consent Notice',
@@ -764,7 +769,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
             style: 'destructive',
             onPress: () => {
               setSmsModalVisible(true);
-              handleGenerateAiSms();
+              handleGenerateAiSms(initialTone);
             },
           },
         ]
@@ -773,19 +778,23 @@ export default function DialerHudScreen({ route, navigation }: any) {
     }
 
     setSmsModalVisible(true);
-    handleGenerateAiSms();
+    handleGenerateAiSms(initialTone);
   };
 
   const handleGenerateAiSms = async (toneFocus?: any) => {
     if (!currentLead) return;
     setIsGeneratingAi(true);
     await HapticsService.medium();
+    const hasAppt = Boolean(currentLead.appointment_scheduled_at) || currentLead.last_disposition === 'appointment_set';
+    const effectiveTone = toneFocus || (hasAppt ? 'meeting_confirmation' : undefined);
+    const effectiveDispo = hasAppt ? 'appointment_set' : (isOnCall ? 'connected' : 'no_answer');
+
     try {
       const generated = await AiSmsService.generatePersuasiveSMS(
         currentLead,
-        isOnCall ? 'connected' : 'no_answer',
+        effectiveDispo,
         appSettings?.gemini_api_key,
-        toneFocus
+        effectiveTone
       );
       if (generated && generated.trim().length > 0) {
         setCustomSmsBody(generated.trim().replace(/^"|"$/g, ''));
@@ -793,11 +802,12 @@ export default function DialerHudScreen({ route, navigation }: any) {
       }
     } catch (e: any) {
       console.warn('AI SMS generation fallback:', e);
-      if (templates.length > 0) {
-        setCustomSmsBody(
-          TelephonyService.interpolateTemplate(templates[0], currentLead, appSettings?.user_name || 'Alex')
-        );
-      }
+      const fallbackText = AiSmsService.getSmartFallbackSMS(
+        currentLead,
+        appSettings?.user_name || 'Alex',
+        effectiveTone
+      );
+      setCustomSmsBody(fallbackText);
     } finally {
       setIsGeneratingAi(false);
     }
@@ -2119,10 +2129,28 @@ export default function DialerHudScreen({ route, navigation }: any) {
                 </TouchableOpacity>
               )}
               <TouchableOpacity
-                style={styles.focusChip}
+                style={[
+                  styles.focusChip,
+                  (Boolean(currentLead?.appointment_scheduled_at) || currentLead?.last_disposition === 'appointment_set') && {
+                    borderColor: '#38BDF8',
+                    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                  },
+                ]}
                 onPress={() => handleGenerateAiSms('meeting_confirmation')}
               >
-                <Text style={styles.focusChipText}>🎯 Meeting Slot</Text>
+                <Text
+                  style={[
+                    styles.focusChipText,
+                    (Boolean(currentLead?.appointment_scheduled_at) || currentLead?.last_disposition === 'appointment_set') && {
+                      color: '#38BDF8',
+                      fontWeight: '800',
+                    },
+                  ]}
+                >
+                  {Boolean(currentLead?.appointment_scheduled_at) || currentLead?.last_disposition === 'appointment_set'
+                    ? '🎯 Confirm Sit-Down'
+                    : '🎯 Meeting Slot'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.focusChip}
