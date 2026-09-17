@@ -265,8 +265,8 @@ test('Mobile Navigation & Touch Ergonomics Architecture', async (t) => {
 
     // Assert tab bar height is dynamically computed with bottomInset
     assert.ok(
-      navContent.includes('const tabBarHeight = 56 + bottomInset;'),
-      'AppNavigator must compute tabBarHeight with 56px content height plus safe bottomInset'
+      navContent.includes('const tabBarHeight = 62 + bottomInset;'),
+      'AppNavigator must compute tabBarHeight with 62px content height plus safe bottomInset'
     );
 
     // Assert tab bar label typography has explicit lineHeight to prevent vertical half-clipping

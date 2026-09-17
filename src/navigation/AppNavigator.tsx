@@ -29,23 +29,14 @@ const Stack = createNativeStackNavigator();
 function MainTabs() {
   const insets = useSafeAreaInsets();
 
-  // Detect iOS Web or mobile devices for resilient bottom clearance
-  const isMobileWeb =
-    Platform.OS === 'web' &&
-    typeof navigator !== 'undefined' &&
-    /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  const isIOS =
-    Platform.OS === 'ios' ||
-    (Platform.OS === 'web' &&
-      typeof navigator !== 'undefined' &&
-      /iPhone|iPad|iPod/i.test(navigator.userAgent));
+  // On devices with safe area insets (notched iPhones in PWA mode), insets.bottom is > 0 (usually 34px).
+  // On standard browsers/devices, insets.bottom is 0.
+  // We guarantee a minimum 6px bottom padding so text never touches the bottom edge,
+  // and preserve any system insets.bottom without taking space away from the tab items.
+  const bottomInset = insets.bottom > 0 ? insets.bottom : 6;
 
-  // Determine bottom inset: on notched/gesture phones, guarantee at least 26px on iOS and 14px on Android/web
-  const fallbackBottom = isIOS ? 26 : isMobileWeb ? 14 : 10;
-  const bottomInset = Math.max(insets.bottom, fallbackBottom);
-
-  // Total tab bar height: 56px inner content (22px icon + 14px label + vertical padding) + bottomInset
-  const tabBarHeight = 56 + bottomInset;
+  // Total tab bar height guarantees 60px of inner content height (22px icon + 14px label + vertical spacing)
+  const tabBarHeight = 62 + bottomInset;
 
   return (
     <Tab.Navigator
@@ -60,7 +51,7 @@ function MainTabs() {
           borderTopWidth: 1,
           height: tabBarHeight,
           paddingBottom: bottomInset,
-          paddingTop: 6,
+          paddingTop: 2,
         },
         tabBarItemStyle: {
           paddingVertical: 2,
@@ -72,7 +63,7 @@ function MainTabs() {
           fontWeight: '600',
           lineHeight: 14,
           marginTop: 2,
-          marginBottom: 0,
+          marginBottom: 2,
         },
         tabBarHideOnKeyboard: true,
       }}
