@@ -11,6 +11,8 @@ import {
   Settings as SettingsIcon,
 } from 'lucide-react-native';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import ListsScreen from '../screens/ListsScreen';
 import ScanSheetScreen from '../screens/ScanSheetScreen';
 import DialerHudScreen from '../screens/DialerHudScreen';
@@ -25,6 +27,26 @@ const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 function MainTabs() {
+  const insets = useSafeAreaInsets();
+
+  // Detect iOS Web or mobile devices for resilient bottom clearance
+  const isMobileWeb =
+    Platform.OS === 'web' &&
+    typeof navigator !== 'undefined' &&
+    /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  const isIOS =
+    Platform.OS === 'ios' ||
+    (Platform.OS === 'web' &&
+      typeof navigator !== 'undefined' &&
+      /iPhone|iPad|iPod/i.test(navigator.userAgent));
+
+  // Determine bottom inset: on notched/gesture phones, guarantee at least 26px on iOS and 14px on Android/web
+  const fallbackBottom = isIOS ? 26 : isMobileWeb ? 14 : 10;
+  const bottomInset = Math.max(insets.bottom, fallbackBottom);
+
+  // Total tab bar height: 56px inner content (22px icon + 14px label + vertical padding) + bottomInset
+  const tabBarHeight = 56 + bottomInset;
+
   return (
     <Tab.Navigator
       initialRouteName="Lists"
@@ -36,13 +58,21 @@ function MainTabs() {
           backgroundColor: Colors.surfaceCard,
           borderTopColor: Colors.borderSubtle,
           borderTopWidth: 1,
-          height: Platform.OS === 'ios' ? 84 : 70,
-          paddingBottom: Platform.OS === 'ios' ? 24 : 14,
-          paddingTop: 8,
+          height: tabBarHeight,
+          paddingBottom: bottomInset,
+          paddingTop: 6,
+        },
+        tabBarItemStyle: {
+          paddingVertical: 2,
+          justifyContent: 'center',
+          alignItems: 'center',
         },
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
+          lineHeight: 14,
+          marginTop: 2,
+          marginBottom: 0,
         },
         tabBarHideOnKeyboard: true,
       }}
@@ -52,7 +82,7 @@ function MainTabs() {
         component={ListsScreen}
         options={{
           tabBarLabel: 'Educators',
-          tabBarIcon: ({ color, size }) => <Users color={color} size={size || 22} />,
+          tabBarIcon: ({ color }) => <Users color={color} size={22} />,
         }}
       />
       <Tab.Screen
@@ -60,7 +90,7 @@ function MainTabs() {
         component={DialerHudScreen}
         options={{
           tabBarLabel: 'Queue',
-          tabBarIcon: ({ color, size }) => <PhoneCall color={color} size={size || 22} />,
+          tabBarIcon: ({ color }) => <PhoneCall color={color} size={22} />,
         }}
       />
       <Tab.Screen
@@ -68,7 +98,7 @@ function MainTabs() {
         component={PlanningHeatmapScreen}
         options={{
           tabBarLabel: 'Schedule',
-          tabBarIcon: ({ color, size }) => <Calendar color={color} size={size || 22} />,
+          tabBarIcon: ({ color }) => <Calendar color={color} size={22} />,
         }}
       />
       <Tab.Screen
@@ -76,7 +106,7 @@ function MainTabs() {
         component={AnalyticsScreen}
         options={{
           tabBarLabel: 'Analytics',
-          tabBarIcon: ({ color, size }) => <BarChart3 color={color} size={size || 22} />,
+          tabBarIcon: ({ color }) => <BarChart3 color={color} size={22} />,
         }}
       />
       <Tab.Screen
@@ -84,7 +114,7 @@ function MainTabs() {
         component={SettingsScreen}
         options={{
           tabBarLabel: 'Settings',
-          tabBarIcon: ({ color, size }) => <SettingsIcon color={color} size={size || 22} />,
+          tabBarIcon: ({ color }) => <SettingsIcon color={color} size={22} />,
         }}
       />
     </Tab.Navigator>

@@ -225,6 +225,16 @@ test('Mobile Navigation & Touch Ergonomics Architecture', async (t) => {
       'deploy-surge.js must inject touch-action: pan-y manipulation'
     );
 
+    // Assert dynamic viewport height (dvh) to prevent bottom menu clipping behind mobile browser toolbars
+    assert.ok(
+      deploySurgeContent.includes('height: 100dvh !important'),
+      'deploy-surge.js must inject height: 100dvh !important for dynamic mobile viewport'
+    );
+    assert.ok(
+      deploySurgeContent.includes('max-height: 100dvh !important'),
+      'deploy-surge.js must inject max-height: 100dvh !important'
+    );
+
     // Check App.tsx runtime web style injection
     const appContent = fs.readFileSync(path.resolve('App.tsx'), 'utf8');
     assert.ok(
@@ -234,6 +244,41 @@ test('Mobile Navigation & Touch Ergonomics Architecture', async (t) => {
     assert.ok(
       appContent.includes('font-size: 16px !important'),
       'App.tsx must ensure 16px font-size protection dynamically'
+    );
+    assert.ok(
+      appContent.includes('height: 100dvh !important'),
+      'App.tsx must ensure dynamic viewport height 100dvh on web'
+    );
+  });
+
+  await t.test('verifies AppNavigator bottom tab bar safe insets and unclipped label typography', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+
+    const navContent = fs.readFileSync(path.resolve('src/navigation/AppNavigator.tsx'), 'utf8');
+
+    // Assert safe insets hook is imported and utilized
+    assert.ok(
+      navContent.includes('useSafeAreaInsets'),
+      'AppNavigator must use useSafeAreaInsets for dynamic safe area spacing'
+    );
+
+    // Assert tab bar height is dynamically computed with bottomInset
+    assert.ok(
+      navContent.includes('const tabBarHeight = 56 + bottomInset;'),
+      'AppNavigator must compute tabBarHeight with 56px content height plus safe bottomInset'
+    );
+
+    // Assert tab bar label typography has explicit lineHeight to prevent vertical half-clipping
+    assert.ok(
+      navContent.includes('lineHeight: 14'),
+      'AppNavigator must specify lineHeight: 14 on tabBarLabelStyle to prevent vertical truncation'
+    );
+
+    // Assert tab bar item style has centering and padding
+    assert.ok(
+      navContent.includes('tabBarItemStyle'),
+      'AppNavigator must specify tabBarItemStyle for comfortable vertical centering'
     );
   });
 

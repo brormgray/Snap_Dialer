@@ -96,6 +96,9 @@ export default function App() {
         styleEl.id = 'mobile-ux-viewport-lock';
         styleEl.innerHTML = `
           html, body, #root {
+            height: 100% !important;
+            height: 100dvh !important;
+            max-height: 100dvh !important;
             overflow-x: hidden !important;
             width: 100% !important;
             max-width: 100vw !important;
