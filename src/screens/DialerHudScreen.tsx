@@ -214,7 +214,9 @@ export default function DialerHudScreen({ route, navigation }: any) {
       setTemplates(allTemplates);
       setCadenceRules(allRules);
 
-      const leads = schoolName
+      const leads = (route.params?.leads && Array.isArray(route.params.leads) && route.params.leads.length > 0)
+        ? route.params.leads
+        : schoolName
         ? await LeadsRepository.getDialingQueueForSchool(schoolName, listId)
         : await LeadsRepository.getDialingQueueForList(listId);
       setQueue(leads);

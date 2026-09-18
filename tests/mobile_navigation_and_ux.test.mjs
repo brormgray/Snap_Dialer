@@ -107,13 +107,15 @@ test('Mobile Navigation & Touch Ergonomics Architecture', async (t) => {
       { id: 'l5', name: 'L5', is_client: true },
     ];
 
-    // Calls Due: Callbacks due today or fresh priority pending
+    // Calls Due: Strictly scheduled callbacks due today (fresh uncontacted priority tier 1 leads are NOT calls due)
     const callsDueCount = sampleLeads.filter((l) => {
-      if (l.last_disposition === 'callback_requested') return true;
-      if (l.priority_tier === 1 && (!l.last_disposition || l.last_disposition === 'pending')) return true;
-      return false;
+      if (Boolean(l.is_client)) return false;
+      if (['appointment_set', 'connected', 'spoke', 'do_not_call', 'bad_number', 'other'].includes(l.last_disposition || '')) return false;
+      if (!l.last_disposition || l.last_disposition === 'pending') return false;
+      const hasValidFollowUp = Boolean(l.follow_up_at && !isNaN(new Date(l.follow_up_at).getTime()));
+      return l.last_disposition === 'callback_requested' || hasValidFollowUp;
     }).length;
-    assert.equal(callsDueCount, 2); // l1 and l4
+    assert.equal(callsDueCount, 1); // Only l1 (callback_requested), l4 (fresh pending tier 1) is NOT calls due
 
     // Upcoming sit-downs today
     const upcomingSitDownsCount = sampleLeads.filter((l) => {

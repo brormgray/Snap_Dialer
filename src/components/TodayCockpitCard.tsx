@@ -15,6 +15,8 @@ interface TodayCockpitCardProps {
   onStartDialing: () => void;
   onFilterDispoDue?: () => void;
   onFilterAppts?: () => void;
+  onOpenCallsDueModal?: () => void;
+  onDirectCall?: (lead: Lead) => void;
 }
 
 export function TodayCockpitCard({
@@ -25,9 +27,9 @@ export function TodayCockpitCard({
   onStartDialing,
   onFilterDispoDue,
   onFilterAppts,
+  onOpenCallsDueModal,
+  onDirectCall,
 }: TodayCockpitCardProps) {
-  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
-
   const now = useMemo(() => new Date(), [leads]);
 
   // Strictly upcoming confirmed sit-downs scheduled for TODAY
@@ -45,29 +47,12 @@ export function TodayCockpitCard({
     return leads.filter((l) => PipelineStateService.isDispoNeeded(l, now));
   }, [leads, now]);
 
-  // Callbacks scheduled for today or past due
-  const callbacksDue = useMemo(() => {
-    return leads.filter((l) => {
-      if (['connected', 'spoke', 'do_not_call', 'bad_number', 'appointment_set'].includes(l.last_disposition || '')) return false;
-      const hasValidFollowUp = l.follow_up_at && !isNaN(new Date(l.follow_up_at).getTime());
-      if (l.last_disposition === 'callback_requested' || hasValidFollowUp) {
-        if (hasValidFollowUp && l.follow_up_at) {
-          return l.follow_up_at.slice(0, 10) <= todayStr;
-        }
-        return l.last_disposition === 'callback_requested';
-      }
-      return false;
-    });
-  }, [leads, todayStr]);
+  // Strictly scheduled callbacks due today or overdue
+  const callbacksDueToday = useMemo(() => {
+    return PipelineStateService.getScheduledCallbacksDueToday(leads, now);
+  }, [leads, now]);
 
-  // Fresh Tier 1 leads waiting to be called
-  const freshWaitingCount = useMemo(() => {
-    return leads.filter(
-      (l) => (l.priority_tier || 1) === 1 && (!l.last_disposition || l.last_disposition === 'pending')
-    ).length;
-  }, [leads]);
-
-  const totalCallsDue = callbacksDue.length + freshWaitingCount;
+  const totalCallsDue = callbacksDueToday.length;
 
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height && height < 550;
@@ -121,7 +106,11 @@ export function TodayCockpitCard({
             style={styles.collapsedSummaryItem}
             onPress={() => {
               HapticsService.tick();
-              onStartDialing();
+              if (onOpenCallsDueModal) {
+                onOpenCallsDueModal();
+              } else {
+                onStartDialing();
+              }
             }}
           >
             <PhoneCall size={12} color="#38BDF8" />
@@ -190,12 +179,17 @@ export function TodayCockpitCard({
       <View style={styles.triadContainer}>
         {/* Metric 1: Calls Due */}
         <TouchableOpacity
-          style={styles.triadBox}
+          style={[styles.triadBox, callbacksDueToday.length > 0 && styles.triadBoxActiveCyan]}
           onPress={() => {
             HapticsService.tick();
-            onStartDialing();
+            if (onOpenCallsDueModal) {
+              onOpenCallsDueModal();
+            } else {
+              onStartDialing();
+            }
           }}
           activeOpacity={0.8}
+          accessibilityLabel={`Calls Due: ${totalCallsDue}`}
         >
           <View style={styles.triadTop}>
             <PhoneCall size={14} color="#38BDF8" />
@@ -203,7 +197,7 @@ export function TodayCockpitCard({
           </View>
           <Text style={styles.triadLabel}>Calls Due</Text>
           <Text style={styles.triadSub} numberOfLines={1}>
-            {callbacksDue.length > 0 ? `${callbacksDue.length} callback${callbacksDue.length !== 1 ? 's' : ''}` : 'Fresh queue'}
+            {callbacksDueToday.length > 0 ? `${callbacksDueToday.length} due today` : 'None due today'}
           </Text>
         </TouchableOpacity>
 
@@ -326,6 +320,107 @@ export function TodayCockpitCard({
           </Text>
           <ChevronRight size={16} color="#000000" />
         </TouchableOpacity>
+      )}
+
+      {/* Scheduled Callbacks Today Carousel */}
+      {callbacksDueToday.length > 0 && (
+        <View style={styles.callbacksSection}>
+          <View style={styles.callbacksSectionHeaderRow}>
+            <Text style={styles.callbacksSectionHeader}>
+              SCHEDULED CALLBACKS TODAY ({callbacksDueToday.length}):
+            </Text>
+            {onOpenCallsDueModal && (
+              <TouchableOpacity
+                onPress={() => {
+                  HapticsService.tick();
+                  onOpenCallsDueModal();
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.viewAllCallbacksText}>View All ({callbacksDueToday.length}) →</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {callbacksDueToday.map((c) => {
+                const planningInfo = isTeacherInPlanningNow(c.planning_period, c.school);
+                const timeBadge = PipelineStateService.getCallbackTimeBadge(c, now);
+                const noteSnippet = PipelineStateService.getCallbackNoteSnippet(c);
+
+                return (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={[
+                      styles.callbackChip,
+                      planningInfo.inPlanning && styles.callbackChipInPlanning,
+                    ]}
+                    onPress={() => {
+                      HapticsService.tick();
+                      if (onOpenCallsDueModal) {
+                        onOpenCallsDueModal();
+                      } else {
+                        onNavigateLead(c.id);
+                      }
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <View style={styles.callbackChipTopRow}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1, minWidth: 0 }}>
+                        <Text style={styles.callbackChipName} numberOfLines={1}>
+                          {c.name}
+                        </Text>
+                        {planningInfo.inPlanning && (
+                          <View style={styles.livePulseDot} />
+                        )}
+                      </View>
+                      {onDirectCall && (
+                        <TouchableOpacity
+                          style={styles.chipQuickDialBtn}
+                          onPress={(e) => {
+                            e.stopPropagation?.();
+                            HapticsService.medium();
+                            onDirectCall(c);
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityLabel={`Direct call ${c.name}`}
+                        >
+                          <PhoneCall size={11} color="#10B981" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    <Text style={styles.callbackChipSchool} numberOfLines={1}>
+                      {c.school || 'VOL'}{c.room_number ? ` • Rm ${c.room_number}` : ''}
+                    </Text>
+                    <View style={styles.callbackChipBadgeRow}>
+                      <View
+                        style={[
+                          styles.callbackTimePill,
+                          timeBadge.isOverdue && styles.callbackTimePillOverdue,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.callbackTimePillText,
+                            timeBadge.isOverdue && styles.callbackTimePillTextOverdue,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {timeBadge.label}
+                        </Text>
+                      </View>
+                    </View>
+                    {noteSnippet ? (
+                      <Text style={styles.callbackChipNote} numberOfLines={1}>
+                        "{noteSnippet}"
+                      </Text>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </ScrollView>
+        </View>
       )}
 
       {/* Confirmed Upcoming Sit-Downs Preview List (STRICTLY TODAY'S SCHEDULED APPOINTMENTS) */}
@@ -640,5 +735,101 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(245, 158, 11, 0.2)',
     borderWidth: 1,
     borderColor: '#F59E0B',
+  },
+  triadBoxActiveCyan: {
+    borderColor: 'rgba(56, 189, 248, 0.5)',
+    backgroundColor: 'rgba(56, 189, 248, 0.08)',
+  },
+  callbacksSection: {
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  callbacksSectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  callbacksSectionHeader: {
+    color: '#38BDF8',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  viewAllCallbacksText: {
+    color: Colors.heavenlyGold,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  callbackChip: {
+    backgroundColor: '#1E293B',
+    borderRadius: 10,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.25)',
+    minWidth: 160,
+    maxWidth: 220,
+    justifyContent: 'space-between',
+  },
+  callbackChipInPlanning: {
+    borderColor: '#22C55E',
+    backgroundColor: 'rgba(34, 197, 94, 0.12)',
+  },
+  callbackChipTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 4,
+    marginBottom: 2,
+  },
+  callbackChipName: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  chipQuickDialBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(16, 185, 129, 0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  callbackChipSchool: {
+    color: '#94A3B8',
+    fontSize: 10,
+    marginBottom: 4,
+  },
+  callbackChipBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 2,
+  },
+  callbackTimePill: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  callbackTimePillOverdue: {
+    backgroundColor: '#FEE2E2',
+  },
+  callbackTimePillText: {
+    color: '#B45309',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  callbackTimePillTextOverdue: {
+    color: '#DC2626',
+    fontWeight: '900',
+  },
+  callbackChipNote: {
+    color: '#E2E8F0',
+    fontSize: 10,
+    fontStyle: 'italic',
+    marginTop: 2,
   },
 });

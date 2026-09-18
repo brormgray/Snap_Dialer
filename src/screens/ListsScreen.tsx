@@ -59,6 +59,7 @@ import { TodayCockpitCard } from '../components/TodayCockpitCard';
 import { BatchDripDispatchModal } from '../components/BatchDripDispatchModal';
 import { FilterBottomSheet } from '../components/FilterBottomSheet';
 import { QuickDispositionModal } from '../components/QuickDispositionModal';
+import { CallbacksDueModal } from '../components/CallbacksDueModal';
 import { DripDispatcherService } from '../services/dripDispatcherService';
 import { PipelineStateService } from '../services/pipelineStateService';
 
@@ -81,6 +82,7 @@ export default function ListsScreen({ navigation }: any) {
   const [isDeduplicating, setIsDeduplicating] = useState<boolean>(false);
   const [dripModalVisible, setDripModalVisible] = useState<boolean>(false);
   const [filterSheetVisible, setFilterSheetVisible] = useState<boolean>(false);
+  const [callsDueModalVisible, setCallsDueModalVisible] = useState<boolean>(false);
 
   // Universal Live Call & Quick Disposition Modal
   const [quickDispoLead, setQuickDispoLead] = useState<Lead | null>(null);
@@ -223,6 +225,10 @@ export default function ListsScreen({ navigation }: any) {
     });
   }, [leads, selectedListId, selectedSchool, priorityFilter, frsFilter]);
 
+  const callbacksDueToday = useMemo(() => {
+    return PipelineStateService.getScheduledCallbacksDueToday(scopedLeads);
+  }, [scopedLeads]);
+
   // Synchronously compute filteredLeads from scopedLeads, active tab, and search query
   const filteredLeads = useMemo(() => {
     let result = scopedLeads;
@@ -303,6 +309,30 @@ export default function ListsScreen({ navigation }: any) {
     navigation.navigate('DialerHUD', {
       listId: selectedListId,
       listTitle,
+      schoolName: selectedSchool !== 'all' ? selectedSchool : undefined,
+    });
+  };
+
+  const handleStartCallbacksQueue = (callbacks: Lead[]) => {
+    setCallsDueModalVisible(false);
+    if (!callbacks || callbacks.length === 0) {
+      Alert.alert(
+        'No Callbacks Due',
+        'There are no scheduled callbacks due today.'
+      );
+      return;
+    }
+
+    HapticsService.success();
+    let listTitle = `Scheduled Callbacks (${callbacks.length})`;
+    if (selectedSchool !== 'all') {
+      listTitle = `${selectedSchool} • ${listTitle}`;
+    }
+
+    navigation.navigate('DialerHUD', {
+      listId: 'callbacks_due_queue',
+      listTitle,
+      leads: callbacks,
       schoolName: selectedSchool !== 'all' ? selectedSchool : undefined,
     });
   };
@@ -485,6 +515,8 @@ export default function ListsScreen({ navigation }: any) {
         onOpenDripModal={() => setDripModalVisible(true)}
         onNavigateLead={(leadId) => navigation.navigate('LeadDetail', { leadId })}
         onStartDialing={handleStartMasterQueue}
+        onOpenCallsDueModal={() => setCallsDueModalVisible(true)}
+        onDirectCall={handleDirectCall}
         onFilterDispoDue={() => {
           const dispoLeads = scopedLeads.filter((l) => PipelineStateService.isDispoNeeded(l, new Date()));
           if (dispoLeads.length === 1) {
@@ -1192,6 +1224,22 @@ export default function ListsScreen({ navigation }: any) {
         onDispositionComplete={() => {
           loadLeads();
         }}
+      />
+
+      {/* Scheduled Callbacks Due Today Modal */}
+      <CallbacksDueModal
+        visible={callsDueModalVisible}
+        onClose={() => setCallsDueModalVisible(false)}
+        callbacks={callbacksDueToday}
+        onCallNow={(lead) => {
+          setCallsDueModalVisible(false);
+          handleDirectCall(lead);
+        }}
+        onViewDetails={(lead) => {
+          setCallsDueModalVisible(false);
+          handleDialSingle(lead);
+        }}
+        onStartQueue={handleStartCallbacksQueue}
       />
     </SafeAreaView>
   );

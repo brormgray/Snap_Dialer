@@ -1,6 +1,7 @@
 import { Lead, AppointmentOutcome } from '../types';
 import { getScheduleForSchool, matchPeriodId } from '../data/bellSchedules';
 import { CalendarService } from './calendarService';
+import { NotesService } from './notesService';
 
 export interface AppointmentTimeWindow {
   startDate: Date;
@@ -185,7 +186,7 @@ export class PipelineStateService {
     return this.isAppointmentToday(lead, now, timeZone);
   }
 
-  private static formatDateKey(d: Date, timeZone: string): string {
+  static formatDateKey(d: Date, timeZone: string): string {
     try {
       return new Intl.DateTimeFormat('en-CA', {
         timeZone,
@@ -252,5 +253,179 @@ export class PipelineStateService {
     if (lead.appointment_outcome) return lead.appointment_outcome;
     if (Boolean(lead.is_client)) return 'converted';
     return null;
+  }
+
+  /**
+   * Predicate for SCHEDULED CALLBACK:
+   * - Excludes leads that are completed/closed (is_client === true or last_disposition in ['appointment_set', 'connected', 'spoke', 'do_not_call', 'bad_number', 'other']).
+   * - Requires that the lead has an explicit scheduled callback: last_disposition === 'callback_requested' or a valid follow_up_at timestamp.
+   * - Crucially: Leads with !last_disposition || last_disposition === 'pending' (fresh uncontacted leads) are NEVER callbacks.
+   */
+  static isScheduledCallback(lead: Lead): boolean {
+    if (!lead) return false;
+    if (Boolean(lead.is_client)) return false;
+
+    const dispo = lead.last_disposition;
+    const EXCLUDED_DISPOSITIONS = [
+      'appointment_set',
+      'connected',
+      'spoke',
+      'do_not_call',
+      'bad_number',
+      'other',
+    ];
+    if (dispo && EXCLUDED_DISPOSITIONS.includes(dispo)) {
+      return false;
+    }
+
+    // Crucially: Leads with !last_disposition || last_disposition === 'pending' (fresh uncontacted leads) are NEVER callbacks
+    if (!dispo || dispo === 'pending') {
+      return false;
+    }
+
+    const hasValidFollowUp = Boolean(
+      lead.follow_up_at &&
+      lead.follow_up_at.trim() &&
+      !isNaN(new Date(lead.follow_up_at.trim()).getTime())
+    );
+
+    return dispo === 'callback_requested' || hasValidFollowUp;
+  }
+
+  /**
+   * Predicate for SCHEDULED CALLBACK DUE TODAY:
+   * - Must satisfy isScheduledCallback(lead).
+   * - Checks whether follow_up_at is due today or overdue (followUpDateKey <= todayDateKey in timeZone).
+   * - If follow_up_at is missing but last_disposition === 'callback_requested', treats as due today.
+   * - Guarantees the callback remains due until a call is made and properly dispositioned away from callback_requested.
+   */
+  static isScheduledCallbackDueToday(
+    lead: Lead,
+    now: Date = new Date(),
+    timeZone: string = 'America/New_York'
+  ): boolean {
+    if (!this.isScheduledCallback(lead)) return false;
+
+    const hasValidFollowUp = Boolean(
+      lead.follow_up_at &&
+      lead.follow_up_at.trim() &&
+      !isNaN(new Date(lead.follow_up_at.trim()).getTime())
+    );
+
+    if (hasValidFollowUp && lead.follow_up_at) {
+      const raw = lead.follow_up_at.trim();
+      const todayDateKey = this.formatDateKey(now, timeZone);
+      const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      let followUpDateKey: string;
+      if (dateOnlyMatch) {
+        followUpDateKey = raw;
+      } else {
+        const followUpDate = new Date(raw);
+        followUpDateKey = this.formatDateKey(followUpDate, timeZone);
+      }
+
+      return followUpDateKey <= todayDateKey;
+    }
+
+    // If follow_up_at is missing or invalid, but last_disposition === 'callback_requested', treats as due today
+    if (lead.last_disposition === 'callback_requested') {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Returns leads matching isScheduledCallbackDueToday, sorted by follow_up_at ascending.
+   */
+  static getScheduledCallbacksDueToday(
+    leads: Lead[],
+    now: Date = new Date(),
+    timeZone: string = 'America/New_York'
+  ): Lead[] {
+    if (!Array.isArray(leads)) return [];
+
+    return leads
+      .filter((l) => this.isScheduledCallbackDueToday(l, now, timeZone))
+      .sort((a, b) => {
+        const timeA = a.follow_up_at && !isNaN(new Date(a.follow_up_at).getTime())
+          ? new Date(a.follow_up_at).getTime()
+          : Number.MAX_SAFE_INTEGER;
+        const timeB = b.follow_up_at && !isNaN(new Date(b.follow_up_at).getTime())
+          ? new Date(b.follow_up_at).getTime()
+          : Number.MAX_SAFE_INTEGER;
+        if (timeA !== timeB) return timeA - timeB;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+  }
+
+  /**
+   * Generates a display badge for a callback lead (e.g. ⏰ 10:15 AM or ⏰ Period 3)
+   */
+  static getCallbackTimeBadge(
+    lead: Lead,
+    now: Date = new Date()
+  ): { label: string; isOverdue: boolean; isToday: boolean } {
+    if (lead.follow_up_at && !isNaN(new Date(lead.follow_up_at).getTime())) {
+      const followUp = new Date(lead.follow_up_at);
+      const isOverdue = followUp.getTime() < now.getTime();
+      const isToday = followUp.toDateString() === now.toDateString();
+      const timeStr = followUp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+      if (isOverdue) {
+        return {
+          label: `⏰ ${timeStr} (Overdue)`,
+          isOverdue: true,
+          isToday,
+        };
+      }
+      if (lead.planning_period) {
+        return {
+          label: `⏰ ${timeStr} • P${lead.planning_period}`,
+          isOverdue: false,
+          isToday,
+        };
+      }
+      return {
+        label: `⏰ ${timeStr}`,
+        isOverdue: false,
+        isToday,
+      };
+    }
+
+    if (lead.planning_period) {
+      return {
+        label: `⏰ Period ${lead.planning_period}`,
+        isOverdue: false,
+        isToday: true,
+      };
+    }
+
+    return {
+      label: '⏰ Callback Due',
+      isOverdue: false,
+      isToday: true,
+    };
+  }
+
+  /**
+   * Extracts a clean note/reason snippet for the callback
+   */
+  static getCallbackNoteSnippet(lead: Lead): string {
+    if (!lead.notes || !lead.notes.trim()) {
+      return 'Scheduled callback follow-up';
+    }
+    const cleanNotes = lead.notes.trim();
+    const parsed = NotesService.parseNotes(cleanNotes);
+    const cbEntry = parsed.find(
+      (n) => n.text.toLowerCase().includes('callback') || n.text.toLowerCase().includes('follow')
+    );
+    if (cbEntry && cbEntry.text) {
+      return cbEntry.text;
+    }
+    if (parsed.length > 0 && parsed[0].text) {
+      return parsed[0].text;
+    }
+    return cleanNotes.replace(/^\[[^\]]+\]\s*/, '');
   }
 }
