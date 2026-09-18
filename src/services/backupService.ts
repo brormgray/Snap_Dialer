@@ -268,13 +268,14 @@ export class BackupService {
         // Restore Leads
         for (const lead of leadsToImport) {
           const leadId = lead.id || `lead_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+          const isFrsVal = lead.is_frs !== undefined ? (lead.is_frs === false || lead.is_frs === 0 ? 0 : 1) : 1;
           await db.runAsync(
             `INSERT OR REPLACE INTO leads (
               id, list_id, name, phone, school, email, age, planning_period,
               room_number, years_in_frs, text_ok, frs_knowledge, frs_interests,
               custom_questions, meeting_preferences, annual_salary, present_403b_contribution,
-              source_image_uri, company, notes, priority_tier, cadence_step, last_disposition, attempts_count, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              source_image_uri, company, notes, priority_tier, is_frs, cadence_step, last_disposition, attempts_count, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               leadId,
               lead.list_id || 'master_queue',
@@ -297,6 +298,7 @@ export class BackupService {
               lead.company || null,
               lead.notes || null,
               lead.priority_tier !== undefined && lead.priority_tier !== null ? Number(lead.priority_tier) : 1,
+              isFrsVal,
               lead.cadence_step || 1,
               lead.last_disposition || 'pending',
               lead.attempts_count || 0,

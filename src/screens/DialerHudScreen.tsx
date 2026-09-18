@@ -52,6 +52,9 @@ import {
   Trash2,
   Plus,
   ClipboardList,
+  Building,
+  Landmark,
+  Briefcase,
 } from 'lucide-react-native';
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
@@ -143,6 +146,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
   const [editRoomNumber, setEditRoomNumber] = useState<string>('');
   const [editPlanningPeriod, setEditPlanningPeriod] = useState<string>('');
   const [editYearsInFrs, setEditYearsInFrs] = useState<string>('');
+  const [editIsFrs, setEditIsFrs] = useState<boolean>(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -296,7 +300,61 @@ export default function DialerHudScreen({ route, navigation }: any) {
     setEditRoomNumber(currentLead.room_number || '');
     setEditPlanningPeriod(currentLead.planning_period || '');
     setEditYearsInFrs(currentLead.years_in_frs || '');
+    setEditIsFrs(currentLead.is_frs !== false);
     setEditLeadModalVisible(true);
+  };
+
+  const handleToggleFrs = async () => {
+    if (!currentLead) return;
+    const prevIsFrs = currentLead.is_frs !== false;
+    const newIsFrs = !prevIsFrs;
+
+    await HapticsService.medium();
+    // Immediate optimistic update
+    currentLead.is_frs = newIsFrs;
+    setQueue((prev) => {
+      const next = [...prev];
+      if (next[currentIndex]) {
+        next[currentIndex] = {
+          ...next[currentIndex],
+          is_frs: newIsFrs,
+        };
+      }
+      return next;
+    });
+
+    try {
+      await LeadsRepository.updateLeadDetails({
+        id: currentLead.id,
+        name: currentLead.name,
+        phone: currentLead.phone,
+        school: currentLead.school,
+        email: currentLead.email,
+        room_number: currentLead.room_number,
+        planning_period: currentLead.planning_period,
+        years_in_frs: currentLead.years_in_frs,
+        notes: currentLead.notes,
+        priority_tier: currentLead.priority_tier,
+        list_id: currentLead.list_id,
+        is_frs: newIsFrs,
+      });
+      showToast(newIsFrs ? 'Marked as FRS Member (FRS messaging active)' : 'Marked as Non-FRS Client (General retirement messaging active)');
+    } catch (e: any) {
+      console.error('Failed to toggle FRS status in HUD:', e);
+      // Clean rollback on error
+      currentLead.is_frs = prevIsFrs;
+      setQueue((prev) => {
+        const next = [...prev];
+        if (next[currentIndex]) {
+          next[currentIndex] = {
+            ...next[currentIndex],
+            is_frs: prevIsFrs,
+          };
+        }
+        return next;
+      });
+      Alert.alert('Error', 'Failed to update retirement system status.');
+    }
   };
 
   const handleSaveEditedLead = async () => {
@@ -323,6 +381,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
         notes: currentLead.notes,
         priority_tier: currentLead.priority_tier,
         list_id: currentLead.list_id,
+        is_frs: editIsFrs,
       });
 
       currentLead.name = updatedName;
@@ -332,6 +391,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
       currentLead.room_number = updatedRoom || undefined;
       currentLead.planning_period = updatedPlanning || undefined;
       currentLead.years_in_frs = updatedYears || undefined;
+      currentLead.is_frs = editIsFrs;
 
       setQueue((prev) => {
         const next = [...prev];
@@ -345,6 +405,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
             room_number: updatedRoom || undefined,
             planning_period: updatedPlanning || undefined,
             years_in_frs: updatedYears || undefined,
+            is_frs: editIsFrs,
           };
         }
         return next;
@@ -1259,22 +1320,41 @@ export default function DialerHudScreen({ route, navigation }: any) {
               ) : null}
             </View>
             <View style={{ alignItems: 'flex-end', gap: 4 }}>
-              <View
+              {/* Interactive FRS vs Non-FRS Toggle */}
+              <TouchableOpacity
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
                   backgroundColor: currentLead.is_frs !== false ? 'rgba(139, 92, 246, 0.18)' : 'rgba(59, 130, 246, 0.18)',
                   borderColor: currentLead.is_frs !== false ? '#8B5CF6' : '#3B82F6',
                   borderWidth: 1,
-                  borderRadius: 6,
-                  paddingHorizontal: 6,
-                  paddingVertical: 2,
+                  borderRadius: 8,
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  gap: 4,
                 }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                onPress={handleToggleFrs}
+                activeOpacity={0.75}
+                accessibilityRole="button"
+                accessibilityLabel={currentLead.is_frs !== false ? "FRS Member, tap to toggle to Non-FRS" : "Non-FRS Client, tap to toggle to FRS"}
               >
-                <Text style={{ color: currentLead.is_frs !== false ? '#C084FC' : '#60A5FA', fontSize: 9, fontWeight: '800' }}>
-                  {currentLead.is_frs !== false ? '🏛️ FRS' : '💼 NON-FRS'}
-                </Text>
-              </View>
+                {currentLead.is_frs !== false ? (
+                  <>
+                    <Landmark size={10} color="#C084FC" />
+                    <Text style={{ color: '#C084FC', fontSize: 10, fontWeight: '800' }}>
+                      🏛️ FRS
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Briefcase size={10} color="#60A5FA" />
+                    <Text style={{ color: '#60A5FA', fontSize: 10, fontWeight: '800' }}>
+                      💼 NON-FRS
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
               {currentLead.priority_tier === 3 ? (
                 <View style={styles.hudLegacyBadge}>
                   <Archive size={10} color={Colors.badgeNeutralText} />
@@ -1319,9 +1399,13 @@ export default function DialerHudScreen({ route, navigation }: any) {
           {/* School & FRS Profile Ribbon */}
           <View style={styles.frsRibbon}>
             <View style={styles.ribbonItem}>
-              <School size={14} color={Colors.heavenlyGold} />
+              {currentLead.is_frs !== false ? (
+                <School size={14} color={Colors.heavenlyGold} />
+              ) : (
+                <Building size={14} color={Colors.heavenlyGold} />
+              )}
               <Text style={styles.ribbonText}>
-                {currentLead.school || 'School District'}
+                {currentLead.school || (currentLead.is_frs !== false ? 'School District' : 'General Client')}
                 {currentLead.room_number ? ` • Room ${currentLead.room_number}` : ''}
               </Text>
             </View>
@@ -1353,9 +1437,13 @@ export default function DialerHudScreen({ route, navigation }: any) {
                   </View>
                 );
               })() : null}
-              {currentLead.years_in_frs ? (
+              {currentLead.is_frs !== false && currentLead.years_in_frs ? (
                 <View style={styles.tagBadge}>
                   <Text style={styles.tagText}>🎓 {currentLead.years_in_frs} Yrs in FRS</Text>
+                </View>
+              ) : currentLead.is_frs === false ? (
+                <View style={[styles.tagBadge, { backgroundColor: 'rgba(59, 130, 246, 0.15)', borderColor: '#3B82F6' }]}>
+                  <Text style={[styles.tagText, { color: '#60A5FA' }]}>💼 Non-FRS Client</Text>
                 </View>
               ) : null}
               {currentLead.age ? (
@@ -2398,6 +2486,53 @@ export default function DialerHudScreen({ route, navigation }: any) {
                 placeholder="Full Name"
                 placeholderTextColor={Colors.textMuted}
               />
+
+              <Text style={[styles.editFieldLabel, { marginTop: 10 }]}>Client Type / Retirement System</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                <TouchableOpacity
+                  style={[
+                    styles.hudTierEditBtn,
+                    editIsFrs && {
+                      backgroundColor: 'rgba(139, 92, 246, 0.18)',
+                      borderColor: '#8B5CF6',
+                    },
+                  ]}
+                  onPress={() => {
+                    HapticsService.tick();
+                    setEditIsFrs(true);
+                  }}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Set as FRS Member"
+                >
+                  <Landmark size={14} color={editIsFrs ? '#C084FC' : Colors.brandAccent} />
+                  <Text style={[styles.hudTierEditBtnText, editIsFrs && { color: '#C084FC', fontWeight: '800' }]}>
+                    🏛️ FRS Member
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.hudTierEditBtn,
+                    !editIsFrs && {
+                      backgroundColor: 'rgba(59, 130, 246, 0.18)',
+                      borderColor: '#3B82F6',
+                    },
+                  ]}
+                  onPress={() => {
+                    HapticsService.tick();
+                    setEditIsFrs(false);
+                  }}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Set as Non-FRS Client"
+                >
+                  <Briefcase size={14} color={!editIsFrs ? '#60A5FA' : Colors.textMuted} />
+                  <Text style={[styles.hudTierEditBtnText, !editIsFrs && { color: '#60A5FA', fontWeight: '800' }]}>
+                    💼 Non-FRS Client
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
               <Text style={[styles.editFieldLabel, { marginTop: 10 }]}>Phone Number (Tap to correct OCR)</Text>
               <TextInput
@@ -3468,5 +3603,24 @@ const styles = StyleSheet.create<any>({
   },
   dayPillSubSelected: {
     color: '#34D399',
+  },
+  hudTierEditBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    backgroundColor: Colors.surfaceSubtle,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: Colors.borderSubtle,
+    gap: 6,
+  },
+  hudTierEditBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
   },
 });

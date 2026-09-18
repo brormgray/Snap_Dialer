@@ -130,17 +130,19 @@ export default function LeadDetailScreen({ route, navigation }: any) {
 
     if (l) {
       setLead({ ...l });
-      setName(l.name);
-      setPhone(l.phone);
-      setSchool(l.school || '');
-      setEmail(l.email || '');
-      setRoomNumber(l.room_number || '');
-      setPlanningPeriod(l.planning_period || '');
-      setYearsInFrs(l.years_in_frs || '');
-      setNotes(l.notes || '');
-      setPriorityTier(l.priority_tier || 1);
-      setListIdVal(l.list_id || 'master_queue');
-      setIsFrsVal(l.is_frs !== false);
+      if (!isEditing) {
+        setName(l.name);
+        setPhone(l.phone);
+        setSchool(l.school || '');
+        setEmail(l.email || '');
+        setRoomNumber(l.room_number || '');
+        setPlanningPeriod(l.planning_period || '');
+        setYearsInFrs(l.years_in_frs || '');
+        setNotes(l.notes || '');
+        setPriorityTier(l.priority_tier || 1);
+        setListIdVal(l.list_id || 'master_queue');
+        setIsFrsVal(l.is_frs !== false);
+      }
     }
     setAvailableLists(lists);
 
@@ -155,31 +157,43 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     const newTier = (lead.priority_tier === 3) ? 1 : 3;
     setLead((prev) => (prev ? { ...prev, priority_tier: newTier } : null));
     await LeadsRepository.updateLeadPriority(lead.id, newTier);
-    loadLeadData();
+    await loadLeadData();
   };
 
   const handleToggleFrs = async () => {
     if (!lead) return;
+    const prevIsFrs = lead.is_frs !== false;
+    const newIsFrs = !prevIsFrs;
+
     await HapticsService.medium();
-    const newIsFrs = lead.is_frs === false ? true : false;
+    // Immediate optimistic state updates across lead and form states
     setLead((prev) => (prev ? { ...prev, is_frs: newIsFrs } : null));
     setIsFrsVal(newIsFrs);
-    await LeadsRepository.updateLeadDetails({
-      id: lead.id,
-      name: lead.name,
-      phone: lead.phone,
-      school: lead.school,
-      email: lead.email,
-      room_number: lead.room_number,
-      planning_period: lead.planning_period,
-      years_in_frs: lead.years_in_frs,
-      notes: lead.notes,
-      priority_tier: lead.priority_tier,
-      list_id: lead.list_id,
-      is_frs: newIsFrs,
-    });
-    showToast(newIsFrs ? 'Marked as FRS Member (FRS messaging active)' : 'Marked as Non-FRS Client (General retirement messaging active)');
-    loadLeadData();
+
+    try {
+      await LeadsRepository.updateLeadDetails({
+        id: lead.id,
+        name: lead.name,
+        phone: lead.phone,
+        school: lead.school,
+        email: lead.email,
+        room_number: lead.room_number,
+        planning_period: lead.planning_period,
+        years_in_frs: lead.years_in_frs,
+        notes: lead.notes,
+        priority_tier: lead.priority_tier,
+        list_id: lead.list_id,
+        is_frs: newIsFrs,
+      });
+      showToast(newIsFrs ? 'Marked as FRS Member (FRS messaging active)' : 'Marked as Non-FRS Client (General retirement messaging active)');
+      await loadLeadData();
+    } catch (err: any) {
+      console.error('Failed to toggle FRS status:', err);
+      // Clean rollback on failure
+      setLead((prev) => (prev ? { ...prev, is_frs: prevIsFrs } : null));
+      setIsFrsVal(prevIsFrs);
+      Alert.alert('Error', 'Failed to update client retirement system status.');
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -856,7 +870,25 @@ export default function LeadDetailScreen({ route, navigation }: any) {
           <ArrowLeft size={22} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Educator Profile</Text>
-        <TouchableOpacity onPress={() => setIsEditing(!isEditing)}>
+        <TouchableOpacity
+          onPress={() => {
+            if (!isEditing && lead) {
+              setName(lead.name);
+              setPhone(lead.phone);
+              setSchool(lead.school || '');
+              setEmail(lead.email || '');
+              setRoomNumber(lead.room_number || '');
+              setPlanningPeriod(lead.planning_period || '');
+              setYearsInFrs(lead.years_in_frs || '');
+              setNotes(lead.notes || '');
+              setPriorityTier(lead.priority_tier || 1);
+              setListIdVal(lead.list_id || 'master_queue');
+              setIsFrsVal(lead.is_frs !== false);
+            }
+            setIsEditing(!isEditing);
+          }}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
           <Text style={styles.editLink}>{isEditing ? 'Cancel' : 'Edit'}</Text>
         </TouchableOpacity>
       </View>
@@ -927,24 +959,28 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                       borderColor: lead.is_frs !== false ? '#8B5CF6' : '#3B82F6',
                       borderWidth: 1,
                       borderRadius: 12,
-                      paddingHorizontal: 8,
-                      paddingVertical: 3,
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                      minHeight: 28,
                       gap: 4,
                     }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     onPress={handleToggleFrs}
-                    activeOpacity={0.8}
+                    activeOpacity={0.75}
+                    accessibilityRole="button"
+                    accessibilityLabel={lead.is_frs !== false ? "FRS Member, tap to mark as Non-FRS" : "Non-FRS Client, tap to mark as FRS"}
                   >
                     {lead.is_frs !== false ? (
                       <>
-                        <Landmark size={11} color="#C084FC" />
-                        <Text style={{ color: '#C084FC', fontSize: 10, fontWeight: '800' }}>
+                        <Landmark size={12} color="#C084FC" />
+                        <Text style={{ color: '#C084FC', fontSize: 11, fontWeight: '800' }}>
                           🏛️ FRS Member
                         </Text>
                       </>
                     ) : (
                       <>
-                        <Briefcase size={11} color="#60A5FA" />
-                        <Text style={{ color: '#60A5FA', fontSize: 10, fontWeight: '800' }}>
+                        <Briefcase size={12} color="#60A5FA" />
+                        <Text style={{ color: '#60A5FA', fontSize: 11, fontWeight: '800' }}>
                           💼 Non-FRS
                         </Text>
                       </>
@@ -1646,12 +1682,21 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                 <TouchableOpacity
                   style={[
                     styles.tierEditBtn,
-                    isFrsVal && styles.tierEditBtnActiveFresh,
+                    isFrsVal && {
+                      backgroundColor: 'rgba(139, 92, 246, 0.18)',
+                      borderColor: '#8B5CF6',
+                    },
                   ]}
-                  onPress={() => setIsFrsVal(true)}
+                  onPress={() => {
+                    HapticsService.tick();
+                    setIsFrsVal(true);
+                  }}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Set Client Type as FRS Member"
                 >
-                  <Landmark size={14} color={isFrsVal ? Colors.badgeSuccessText : Colors.brandAccent} />
-                  <Text style={[styles.tierEditBtnText, isFrsVal && { color: Colors.badgeSuccessText, fontWeight: '800' }]}>
+                  <Landmark size={15} color={isFrsVal ? '#C084FC' : Colors.brandAccent} />
+                  <Text style={[styles.tierEditBtnText, isFrsVal && { color: '#C084FC', fontWeight: '800' }]}>
                     🏛️ FRS Member
                   </Text>
                 </TouchableOpacity>
@@ -1659,12 +1704,21 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                 <TouchableOpacity
                   style={[
                     styles.tierEditBtn,
-                    !isFrsVal && styles.tierEditBtnActiveLegacy,
+                    !isFrsVal && {
+                      backgroundColor: 'rgba(59, 130, 246, 0.18)',
+                      borderColor: '#3B82F6',
+                    },
                   ]}
-                  onPress={() => setIsFrsVal(false)}
+                  onPress={() => {
+                    HapticsService.tick();
+                    setIsFrsVal(false);
+                  }}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Set Client Type as Non-FRS Client"
                 >
-                  <Briefcase size={14} color={!isFrsVal ? Colors.textPrimary : Colors.textMuted} />
-                  <Text style={[styles.tierEditBtnText, !isFrsVal && { color: Colors.textPrimary, fontWeight: '800' }]}>
+                  <Briefcase size={15} color={!isFrsVal ? '#60A5FA' : Colors.textMuted} />
+                  <Text style={[styles.tierEditBtnText, !isFrsVal && { color: '#60A5FA', fontWeight: '800' }]}>
                     💼 Non-FRS Client
                   </Text>
                 </TouchableOpacity>
@@ -2331,6 +2385,8 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
     backgroundColor: Colors.surfaceSubtle,
     paddingVertical: 10,
     paddingHorizontal: 12,

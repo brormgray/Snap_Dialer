@@ -352,7 +352,8 @@ export class DripDispatcherService {
   static async recordDripDispatched(
     lead: Lead,
     template: SMSTemplate,
-    customBody?: string
+    customBody?: string,
+    advisorName: string = 'Alex'
   ): Promise<void> {
     const currentStep = lead.drip_step || 0;
     const nextStep = currentStep + 1;
@@ -373,7 +374,7 @@ export class DripDispatcherService {
       next_drip_scheduled_at: nextScheduled,
     });
 
-    const formattedDefault = TelephonyService.interpolateTemplate(template, lead);
+    const formattedDefault = TelephonyService.interpolateTemplate(template, lead, advisorName);
     const finalSmsBody = customBody && customBody.trim().length > 0
       ? customBody.trim()
       : formattedDefault;

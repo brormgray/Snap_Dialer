@@ -183,6 +183,7 @@ export class SnapDialerDexieDB extends Dexie {
                 ...raw,
                 priority_tier: raw.priority_tier !== undefined && raw.priority_tier !== null ? Number(raw.priority_tier) : 1,
                 text_ok: raw.text_ok === 1 || raw.text_ok === true,
+                is_frs: raw.is_frs !== undefined && raw.is_frs !== null ? (raw.is_frs === 1 || raw.is_frs === true || raw.is_frs === 'true') : true,
                 frs_interests: interests,
                 meeting_preferences: preferences,
               });

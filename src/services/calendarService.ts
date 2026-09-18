@@ -62,7 +62,10 @@ export class CalendarService {
   static async downloadIcsFile(event: CalendarEventPayload): Promise<boolean> {
     try {
       const icsData = this.generateIcsString(event);
-      const filename = `FRS_SitDown_${(event.contactName || 'Educator').replace(/\s+/g, '_')}.ics`;
+      const isFrs = !event.title.includes('Retirement Review');
+      const prefix = isFrs ? 'FRS_SitDown' : 'Retirement_Review';
+      const defaultContact = isFrs ? 'Educator' : 'Client';
+      const filename = `${prefix}_${(event.contactName || defaultContact).replace(/\s+/g, '_')}.ics`;
 
       if (Platform.OS === 'web' && typeof document !== 'undefined') {
         const blob = new Blob([icsData], { type: 'text/calendar;charset=utf-8' });
@@ -156,23 +159,24 @@ export class CalendarService {
   ): CalendarEventPayload {
     const validStart = (scheduledDate instanceof Date && !isNaN(scheduledDate.getTime())) ? scheduledDate : new Date();
     const endDate = new Date(validStart.getTime() + durationMinutes * 60000);
-    const roomStr = lead.room_number ? `Room ${lead.room_number}` : 'Classroom';
-    const schoolStr = lead.school || (lead.is_frs !== false ? 'Campus' : 'Office/Remote');
-    const planningStr = lead.planning_period ? ` (${lead.planning_period})` : '';
+    const isFrs = lead.is_frs !== false;
+    const roomStr = lead.room_number ? `Room ${lead.room_number}` : (isFrs ? 'Classroom' : '');
+    const schoolStr = lead.school || (isFrs ? 'Campus' : 'Office/Remote');
+    const planningStr = isFrs && lead.planning_period ? ` (${lead.planning_period})` : '';
 
-    const title = lead.is_frs !== false
+    const title = isFrs
       ? `🎯 FRS Sit-Down: ${lead.name}${planningStr}`
       : `🎯 Retirement Review: ${lead.name}`;
-    const location = `${schoolStr} • ${roomStr}`;
+    const location = roomStr ? `${schoolStr} • ${roomStr}` : schoolStr;
 
     const description = [
-      lead.is_frs !== false
+      isFrs
         ? `FRS & Retirement Review with ${lead.name}`
         : `Retirement Strategy Review with ${lead.name}`,
-      `Location: ${schoolStr} • ${roomStr}`,
+      `Location: ${location}`,
       lead.planning_period ? `Best Window: ${lead.planning_period}` : null,
       `Phone: ${lead.phone}`,
-      lead.is_frs !== false && lead.years_in_frs ? `Years in FRS: ${lead.years_in_frs}` : null,
+      isFrs && lead.years_in_frs ? `Years in FRS: ${lead.years_in_frs}` : null,
       lead.frs_interests?.length ? `Focus Topics: ${lead.frs_interests.join(', ')}` : null,
       lead.custom_questions ? `Inquiries: "${lead.custom_questions}"` : null,
       customNotes ? `Appointment Notes: ${customNotes}` : null,

@@ -177,12 +177,17 @@ export class TelephonyService {
     let body = template.body;
     if (!company) {
       body = body
-        .replace(/\s*with\s+{{company}}/gi, '')
-        .replace(/\s*with\s+{{agency_name}}/gi, '')
-        .replace(/\s*with\s+{{agency}}/gi, '')
+        .replace(/\s*(?:with|from|at|representing)\s+{{company}}/gi, '')
+        .replace(/\s*(?:with|from|at|representing)\s+{{agency_name}}/gi, '')
+        .replace(/\s*(?:with|from|at|representing)\s+{{agency}}/gi, '')
         .replace(/,\s*{{company}}/gi, '')
         .replace(/,\s*{{agency_name}}/gi, '')
-        .replace(/,\s*{{agency}}/gi, '');
+        .replace(/,\s*{{agency}}/gi, '')
+        .replace(/{{company}}/gi, '')
+        .replace(/{{agency_name}}/gi, '')
+        .replace(/{{agency}}/gi, '')
+        .replace(/\b(?:with|from|at|representing)\s*([.,!?:;])/gi, '$1')
+        .replace(/\b(?:with|from|at|representing)\s*$/gi, '');
     }
 
     return body
@@ -209,6 +214,10 @@ export class TelephonyService {
       .replace(/{{appointment_datetime}}/gi, () => apptTokens.appointmentDatetime)
       .replace(/{{time_window}}/gi, () => apptTokens.appointmentRelative)
       .replace(/{{relative_time}}/gi, () => apptTokens.appointmentRelative)
-      .replace(/{{my_name}}/gi, () => myName);
+      .replace(/{{my_name}}/gi, () => myName)
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\s+([.,!?:;])/g, '$1')
+      .replace(/^[ \t]+|[ \t]+$/gm, '')
+      .trim();
   }
 }

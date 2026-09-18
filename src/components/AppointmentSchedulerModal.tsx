@@ -250,9 +250,17 @@ function AppointmentSchedulerModalContent({
   }, [calendarMonth]);
 
   // 1-Tap Calendar Piping Handlers
+  const getModalLocationStr = () => {
+    const isFrs = lead.is_frs !== false;
+    const defaultLoc = isFrs ? 'Campus' : 'Phone / Remote';
+    return roomNumber
+      ? `${lead.school || (isFrs ? 'Campus' : 'Office/Remote')} • Room ${roomNumber}`
+      : lead.school || defaultLoc;
+  };
+
   const handleExportAppleIcs = async () => {
     await HapticsService.medium();
-    const locationStr = roomNumber ? `${lead.school || 'Campus'} • Room ${roomNumber}` : lead.school || 'Campus';
+    const locationStr = getModalLocationStr();
     const event = CalendarService.buildEducatorEvent(lead, computedScheduledDate, durationMinutes, notes);
     event.location = locationStr;
     await CalendarService.downloadIcsFile(event);
@@ -260,7 +268,7 @@ function AppointmentSchedulerModalContent({
 
   const handleOpenGoogleCal = async () => {
     await HapticsService.medium();
-    const locationStr = roomNumber ? `${lead.school || 'Campus'} • Room ${roomNumber}` : lead.school || 'Campus';
+    const locationStr = getModalLocationStr();
     const event = CalendarService.buildEducatorEvent(lead, computedScheduledDate, durationMinutes, notes);
     event.location = locationStr;
     CalendarService.openGoogleCalendar(event);
@@ -268,7 +276,7 @@ function AppointmentSchedulerModalContent({
 
   const handleOpenOutlookCal = async () => {
     await HapticsService.medium();
-    const locationStr = roomNumber ? `${lead.school || 'Campus'} • Room ${roomNumber}` : lead.school || 'Campus';
+    const locationStr = getModalLocationStr();
     const event = CalendarService.buildEducatorEvent(lead, computedScheduledDate, durationMinutes, notes);
     event.location = locationStr;
     CalendarService.openOutlookCalendar(event);

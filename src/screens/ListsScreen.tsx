@@ -43,6 +43,8 @@ import {
   Award,
   SlidersHorizontal,
   ClipboardList,
+  Landmark,
+  Briefcase,
 } from 'lucide-react-native';
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
@@ -656,6 +658,106 @@ export default function ListsScreen({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
+      {/* Active Filter Strip if any filter is active */}
+      {(selectedSchool !== 'all' || selectedListId !== 'all' || priorityFilter !== 'all' || frsFilter !== 'all') && (
+        <View style={styles.activeFiltersRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.activeFiltersScroll}
+          >
+            {frsFilter !== 'all' && (
+              <TouchableOpacity
+                style={[
+                  styles.activeFilterChip,
+                  frsFilter === 'frs' ? styles.activeFilterChipFrs : styles.activeFilterChipNonFrs,
+                ]}
+                onPress={() => {
+                  HapticsService.tick();
+                  setFrsFilter('all');
+                }}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                activeOpacity={0.7}
+              >
+                {frsFilter === 'frs' ? (
+                  <Landmark size={12} color="#C084FC" />
+                ) : (
+                  <Briefcase size={12} color="#60A5FA" />
+                )}
+                <Text
+                  style={[
+                    styles.activeFilterChipText,
+                    frsFilter === 'frs' ? { color: '#C084FC' } : { color: '#60A5FA' },
+                  ]}
+                >
+                  {frsFilter === 'frs' ? 'FRS Members' : 'Non-FRS'} ✕
+                </Text>
+              </TouchableOpacity>
+            )}
+            {selectedSchool !== 'all' && (
+              <TouchableOpacity
+                style={styles.activeFilterChip}
+                onPress={() => {
+                  HapticsService.tick();
+                  setSelectedSchool('all');
+                }}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                activeOpacity={0.7}
+              >
+                <Building size={12} color={Colors.textPrimary} />
+                <Text style={styles.activeFilterChipText}>{selectedSchool} ✕</Text>
+              </TouchableOpacity>
+            )}
+            {selectedListId !== 'all' && (
+              <TouchableOpacity
+                style={styles.activeFilterChip}
+                onPress={() => {
+                  HapticsService.tick();
+                  setSelectedListId('all');
+                }}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                activeOpacity={0.7}
+              >
+                <Layers size={12} color={Colors.textPrimary} />
+                <Text style={styles.activeFilterChipText}>
+                  {availableLists.find((l) => l.id === selectedListId)?.title || 'Campaign'} ✕
+                </Text>
+              </TouchableOpacity>
+            )}
+            {priorityFilter !== 'all' && (
+              <TouchableOpacity
+                style={styles.activeFilterChip}
+                onPress={() => {
+                  HapticsService.tick();
+                  setPriorityFilter('all');
+                }}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                activeOpacity={0.7}
+              >
+                <Sparkles size={12} color={Colors.badgeSuccessText} />
+                <Text style={styles.activeFilterChipText}>
+                  {priorityFilter === 'fresh' ? 'Tier 1 Fresh' : 'Tier 3 Legacy'} ✕
+                </Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.activeFilterChip, styles.clearAllChip]}
+              onPress={() => {
+                HapticsService.tick();
+                setSelectedSchool('all');
+                setSelectedListId('all');
+                setPriorityFilter('all');
+                setFrsFilter('all');
+              }}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.clearAllText}>Clear All</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      )}
+
       {/* Filter Tabs (Pinned outside FlatList for instant horizontal paging) */}
       <View style={styles.tabsContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContent}>
@@ -774,6 +876,11 @@ export default function ListsScreen({ navigation }: any) {
           data={filteredLeads}
           keyExtractor={(item) => item.id}
           ListHeaderComponent={renderHeader}
+          initialNumToRender={12}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          removeClippedSubviews={Platform.OS !== 'web'}
+          keyboardShouldPersistTaps="handled"
           ListEmptyComponent={() => (
             <View style={styles.emptyContainer}>
               <View style={styles.emptyIconCircle}>
@@ -837,12 +944,13 @@ export default function ListsScreen({ navigation }: any) {
                           backgroundColor: 'rgba(59, 130, 246, 0.15)',
                           borderColor: '#3B82F6',
                           borderWidth: 1,
-                          paddingHorizontal: 6,
-                          paddingVertical: 2,
+                          paddingHorizontal: 7,
+                          paddingVertical: 3,
                           borderRadius: 8,
-                          gap: 3,
+                          gap: 4,
                         }}
                       >
+                        <Briefcase size={10} color="#60A5FA" />
                         <Text style={{ color: '#60A5FA', fontSize: 10, fontWeight: '800' }}>Non-FRS</Text>
                       </View>
                     ) : (
@@ -853,12 +961,13 @@ export default function ListsScreen({ navigation }: any) {
                           backgroundColor: 'rgba(139, 92, 246, 0.15)',
                           borderColor: '#8B5CF6',
                           borderWidth: 1,
-                          paddingHorizontal: 6,
-                          paddingVertical: 2,
+                          paddingHorizontal: 7,
+                          paddingVertical: 3,
                           borderRadius: 8,
-                          gap: 3,
+                          gap: 4,
                         }}
                       >
+                        <Landmark size={10} color="#C084FC" />
                         <Text style={{ color: '#C084FC', fontSize: 10, fontWeight: '800' }}>FRS</Text>
                       </View>
                     )}
@@ -1342,6 +1451,50 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     letterSpacing: 0.3,
+  },
+  activeFiltersRow: {
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  activeFiltersScroll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  activeFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    borderRadius: 14,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    minHeight: 28,
+    gap: 5,
+  },
+  activeFilterChipFrs: {
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    borderColor: '#8B5CF6',
+  },
+  activeFilterChipNonFrs: {
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+    borderColor: '#3B82F6',
+  },
+  activeFilterChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  clearAllChip: {
+    backgroundColor: Colors.badgeNeutralBg,
+    borderColor: Colors.borderStrong,
+  },
+  clearAllText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textSecondary,
   },
   tabsContainer: {
     marginTop: 10,

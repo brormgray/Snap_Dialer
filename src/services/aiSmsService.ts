@@ -220,7 +220,11 @@ ${frsConstraint}
             const data = await response.json();
             const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
             if (text && text.length > 20) {
-              return text.replace(/^["']|["']$/g, '').trim();
+              return text
+                .replace(/^["']|["']$/g, '')
+                .replace(/[ \t]{2,}/g, ' ')
+                .replace(/\s+([.,!?:;])/g, '$1')
+                .trim();
             }
           }
         } catch {
@@ -309,7 +313,9 @@ ${frsConstraint}
         : `Hi ${firstName}, this is ${agentName}${withCompany}. Thank you for taking time to sit down with me! Did the numbers and retirement options we discussed make sense, or did any questions pop up when you reflected on it?`;
     }
     if (toneFocus === 'sprint_roadblock') {
-      return `Hi ${firstName}, ${agentName} here. Usually the hardest part of finalizing paperwork is tracking down old statements or logins. If that's holding things up, send me what you have and I can run down the transfer paperwork on my side!`;
+      return isFrs
+        ? `Hi ${firstName}, ${agentName} here. Usually the hardest part of finalizing your FRS & 403(b) paperwork is tracking down old statements or logins. If that's holding things up, send me what you have and I can run down the transfer paperwork on my side!`
+        : `Hi ${firstName}, ${agentName} here. Usually the hardest part of finalizing your retirement rollover or savings paperwork is tracking down old statements or custodian logins. If that's holding things up, send me what you have and I can run down the transfer paperwork on my side!`;
     }
     if (toneFocus === 'drip_bridge' || toneFocus === 'bridge_proof') {
       return isFrs
@@ -332,7 +338,14 @@ ${frsConstraint}
         : `Hi ${firstName}, ${agentName}${withCompany}. Quick retirement fact: relying solely on Social Security replaces only about 40% of pre-retirement earnings. PS: Let me know if you want to recalculate your optimal target in a 5-min check-in!`;
     }
     if (toneFocus === 'drip_client' || toneFocus === 'client_check') {
-      return `Hi ${firstName}, ${agentName} checking in! Just verifying that your retirement deductions are running smoothly on your pay stub. Let me know if you'd like a quick review of any outside or spouse accounts as well!`;
+      return isFrs
+        ? `Hi ${firstName}, ${agentName} checking in! Just verifying that your retirement deductions are running smoothly on your district pay stub. Let me know if you'd like a quick review of any outside or spouse accounts as well!`
+        : `Hi ${firstName}, ${agentName} checking in! Just verifying that your retirement contributions or transfers are running smoothly. Let me know if you'd like a quick review of any outside or spouse accounts as well!`;
+    }
+    if (toneFocus === 'annual_review') {
+      return isFrs
+        ? `Hi ${firstName}, this is ${agentName}${withCompany}. Your policy anniversary is approaching—it's time for our annual review to examine your gains and align with your FRS milestones. When is a good time during your planning period at ${school} to meet?`
+        : `Hi ${firstName}, this is ${agentName}${withCompany}. Your policy anniversary is approaching—it's time for our annual review to examine your gains and ensure your plan matches your retirement goals. When is a good time for a quick review?`;
     }
 
     const prefSlot =
@@ -341,6 +354,13 @@ ${frsConstraint}
         : `during ${lead.planning_period || 'planning'}`;
 
     const outreachPhrase = suggestedOutreach.timeframePhrase; // e.g. "this week", "early next week"
+
+    if (toneFocus === 'unanswered_followup') {
+      if (!isFrs) {
+        return `Hi ${firstName}, this is ${agentName}${withCompany}! I just tried giving you a quick call regarding your retirement planning and rollover options. Feel free to call me back, or let me know if a quick 15-minute consultation works for you ${outreachPhrase}!`;
+      }
+      return `Hi ${firstName}, this is ${agentName}${withCompany}! I just tried giving you a quick call regarding your FRS Report Card from ${school}. Feel free to call me back, or text me a good time ${prefSlot} to connect!`;
+    }
 
     if (!isFrs) {
       if (questionText) {

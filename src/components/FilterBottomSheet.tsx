@@ -142,6 +142,9 @@ export function FilterBottomSheet({
                       HapticsService.tick();
                       onSelectFrs('all');
                     }}
+                    activeOpacity={0.75}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: frsFilter === 'all' || !frsFilter }}
                   >
                     <Text
                       style={[
@@ -156,21 +159,24 @@ export function FilterBottomSheet({
                   <TouchableOpacity
                     style={[
                       styles.pill,
-                      frsFilter === 'frs' && styles.pillActive,
+                      frsFilter === 'frs' && styles.pillActiveFrs,
                     ]}
                     onPress={() => {
                       HapticsService.tick();
                       onSelectFrs(frsFilter === 'frs' ? 'all' : 'frs');
                     }}
+                    activeOpacity={0.75}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: frsFilter === 'frs' }}
                   >
                     <Landmark
-                      size={13}
-                      color={frsFilter === 'frs' ? '#FFFFFF' : Colors.brandAccent}
+                      size={14}
+                      color={frsFilter === 'frs' ? '#C084FC' : '#C084FC'}
                     />
                     <Text
                       style={[
                         styles.pillText,
-                        frsFilter === 'frs' && styles.pillTextActive,
+                        frsFilter === 'frs' && { color: '#C084FC', fontWeight: '800' },
                       ]}
                     >
                       🏛️ FRS Members
@@ -180,21 +186,24 @@ export function FilterBottomSheet({
                   <TouchableOpacity
                     style={[
                       styles.pill,
-                      frsFilter === 'non_frs' && styles.pillActive,
+                      frsFilter === 'non_frs' && styles.pillActiveNonFrs,
                     ]}
                     onPress={() => {
                       HapticsService.tick();
                       onSelectFrs(frsFilter === 'non_frs' ? 'all' : 'non_frs');
                     }}
+                    activeOpacity={0.75}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: frsFilter === 'non_frs' }}
                   >
                     <Briefcase
-                      size={13}
-                      color={frsFilter === 'non_frs' ? '#FFFFFF' : Colors.brandAccent}
+                      size={14}
+                      color={frsFilter === 'non_frs' ? '#60A5FA' : '#60A5FA'}
                     />
                     <Text
                       style={[
                         styles.pillText,
-                        frsFilter === 'non_frs' && styles.pillTextActive,
+                        frsFilter === 'non_frs' && { color: '#60A5FA', fontWeight: '800' },
                       ]}
                     >
                       💼 Non-FRS
@@ -541,6 +550,14 @@ const styles = StyleSheet.create({
   pillActive: {
     backgroundColor: Colors.brandPrimary,
     borderColor: Colors.brandPrimary,
+  },
+  pillActiveFrs: {
+    backgroundColor: 'rgba(139, 92, 246, 0.22)',
+    borderColor: '#8B5CF6',
+  },
+  pillActiveNonFrs: {
+    backgroundColor: 'rgba(59, 130, 246, 0.22)',
+    borderColor: '#3B82F6',
   },
   pillActiveFresh: {
     backgroundColor: '#B45309',

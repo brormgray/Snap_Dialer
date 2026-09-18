@@ -12,17 +12,26 @@ export interface IDatabase {
 }
 
 // Multi-Gigabyte High-Capacity Web Database Implementation (Dexie.js + IndexedDB)
-class WebDatabase implements IDatabase {
-  private lists: any[] = [];
-  private leads: any[] = [];
-  private call_logs: any[] = [];
-  private cadence_rules: any[] = [];
-  private sms_templates: any[] = [];
-  private settings: { key: string; value: string }[] = [];
+export class DexieDatabaseAdapter implements IDatabase {
+  public lists: any[] = [];
+  public leads: any[] = [];
+  public call_logs: any[] = [];
+  public cadence_rules: any[] = [];
+  public sms_templates: any[] = [];
+  public settings: { key: string; value: string }[] = [];
   private isInitialized: boolean = false;
   private inTransaction: boolean = false;
 
-  constructor() {}
+  constructor(initialState?: Partial<DatabaseState>) {
+    if (initialState) {
+      if (initialState.lists) this.lists = [...initialState.lists];
+      if (initialState.leads) this.leads = [...initialState.leads];
+      if (initialState.call_logs) this.call_logs = [...initialState.call_logs];
+      if (initialState.cadence_rules) this.cadence_rules = [...initialState.cadence_rules];
+      if (initialState.sms_templates) this.sms_templates = [...initialState.sms_templates];
+      if (initialState.settings) this.settings = [...initialState.settings];
+    }
+  }
 
   async init(): Promise<void> {
     if (this.isInitialized) return;
@@ -174,10 +183,12 @@ class WebDatabase implements IDatabase {
     };
 
     // Await primary atomic persistence to IndexedDB and localStorage mirror
-    try {
-      await IndexedDbStorage.saveState(state);
-    } catch (err) {
-      console.error('IndexedDbStorage saveState error:', err);
+    if (typeof window !== 'undefined' && window.indexedDB) {
+      try {
+        await IndexedDbStorage.saveState(state);
+      } catch (err) {
+        console.error('IndexedDbStorage saveState error:', err);
+      }
     }
 
     // Secondary async sync to Dexie table stores (upsert without destructive table wipes)
@@ -480,53 +491,99 @@ class WebDatabase implements IDatabase {
         preferences = [];
       }
 
-      // Check if this is a full-field restore insert (26 params with explicit cadence/disposition/attempts)
-      const isFullRestore = params.length >= 26;
-      const cadenceStep = isFullRestore && params[21] !== undefined ? Number(params[21]) : 1;
-      const lastDisp = isFullRestore && params[22] ? params[22] : 'pending';
-      const attemptsCount = isFullRestore && params[23] !== undefined ? Number(params[23]) : 0;
-      const createdAt = (isFullRestore ? params[24] : params[21]) || new Date().toISOString();
-      const updatedAt = (isFullRestore ? params[25] : params[22]) || new Date().toISOString();
+      // Parse is_frs, cadence, disposition, attempts, created_at, and updated_at
+      const hasIsFrsInSql = s.includes('is_frs');
+      let isFrs = true;
+      let cadenceStep = 1;
+      let lastDisp = 'pending';
+      let attemptsCount = 0;
+      let createdAt = new Date().toISOString();
+      let updatedAt = new Date().toISOString();
+      let isClient = false;
+
+      if (hasIsFrsInSql) {
+        // params[21] is is_frs
+        isFrs = params[21] !== undefined ? (params[21] === 1 || params[21] === true || params[21] === 'true' || params[21] === '1') : true;
+        if (params.length >= 26) {
+          // Full restore with explicit cadence/disposition/attempts
+          cadenceStep = params[22] !== undefined ? Number(params[22]) : 1;
+          lastDisp = params[23] || 'pending';
+          attemptsCount = params[24] !== undefined ? Number(params[24]) : 0;
+          createdAt = params[25] || createdAt;
+          updatedAt = params[26] || updatedAt;
+          if (params[27] !== undefined) {
+            isClient = params[27] === 1 || params[27] === true;
+          }
+        } else {
+          // Standard createLead (24 params): [0..20, is_frs(21), created_at(22), updated_at(23)]
+          cadenceStep = 1;
+          lastDisp = 'pending';
+          attemptsCount = 0;
+          createdAt = params[22] || createdAt;
+          updatedAt = params[23] || updatedAt;
+        }
+      } else {
+        // Legacy insert without is_frs column in SQL
+        const isFullRestore = params.length >= 26;
+        cadenceStep = isFullRestore && params[21] !== undefined ? Number(params[21]) : 1;
+        lastDisp = isFullRestore && params[22] ? params[22] : 'pending';
+        attemptsCount = isFullRestore && params[23] !== undefined ? Number(params[23]) : 0;
+        createdAt = (isFullRestore ? params[24] : params[21]) || createdAt;
+        updatedAt = (isFullRestore ? params[25] : params[22]) || updatedAt;
+        if (params[26] !== undefined) {
+          isClient = params[26] === 1 || params[26] === true;
+        }
+      }
+
+      // Defensively ensure createdAt and updatedAt are valid ISO timestamps, never an integer like 0 or 1
+      if (typeof createdAt !== 'string' || createdAt === '0' || createdAt === '1' || !createdAt.includes('-')) {
+        createdAt = new Date().toISOString();
+      }
+      if (typeof updatedAt !== 'string' || updatedAt === '0' || updatedAt === '1' || !updatedAt.includes('-')) {
+        updatedAt = new Date().toISOString();
+      }
+
       const leadId = params[0] || `lead_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const existingIdx = this.leads.findIndex((l) => l.id === leadId);
+      const existingLead = existingIdx >= 0 ? this.leads[existingIdx] : null;
 
       const leadObj = {
         id: leadId,
-        list_id: params[1] || 'master_queue',
-        name: params[2] || '',
-        phone: params[3] || '',
-        school: params[4] || 'VOL',
-        email: params[5] || null,
-        age: params[6] || null,
-        planning_period: params[7] || null,
-        room_number: params[8] || null,
-        years_in_frs: params[9] || null,
-        text_ok: params[10] !== undefined ? (params[10] === 1 || params[10] === true) : true,
-        frs_knowledge: params[11] || null,
-        frs_interests: interests,
-        custom_questions: params[13] || null,
-        meeting_preferences: preferences,
-        annual_salary: params[15] || null,
-        present_403b_contribution: params[16] || null,
-        source_image_uri: params[17] || null,
-        company: params[18] || null,
-        notes: params[19] !== undefined ? params[19] : null,
-        priority_tier: params[20] !== undefined && params[20] !== null ? Number(params[20]) : 1,
-        cadence_step: cadenceStep,
-        last_disposition: lastDisp,
-        attempts_count: attemptsCount,
-        is_client: params[26] !== undefined ? (params[26] === 1 || params[26] === true) : false,
-        is_frs: true,
-        products: [],
-        annualized_premium: 0,
-        transfer_assets_volume: 0,
-        appointment_outcome: null,
-        appointment_scheduled_at: null,
-        appointment_completed_at: null,
-        created_at: createdAt,
-        updated_at: updatedAt,
+        list_id: params[1] || existingLead?.list_id || 'master_queue',
+        name: params[2] || existingLead?.name || '',
+        phone: params[3] || existingLead?.phone || '',
+        school: params[4] || existingLead?.school || 'VOL',
+        email: params[5] || existingLead?.email || null,
+        age: params[6] || existingLead?.age || null,
+        planning_period: params[7] || existingLead?.planning_period || null,
+        room_number: params[8] || existingLead?.room_number || null,
+        years_in_frs: params[9] || existingLead?.years_in_frs || null,
+        text_ok: params[10] !== undefined ? (params[10] === 1 || params[10] === true) : (existingLead?.text_ok ?? true),
+        frs_knowledge: params[11] || existingLead?.frs_knowledge || null,
+        frs_interests: interests.length > 0 ? interests : (existingLead?.frs_interests || []),
+        custom_questions: params[13] || existingLead?.custom_questions || null,
+        meeting_preferences: preferences.length > 0 ? preferences : (existingLead?.meeting_preferences || []),
+        annual_salary: params[15] || existingLead?.annual_salary || null,
+        present_403b_contribution: params[16] || existingLead?.present_403b_contribution || null,
+        source_image_uri: params[17] || existingLead?.source_image_uri || null,
+        company: params[18] || existingLead?.company || null,
+        notes: params[19] !== undefined ? params[19] : (existingLead?.notes ?? null),
+        priority_tier: params[20] !== undefined && params[20] !== null ? Number(params[20]) : (existingLead?.priority_tier ?? 1),
+        cadence_step: cadenceStep || existingLead?.cadence_step || 1,
+        last_disposition: lastDisp || existingLead?.last_disposition || 'pending',
+        attempts_count: attemptsCount !== undefined ? attemptsCount : (existingLead?.attempts_count ?? 0),
+        is_client: isClient || existingLead?.is_client || false,
+        is_frs: isFrs,
+        products: existingLead?.products || [],
+        annualized_premium: existingLead?.annualized_premium || 0,
+        transfer_assets_volume: existingLead?.transfer_assets_volume || 0,
+        appointment_outcome: existingLead?.appointment_outcome || null,
+        appointment_scheduled_at: existingLead?.appointment_scheduled_at || null,
+        appointment_completed_at: existingLead?.appointment_completed_at || null,
+        created_at: createdAt || existingLead?.created_at || new Date().toISOString(),
+        updated_at: updatedAt || new Date().toISOString(),
       };
 
-      const existingIdx = this.leads.findIndex((l) => l.id === leadId);
       if (existingIdx >= 0) {
         this.leads[existingIdx] = { ...this.leads[existingIdx], ...leadObj };
       } else {
@@ -622,21 +679,39 @@ class WebDatabase implements IDatabase {
               lead.meeting_preferences = typeof params[13] === 'string' ? JSON.parse(params[13]) : (params[13] || []);
             } catch { lead.meeting_preferences = []; }
             lead.is_client = params[14] === 1 || params[14] === true;
-            lead.client_since = params[15] || null;
+
+            let mIdx = 15;
+            if (s.includes('is_frs = ?')) {
+              lead.is_frs = params[mIdx] === 1 || params[mIdx] === true;
+              mIdx++;
+            }
+            lead.client_since = params[mIdx] || null;
+            mIdx++;
             try {
-              lead.products = typeof params[16] === 'string' ? JSON.parse(params[16]) : (params[16] || []);
+              lead.products = typeof params[mIdx] === 'string' ? JSON.parse(params[mIdx]) : (params[mIdx] || []);
             } catch { lead.products = []; }
-            lead.annualized_premium = params[17] !== undefined && params[17] !== null ? Number(params[17]) : null;
-            lead.transfer_assets_volume = params[18] !== undefined && params[18] !== null ? Number(params[18]) : null;
-            lead.policy_effective_date = params[19] || null;
-            lead.annual_review_due_date = params[20] || null;
-            lead.drip_track = params[21] || 'none';
-            lead.drip_step = params[22] !== undefined ? Number(params[22]) : 0;
-            lead.next_drip_scheduled_at = params[23] || null;
-            lead.appointment_scheduled_at = params[24] || null;
-            lead.appointment_outcome = params[25] || null;
-            lead.appointment_completed_at = params[26] || null;
-            lead.updated_at = params[27] || new Date().toISOString();
+            mIdx++;
+            lead.annualized_premium = params[mIdx] !== undefined && params[mIdx] !== null ? Number(params[mIdx]) : null;
+            mIdx++;
+            lead.transfer_assets_volume = params[mIdx] !== undefined && params[mIdx] !== null ? Number(params[mIdx]) : null;
+            mIdx++;
+            lead.policy_effective_date = params[mIdx] || null;
+            mIdx++;
+            lead.annual_review_due_date = params[mIdx] || null;
+            mIdx++;
+            lead.drip_track = params[mIdx] || 'none';
+            mIdx++;
+            lead.drip_step = params[mIdx] !== undefined ? Number(params[mIdx]) : 0;
+            mIdx++;
+            lead.next_drip_scheduled_at = params[mIdx] || null;
+            mIdx++;
+            lead.appointment_scheduled_at = params[mIdx] || null;
+            mIdx++;
+            lead.appointment_outcome = params[mIdx] || null;
+            mIdx++;
+            lead.appointment_completed_at = params[mIdx] || null;
+            mIdx++;
+            lead.updated_at = params[mIdx] || new Date().toISOString();
           } else {
             lead.notes = params[0] || null;
             lead.attempts_count = Number(params[1]) || 0;
@@ -656,7 +731,12 @@ class WebDatabase implements IDatabase {
             try {
               lead.meeting_preferences = typeof params[13] === 'string' ? JSON.parse(params[13]) : (params[13] || []);
             } catch { lead.meeting_preferences = []; }
-            lead.updated_at = params[14] || new Date().toISOString();
+            let legacyIdx = 14;
+            if (s.includes('is_frs = ?')) {
+              lead.is_frs = params[legacyIdx] === 1 || params[legacyIdx] === true;
+              legacyIdx++;
+            }
+            lead.updated_at = params[legacyIdx] || new Date().toISOString();
           }
         } else if (
           s.includes('last_disposition = ?') &&
@@ -705,36 +785,58 @@ class WebDatabase implements IDatabase {
             if (params[9]) lead.list_id = params[9];
             if (s.includes('is_client = ?')) {
               lead.is_client = params[10] === 1 || params[10] === true;
-              lead.client_since = params[11] || lead.client_since || null;
+              let pIdx = 11;
+              if (s.includes('is_frs = ?')) {
+                lead.is_frs = params[pIdx] === 1 || params[pIdx] === true;
+                pIdx++;
+              }
+              lead.client_since = params[pIdx] || lead.client_since || null;
+              pIdx++;
               try {
-                lead.products = typeof params[12] === 'string' ? JSON.parse(params[12]) : (params[12] || []);
+                lead.products = typeof params[pIdx] === 'string' ? JSON.parse(params[pIdx]) : (params[pIdx] || []);
               } catch { lead.products = []; }
-              lead.annualized_premium = params[13] !== undefined && params[13] !== null ? Number(params[13]) : null;
-              lead.transfer_assets_volume = params[14] !== undefined && params[14] !== null ? Number(params[14]) : null;
-              lead.policy_effective_date = params[15] || null;
-              lead.annual_review_due_date = params[16] || null;
-              lead.drip_track = params[17] || 'none';
-              lead.drip_step = params[18] !== undefined ? Number(params[18]) : 0;
-              lead.last_drip_sent_at = params[19] || null;
-              lead.next_drip_scheduled_at = params[20] || null;
+              pIdx++;
+              lead.annualized_premium = params[pIdx] !== undefined && params[pIdx] !== null ? Number(params[pIdx]) : null;
+              pIdx++;
+              lead.transfer_assets_volume = params[pIdx] !== undefined && params[pIdx] !== null ? Number(params[pIdx]) : null;
+              pIdx++;
+              lead.policy_effective_date = params[pIdx] || null;
+              pIdx++;
+              lead.annual_review_due_date = params[pIdx] || null;
+              pIdx++;
+              lead.drip_track = params[pIdx] || 'none';
+              pIdx++;
+              lead.drip_step = params[pIdx] !== undefined ? Number(params[pIdx]) : 0;
+              pIdx++;
+              lead.last_drip_sent_at = params[pIdx] || null;
+              pIdx++;
+              lead.next_drip_scheduled_at = params[pIdx] || null;
+              pIdx++;
               if (s.includes('appointment_scheduled_at = ?')) {
-                lead.appointment_scheduled_at = params[21] || null;
-                lead.appointment_outcome = params[22] || null;
-                lead.appointment_completed_at = params[23] || null;
+                lead.appointment_scheduled_at = params[pIdx] || null;
+                pIdx++;
+                lead.appointment_outcome = params[pIdx] || null;
+                pIdx++;
+                lead.appointment_completed_at = params[pIdx] || null;
+                pIdx++;
                 if (s.includes('last_disposition = ?')) {
-                  lead.last_disposition = params[24] || lead.last_disposition || 'pending';
-                  lead.updated_at = params[25] || new Date().toISOString();
+                  lead.last_disposition = params[pIdx] || lead.last_disposition || 'pending';
+                  pIdx++;
+                  lead.updated_at = params[pIdx] || new Date().toISOString();
                 } else {
-                  lead.updated_at = params[24] || new Date().toISOString();
+                  lead.updated_at = params[pIdx] || new Date().toISOString();
                 }
               } else {
-                lead.updated_at = params[21] || new Date().toISOString();
+                lead.updated_at = params[pIdx] || new Date().toISOString();
               }
               if (lead.is_client) {
                 if (!lead.appointment_outcome) lead.appointment_outcome = 'converted';
                 if (!lead.appointment_completed_at) lead.appointment_completed_at = new Date().toISOString();
                 if (lead.last_disposition === 'appointment_set') lead.last_disposition = 'connected';
               }
+            } else if (s.includes('is_frs = ?')) {
+              lead.is_frs = params[10] === 1 || params[10] === true;
+              lead.updated_at = params[11] || new Date().toISOString();
             } else {
               lead.updated_at = params[10] || new Date().toISOString();
             }
@@ -745,14 +847,24 @@ class WebDatabase implements IDatabase {
             if (params[6] !== undefined) lead.notes = params[6] || null;
             if (params[7] !== undefined) lead.priority_tier = Number(params[7]);
             if (params[8]) lead.list_id = params[8];
-            lead.updated_at = params[9] || new Date().toISOString();
+            let emIdx = 9;
+            if (s.includes('is_frs = ?')) {
+              lead.is_frs = params[emIdx] === 1 || params[emIdx] === true;
+              emIdx++;
+            }
+            lead.updated_at = params[emIdx] || new Date().toISOString();
           } else {
             lead.planning_period = params[3] || null;
             lead.years_in_frs = params[4] || null;
             if (params[5] !== undefined) lead.notes = params[5] || null;
             if (params[6] !== undefined) lead.priority_tier = Number(params[6]);
             if (params[7]) lead.list_id = params[7];
-            lead.updated_at = params[8] || new Date().toISOString();
+            let plIdx = 8;
+            if (s.includes('is_frs = ?')) {
+              lead.is_frs = params[plIdx] === 1 || params[plIdx] === true;
+              plIdx++;
+            }
+            lead.updated_at = params[plIdx] || new Date().toISOString();
           }
         } else if (s.includes('is_client = 1') || s.includes('is_client = ?') || s.includes('is_client=')) {
           const isDirectConvert = s.includes('is_client = 1');
@@ -842,6 +954,13 @@ class WebDatabase implements IDatabase {
         } else if (s.includes('notes = ?') && s.includes('updated_at = ?') && params.length === 3) {
           lead.notes = params[0] || null;
           lead.updated_at = params[1] || new Date().toISOString();
+        } else if (s.includes('is_frs = ?')) {
+          lead.is_frs = params[0] === 1 || params[0] === true;
+          if (s.includes('updated_at = ?') && params[1]) {
+            lead.updated_at = params[1];
+          } else {
+            lead.updated_at = new Date().toISOString();
+          }
         } else {
           lead.last_disposition = params[0];
           lead.attempts_count = params[1];
@@ -920,6 +1039,9 @@ class WebDatabase implements IDatabase {
   }
 }
 
+export const WebDatabase = DexieDatabaseAdapter;
+export type WebDatabase = DexieDatabaseAdapter;
+
 let dbInstance: IDatabase | null = null;
 let dbInitPromise: Promise<IDatabase> | null = null;
 
@@ -942,7 +1064,7 @@ export async function getDatabase(): Promise<IDatabase> {
 
   dbInitPromise = (async () => {
     if (Platform.OS === 'web') {
-      const webDb = new WebDatabase();
+      const webDb = new DexieDatabaseAdapter();
       await webDb.init();
       await initWebDefaults(webDb);
       dbInstance = webDb;
@@ -960,7 +1082,7 @@ export async function getDatabase(): Promise<IDatabase> {
   return dbInitPromise;
 }
 
-async function initWebDefaults(db: WebDatabase) {
+async function initWebDefaults(db: DexieDatabaseAdapter) {
   const templates = await db.getAllAsync('SELECT * FROM sms_templates');
   if (templates.length === 0) {
     await db.runAsync('INSERT INTO sms_templates', [
