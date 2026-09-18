@@ -1,5 +1,10 @@
 import { Lead, SMSTemplate, DripTrack, DripStage } from '../types';
-import { NURTURE_DRIP_TEMPLATES, CLIENT_REVIEW_DRIP_TEMPLATES } from '../data/dripTemplates';
+import {
+  NURTURE_DRIP_TEMPLATES,
+  NON_FRS_NURTURE_DRIP_TEMPLATES,
+  CLIENT_REVIEW_DRIP_TEMPLATES,
+  NON_FRS_CLIENT_REVIEW_DRIP_TEMPLATES,
+} from '../data/dripTemplates';
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
 import { TelephonyService } from './telephonyService';
@@ -20,61 +25,55 @@ export class DripDispatcherService {
    * Resolves the stage and human-readable label for any step in the cadence
    */
   static getStageForStep(track: DripTrack, step: number): { stage: DripStage; label: string } {
-    if (track === 'client_annual_review') {
-      const labels = [
-        'Onboarding (Day 30)',
-        'Policy Hygiene (Day 90)',
-        'Cross-Sell (Day 180)',
-        'Servicing (Anniv -90d)',
-        'Annual Review (Anniv -30d)',
-        'Final Reminder (Anniv -7d)',
-      ];
-      return { stage: 'client', label: labels[step % labels.length] || 'Client Servicing' };
+    if (track === 'prospect_nurture') {
+      if (step <= 1) return { stage: 'sprint', label: step === 0 ? 'Sprint (24h)' : 'Sprint (48h)' };
+      if (step <= 5) return { stage: 'bridge', label: `Bridge (Week ${step === 2 ? 2 : step === 3 ? 3 : step === 4 ? 4 : 6})` };
+      return { stage: 'monthly', label: `Monthly Value (Month ${Math.min(step - 4, 6)}+)` };
     }
-
-    if (step === 0) return { stage: 'sprint', label: 'Sprint (24-48h)' };
-    if (step === 1) return { stage: 'sprint', label: 'Sprint (48-72h)' };
-    if (step === 2) return { stage: 'bridge', label: 'Bridge (Week 2)' };
-    if (step === 3) return { stage: 'bridge', label: 'Bridge (Week 3)' };
-    if (step === 4) return { stage: 'bridge', label: 'Bridge (Week 4)' };
-    if (step === 5) return { stage: 'bridge', label: 'Bridge (Week 6)' };
-    if (step === 6) return { stage: 'monthly', label: 'Monthly (Month 2)' };
-    if (step === 7) return { stage: 'monthly', label: 'Monthly (Month 3)' };
-    if (step === 8) return { stage: 'monthly', label: 'Monthly (Month 4)' };
-    if (step === 9) return { stage: 'monthly', label: 'Monthly (Month 5)' };
-    return { stage: 'monthly', label: `Monthly Value (Touch ${step - 5})` };
+    if (track === 'client_annual_review') {
+      if (step === 0) return { stage: 'client', label: 'Onboarding (Day 30)' };
+      if (step === 1) return { stage: 'client', label: 'Policy Hygiene (Day 90)' };
+      if (step === 2) return { stage: 'client', label: 'Cross-Sell (Day 180)' };
+      if (step === 3) return { stage: 'client', label: 'Servicing (Anniv -90d)' };
+      if (step === 4) return { stage: 'client', label: 'Annual Review (Anniv -30d)' };
+      return { stage: 'client', label: 'Final Reminder (Anniv -7d)' };
+    }
+    return { stage: 'monthly', label: 'Cadence' };
   }
 
   /**
-   * Returns the corresponding SMSTemplate for a lead's current drip track and step.
+   * Selects the appropriate template for a lead given their track, step, and FRS status.
    * For prospect nurture, steps 10+ cycle through the monthly authority pool indefinitely.
    * For client review, steps roll over for annual servicing.
    */
   static getTemplateForLead(lead: Lead): SMSTemplate | null {
     const track = lead.drip_track;
     const step = Number(lead.drip_step) || 0;
+    const isFrs = lead.is_frs !== false;
 
     if (track === 'prospect_nurture') {
-      if (step < NURTURE_DRIP_TEMPLATES.length) {
-        return NURTURE_DRIP_TEMPLATES[step] || null;
+      const templates = isFrs ? NURTURE_DRIP_TEMPLATES : NON_FRS_NURTURE_DRIP_TEMPLATES;
+      if (step < templates.length) {
+        return templates[step] || null;
       }
       // Indefinite Monthly Cycling: Cycle through the monthly authority templates (indices 6 to length - 1)
       const monthlyStartIndex = 6;
-      const monthlyPool = NURTURE_DRIP_TEMPLATES.slice(monthlyStartIndex);
+      const monthlyPool = templates.slice(monthlyStartIndex);
       if (monthlyPool.length > 0) {
         const cycleIndex = (step - monthlyStartIndex) % monthlyPool.length;
         return monthlyPool[cycleIndex] || null;
       }
-      return NURTURE_DRIP_TEMPLATES[NURTURE_DRIP_TEMPLATES.length - 1] || null;
+      return templates[templates.length - 1] || null;
     }
 
     if (track === 'client_annual_review') {
-      if (step < CLIENT_REVIEW_DRIP_TEMPLATES.length) {
-        return CLIENT_REVIEW_DRIP_TEMPLATES[step] || null;
+      const templates = isFrs ? CLIENT_REVIEW_DRIP_TEMPLATES : NON_FRS_CLIENT_REVIEW_DRIP_TEMPLATES;
+      if (step < templates.length) {
+        return templates[step] || null;
       }
       // Annual reset cycle for ongoing servicing
-      const cycleIndex = step % CLIENT_REVIEW_DRIP_TEMPLATES.length;
-      return CLIENT_REVIEW_DRIP_TEMPLATES[cycleIndex] || null;
+      const cycleIndex = step % templates.length;
+      return templates[cycleIndex] || null;
     }
 
     return null;

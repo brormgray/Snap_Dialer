@@ -68,6 +68,7 @@ export default function ListsScreen({ navigation }: any) {
   const [selectedListId, setSelectedListId] = useState<string>('all');
   const [selectedSchool, setSelectedSchool] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'fresh' | 'legacy'>('all');
+  const [frsFilter, setFrsFilter] = useState<'all' | 'frs' | 'non_frs'>('all');
   const [filterTab, setFilterTab] = useState<'all' | 'pending' | 'appts' | 'dispo_needed' | 'connected' | 'callback' | 'unanswered' | 'clients'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [advisorName, setAdvisorName] = useState<string>('Alex');
@@ -201,7 +202,7 @@ export default function ListsScreen({ navigation }: any) {
     [callLogs]
   );
 
-  // Scope leads based on Campaign & School & Priority filters (before Tab filter)
+  // Scope leads based on Campaign & School & Priority & FRS filters (before Tab filter)
   const scopedLeads = useMemo(() => {
     return leads.filter((l) => {
       if (!l) return false;
@@ -214,9 +215,11 @@ export default function ListsScreen({ navigation }: any) {
       }
       if (priorityFilter === 'fresh' && (l.priority_tier || 1) !== 1) return false;
       if (priorityFilter === 'legacy' && l.priority_tier !== 3) return false;
+      if (frsFilter === 'frs' && l.is_frs === false) return false;
+      if (frsFilter === 'non_frs' && l.is_frs !== false) return false;
       return true;
     });
-  }, [leads, selectedListId, selectedSchool, priorityFilter]);
+  }, [leads, selectedListId, selectedSchool, priorityFilter, frsFilter]);
 
   // Synchronously compute filteredLeads from scopedLeads, active tab, and search query
   const filteredLeads = useMemo(() => {
@@ -284,13 +287,13 @@ export default function ListsScreen({ navigation }: any) {
     if (callableCount === 0) {
       Alert.alert(
         'Queue Complete',
-        'All educators in this campaign view have been contacted! Snap a new report card or recycle unanswered calls.'
+        'All leads in this campaign view have been contacted! Snap a new card or recycle unanswered calls.'
       );
       return;
     }
 
     const currentListObj = availableLists.find((lst) => lst.id === selectedListId);
-    let listTitle = currentListObj ? currentListObj.title : 'ValuTeachers Calling Queue';
+    let listTitle = currentListObj ? currentListObj.title : 'Retirement Calling Queue';
     if (selectedSchool !== 'all') {
       listTitle = `${selectedSchool} (${listTitle})`;
     }
@@ -304,7 +307,7 @@ export default function ListsScreen({ navigation }: any) {
 
   const handleExportCsv = async () => {
     HapticsService.medium();
-    const success = await CsvService.downloadCsv(filteredLeads, 'ValuTeachers_Pipeline');
+    const success = await CsvService.downloadCsv(filteredLeads, 'SnapDialer_Pipeline');
     if (success) {
       HapticsService.success();
     }
@@ -573,7 +576,7 @@ export default function ListsScreen({ navigation }: any) {
       <View style={styles.header}>
         <View style={styles.titleArea}>
           <Text style={styles.appTitle} numberOfLines={1}>SnapDialer</Text>
-          <Text style={styles.appSubtitle} numberOfLines={1} ellipsizeMode="tail">ValuTeachers • FRS Pipeline</Text>
+          <Text style={styles.appSubtitle} numberOfLines={1} ellipsizeMode="tail">SnapDialer • Retirement Pipeline</Text>
         </View>
 
         <View style={styles.headerIcons}>
@@ -583,32 +586,38 @@ export default function ListsScreen({ navigation }: any) {
             accessibilityLabel="Scan report cards"
           >
             <Camera size={16} color={Colors.livingWhite} />
-            <Text style={styles.snapHeaderButtonText}>Snap</Text>
+            <Text style={styles.snapHeaderButtonText}>Snap Card</Text>
           </TouchableOpacity>
+
           <TouchableOpacity
             style={styles.iconButton}
-            onPress={handleExportCsv}
-            accessibilityLabel="Export CSV"
+            onPress={() => navigation.navigate('Settings')}
+            accessibilityLabel="Open settings"
           >
-            <Download size={19} color="#FFFFFF" />
+            <Settings size={20} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Unified Search & Slide-Up Filter Trigger Bar (Pinned outside FlatList to guarantee keyboard focus stability) */}
+      {/* Floating Fast Action Bar (Search + Sliders Filter Trigger) */}
       <View style={styles.searchFilterRow}>
         <View style={styles.searchContainer}>
           <Search size={16} color={Colors.textMuted} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search educator, school (VOL), room..."
+            placeholder={`Search ${scopedLeads.length} leads by name, school, room...`}
             placeholderTextColor={Colors.textMuted}
             value={searchQuery}
             onChangeText={setSearchQuery}
+            clearButtonMode="while-editing"
+            autoCorrect={false}
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <X size={16} color={Colors.textMuted} />
+            <TouchableOpacity
+              onPress={() => setSearchQuery('')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <X size={14} color={Colors.textMuted} />
             </TouchableOpacity>
           )}
         </View>
@@ -616,7 +625,7 @@ export default function ListsScreen({ navigation }: any) {
         <TouchableOpacity
           style={[
             styles.filterTriggerButton,
-            (selectedSchool !== 'all' || selectedListId !== 'all' || priorityFilter !== 'all') &&
+            (selectedSchool !== 'all' || selectedListId !== 'all' || priorityFilter !== 'all' || frsFilter !== 'all') &&
               styles.filterTriggerButtonActive,
           ]}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -629,17 +638,18 @@ export default function ListsScreen({ navigation }: any) {
           <SlidersHorizontal
             size={16}
             color={
-              selectedSchool !== 'all' || selectedListId !== 'all' || priorityFilter !== 'all'
+              selectedSchool !== 'all' || selectedListId !== 'all' || priorityFilter !== 'all' || frsFilter !== 'all'
                 ? '#FFFFFF'
                 : Colors.textSecondary
             }
           />
-          {(selectedSchool !== 'all' || selectedListId !== 'all' || priorityFilter !== 'all') && (
+          {(selectedSchool !== 'all' || selectedListId !== 'all' || priorityFilter !== 'all' || frsFilter !== 'all') && (
             <View style={styles.filterDotBadge}>
               <Text style={styles.filterDotBadgeText}>
                 {(selectedSchool !== 'all' ? 1 : 0) +
                   (selectedListId !== 'all' ? 1 : 0) +
-                  (priorityFilter !== 'all' ? 1 : 0)}
+                  (priorityFilter !== 'all' ? 1 : 0) +
+                  (frsFilter !== 'all' ? 1 : 0)}
               </Text>
             </View>
           )}
@@ -770,12 +780,12 @@ export default function ListsScreen({ navigation }: any) {
                 <GraduationCap size={40} color={Colors.heavenlyGold} />
               </View>
               <Text style={styles.emptyTitle}>
-                {searchQuery ? 'No matching educators' : 'No educator leads in pipeline'}
+                {searchQuery ? 'No matching leads' : 'No leads in pipeline'}
               </Text>
               <Text style={styles.emptyDesc}>
                 {searchQuery
                   ? 'Try adjusting your search terms or filter.'
-                  : 'Tap "Snap Card" above to take a photo of an educator\'s ValuTeachers Report Card.'}
+                  : 'Tap "Snap Card" above to take a photo of a client\'s Report Card.'}
               </Text>
               <TouchableOpacity
                 style={styles.emptyButton}
@@ -819,6 +829,39 @@ export default function ListsScreen({ navigation }: any) {
                   </View>
 
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 1 }}>
+                    {item.is_frs === false ? (
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                          borderColor: '#3B82F6',
+                          borderWidth: 1,
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          borderRadius: 8,
+                          gap: 3,
+                        }}
+                      >
+                        <Text style={{ color: '#60A5FA', fontSize: 10, fontWeight: '800' }}>Non-FRS</Text>
+                      </View>
+                    ) : (
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          backgroundColor: 'rgba(139, 92, 246, 0.15)',
+                          borderColor: '#8B5CF6',
+                          borderWidth: 1,
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          borderRadius: 8,
+                          gap: 3,
+                        }}
+                      >
+                        <Text style={{ color: '#C084FC', fontSize: 10, fontWeight: '800' }}>FRS</Text>
+                      </View>
+                    )}
                     {item.is_client && (
                       <View
                         style={{
@@ -975,7 +1018,7 @@ export default function ListsScreen({ navigation }: any) {
       <ZoomableImageModal
         visible={!!previewImageUri}
         imageUri={previewImageUri}
-        title="Original ValuTeachers Report Card"
+        title="Original Client Review Card"
         subtitle="Pinch or use zoom controls to inspect handwriting"
         onClose={() => setPreviewImageUri(null)}
       />
@@ -1013,12 +1056,15 @@ export default function ListsScreen({ navigation }: any) {
         onSelectCampaign={setSelectedListId}
         priorityFilter={priorityFilter}
         onSelectPriority={setPriorityFilter}
+        frsFilter={frsFilter}
+        onSelectFrs={setFrsFilter}
         totalLeadsCount={leads.length}
         filteredCount={filteredLeads.length}
         onResetFilters={() => {
           setSelectedSchool('all');
           setSelectedListId('all');
           setPriorityFilter('all');
+          setFrsFilter('all');
         }}
       />
 

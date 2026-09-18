@@ -25,7 +25,7 @@ export class BackupService {
 
     return {
       appName: 'SnapDialer',
-      target: 'ValuTeachers FRS Pipeline',
+      target: 'SnapDialer Pipeline',
       version: '2.0.0',
       exportedAt: new Date().toISOString(),
       leadCount: leads.length,
@@ -48,7 +48,7 @@ export class BackupService {
       const payload = await this.generateBackupPayload();
       const jsonString = JSON.stringify(payload, null, 2);
       const dateStr = new Date().toISOString().slice(0, 10);
-      const filename = `SnapDialer_ValuTeachers_Backup_${dateStr}.json`;
+      const filename = `SnapDialer_Backup_${dateStr}.json`;
 
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         const blob = new Blob([jsonString], { type: 'application/json' });
@@ -59,7 +59,7 @@ export class BackupService {
           try {
             await navigator.share({
               title: 'SnapDialer Backup',
-              text: `SnapDialer ValuTeachers Database Backup (${payload.leadCount} leads) - ${dateStr}`,
+              text: `SnapDialer Database Backup (${payload.leadCount} leads) - ${dateStr}`,
               files: [file],
             });
             return true;
@@ -294,7 +294,7 @@ export class BackupService {
               lead.annual_salary || null,
               lead.present_403b_contribution || null,
               lead.source_image_uri || null,
-              lead.company || 'ValuTeachers',
+              lead.company || null,
               lead.notes || null,
               lead.priority_tier !== undefined && lead.priority_tier !== null ? Number(lead.priority_tier) : 1,
               lead.cadence_step || 1,

@@ -349,7 +349,7 @@ export default function ScanSheetScreen({ navigation }: any) {
       if (andDial) {
         setSavingStatusText('Preparing Dialer HUD...');
         const listObj = availableLists.find((l) => l.id === targetListId);
-        const listTitle = listObj ? listObj.title : 'ValuTeachers Calling Queue';
+        const listTitle = listObj ? listObj.title : 'Retirement Calling Queue';
         if (typeof window !== 'undefined' && window.localStorage) {
           try {
             const storageKey = `snap_dialer_last_lead_${targetListId}_all`;
@@ -358,7 +358,7 @@ export default function ScanSheetScreen({ navigation }: any) {
         }
         navigation.replace('DialerHUD', { listId: targetListId, listTitle });
       } else {
-        setSavingStatusText('Opening Educator Pipeline...');
+        setSavingStatusText('Opening Lead Pipeline...');
         navigation.navigate('Lists');
       }
     } catch (e) {
@@ -386,8 +386,8 @@ export default function ScanSheetScreen({ navigation }: any) {
           {isProcessing
             ? 'Processing Card...'
             : !hasScanned
-            ? 'Snap ValuTeachers Card'
-            : 'Verify Educator Details'}
+            ? 'Snap Review Card'
+            : 'Verify Lead Details'}
         </Text>
         <View style={{ width: 40 }} />
       </View>
@@ -403,7 +403,7 @@ export default function ScanSheetScreen({ navigation }: any) {
             <ActivityIndicator size="large" color={Colors.brandAccent} style={{ marginTop: 18 }} />
             <Text style={styles.loadingTitle}>{processingStatusText}</Text>
             <Text style={styles.loadingSubtitle}>
-              Extracting educator contact info, planning period, and written notes.
+              Extracting contact info, best meeting time, and written notes.
             </Text>
 
             <View style={styles.loadingStepsBox}>
@@ -417,7 +417,7 @@ export default function ScanSheetScreen({ navigation }: any) {
               </View>
               <View style={styles.loadingStepItem}>
                 <Sparkles size={14} color={Colors.brandAccent} />
-                <Text style={styles.loadingStepText}>Capturing FRS needs & written questions</Text>
+                <Text style={styles.loadingStepText}>Capturing retirement needs & written questions</Text>
               </View>
             </View>
           </View>
@@ -426,7 +426,7 @@ export default function ScanSheetScreen({ navigation }: any) {
             <View style={styles.instructionsBox}>
               <Sparkles size={20} color={Colors.brandAccent} />
               <Text style={styles.instructionText}>
-                Snap a photo of an educator's handwritten ValuTeachers Report Card. Gemini AI extracts their contact info, planning period, and retirement questions instantly.
+                Snap a photo of a handwritten Review Card. Gemini AI extracts contact info, planning period, and retirement questions instantly.
               </Text>
             </View>
 

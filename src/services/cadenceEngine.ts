@@ -10,7 +10,7 @@ export interface CadenceActionResult {
 const DEFAULT_JUST_CALLED_TEMPLATE: SMSTemplate = {
   id: 'tpl_just_called',
   title: 'No Answer - Just Called Follow-up',
-  body: 'Hi {{name}}, this is {{my_name}} with ValuTeachers! I just tried giving you a quick call regarding your FRS Report Card from {{school}}. Feel free to call me back, or text me a good time during your planning period to connect!',
+  body: 'Hi {{name}}, this is {{my_name}} with {{company}}! I just tried giving you a quick call regarding your retirement review options. Feel free to call me back, or text me a good time to connect!',
 };
 
 export class CadenceEngine {

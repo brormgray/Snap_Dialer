@@ -44,6 +44,8 @@ import {
   Plus,
   Award,
   ClipboardList,
+  Briefcase,
+  Landmark,
 } from 'lucide-react-native';
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
@@ -104,6 +106,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
   const [notes, setNotes] = useState<string>('');
   const [priorityTier, setPriorityTier] = useState<number>(1);
   const [listIdVal, setListIdVal] = useState<string>('master_queue');
+  const [isFrsVal, setIsFrsVal] = useState<boolean>(true);
 
   useEffect(() => {
     loadLeadData().then((loadedLead) => {
@@ -137,6 +140,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       setNotes(l.notes || '');
       setPriorityTier(l.priority_tier || 1);
       setListIdVal(l.list_id || 'master_queue');
+      setIsFrsVal(l.is_frs !== false);
     }
     setAvailableLists(lists);
 
@@ -154,6 +158,30 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     loadLeadData();
   };
 
+  const handleToggleFrs = async () => {
+    if (!lead) return;
+    await HapticsService.medium();
+    const newIsFrs = lead.is_frs === false ? true : false;
+    setLead((prev) => (prev ? { ...prev, is_frs: newIsFrs } : null));
+    setIsFrsVal(newIsFrs);
+    await LeadsRepository.updateLeadDetails({
+      id: lead.id,
+      name: lead.name,
+      phone: lead.phone,
+      school: lead.school,
+      email: lead.email,
+      room_number: lead.room_number,
+      planning_period: lead.planning_period,
+      years_in_frs: lead.years_in_frs,
+      notes: lead.notes,
+      priority_tier: lead.priority_tier,
+      list_id: lead.list_id,
+      is_frs: newIsFrs,
+    });
+    showToast(newIsFrs ? 'Marked as FRS Member (FRS messaging active)' : 'Marked as Non-FRS Client (General retirement messaging active)');
+    loadLeadData();
+  };
+
   const handleSaveEdit = async () => {
     if (!lead) return;
     await HapticsService.success();
@@ -162,7 +190,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         id: lead.id,
         name: name.trim(),
         phone: phone.trim(),
-        school: school.trim() || 'VOL',
+        school: school.trim() || (isFrsVal ? 'VOL' : 'General Client'),
         email: email.trim() || null,
         room_number: roomNumber.trim() || null,
         planning_period: planningPeriod.trim() || null,
@@ -170,6 +198,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         notes: notes || null,
         priority_tier: priorityTier,
         list_id: listIdVal,
+        is_frs: isFrsVal,
       });
 
       setLead((prev) =>
@@ -178,7 +207,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
               ...prev,
               name: name.trim(),
               phone: phone.trim(),
-              school: school.trim() || 'VOL',
+              school: school.trim() || (isFrsVal ? 'VOL' : 'General Client'),
               email: email.trim() || null,
               room_number: roomNumber.trim() || null,
               planning_period: planningPeriod.trim() || null,
@@ -186,16 +215,17 @@ export default function LeadDetailScreen({ route, navigation }: any) {
               notes: notes || null,
               priority_tier: priorityTier,
               list_id: listIdVal,
+              is_frs: isFrsVal,
             }
           : null
       );
 
       setIsEditing(false);
       await loadLeadData();
-      showToast('✓ Educator details saved successfully.');
+      showToast('✓ Contact details saved successfully.');
     } catch (err: any) {
-      console.error('Failed to save educator details:', err);
-      Alert.alert('Save Failed', err?.message || 'Could not update educator details.');
+      console.error('Failed to save contact details:', err);
+      Alert.alert('Save Failed', err?.message || 'Could not update contact details.');
     }
   };
 
@@ -654,7 +684,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       listId: lead.list_id,
       durationSeconds: 0,
       disposition: 'sms_sent',
-      note: lead.last_disposition === 'appointment_set' ? 'Sent appointment confirmation SMS' : 'Sent persuasive ValuTeachers SMS',
+      note: lead.last_disposition === 'appointment_set' ? 'Sent appointment confirmation SMS' : 'Sent persuasive follow-up SMS',
       smsSent: true,
       smsBody: body,
     });
@@ -888,6 +918,39 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                     )}
                   </TouchableOpacity>
 
+                  {/* FRS vs Non-FRS Interactive Toggle */}
+                  <TouchableOpacity
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: lead.is_frs !== false ? 'rgba(139, 92, 246, 0.18)' : 'rgba(59, 130, 246, 0.18)',
+                      borderColor: lead.is_frs !== false ? '#8B5CF6' : '#3B82F6',
+                      borderWidth: 1,
+                      borderRadius: 12,
+                      paddingHorizontal: 8,
+                      paddingVertical: 3,
+                      gap: 4,
+                    }}
+                    onPress={handleToggleFrs}
+                    activeOpacity={0.8}
+                  >
+                    {lead.is_frs !== false ? (
+                      <>
+                        <Landmark size={11} color="#C084FC" />
+                        <Text style={{ color: '#C084FC', fontSize: 10, fontWeight: '800' }}>
+                          🏛️ FRS Member
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <Briefcase size={11} color="#60A5FA" />
+                        <Text style={{ color: '#60A5FA', fontSize: 10, fontWeight: '800' }}>
+                          💼 Non-FRS
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+
                   <View
                     style={[
                       styles.statusBadge,
@@ -913,29 +976,39 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.dncWarningTitle}>DO NOT CALL (DNC COMPLIANCE)</Text>
                     <Text style={styles.dncWarningText}>
-                      This educator has requested not to be called. They have been permanently removed from all active dialing queues.
+                      This contact has requested not to be called. They have been permanently removed from all active dialing queues.
                     </Text>
                   </View>
                 </View>
               )}
 
-              {/* School & FRS Info */}
+              {/* School / Organization & Pension Info */}
               <View style={styles.frsInfoBox}>
                 <View style={styles.infoRow}>
-                  <School size={16} color="#38BDF8" />
+                  {lead.is_frs !== false ? (
+                    <School size={16} color="#38BDF8" />
+                  ) : (
+                    <Building size={16} color="#38BDF8" />
+                  )}
                   <Text style={styles.infoText}>
-                    {lead.school || 'VOL'}
+                    {lead.school || (lead.is_frs !== false ? 'VOL' : 'General Client')}
                     {lead.room_number ? ` • Room ${lead.room_number}` : ''}
-                    {lead.planning_period ? ` • ${lead.planning_period}` : ''}
+                    {lead.planning_period ? ` • Best time: ${lead.planning_period}` : ''}
                   </Text>
                 </View>
 
                 <View style={[styles.infoRow, { marginTop: 6 }]}>
-                  <GraduationCap size={16} color="#38BDF8" />
+                  {lead.is_frs !== false ? (
+                    <GraduationCap size={16} color="#38BDF8" />
+                  ) : (
+                    <Briefcase size={16} color="#38BDF8" />
+                  )}
                   <Text style={styles.infoText}>
-                    {lead.years_in_frs ? `${lead.years_in_frs} Years in FRS` : 'FRS Member'}
+                    {lead.is_frs !== false
+                      ? (lead.years_in_frs ? `${lead.years_in_frs} Years in FRS` : 'FRS Member')
+                      : 'Non-FRS Retirement Client'}
                     {lead.age ? ` • Age ${lead.age}` : ''}
-                    {lead.frs_knowledge ? ` • FRS Knowledge: "${lead.frs_knowledge}"` : ''}
+                    {lead.frs_knowledge ? ` • Info: "${lead.frs_knowledge}"` : ''}
                   </Text>
                 </View>
 
@@ -1565,8 +1638,37 @@ export default function LeadDetailScreen({ route, navigation }: any) {
           ) : (
             /* Edit Form */
             <View style={styles.editForm}>
-              <Text style={styles.fieldLabel}>Educator Name</Text>
+              <Text style={styles.fieldLabel}>Contact Name</Text>
               <TextInput style={styles.input} value={name} onChangeText={setName} />
+
+              <Text style={[styles.fieldLabel, { marginTop: 10 }]}>Client Type / Retirement System</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                <TouchableOpacity
+                  style={[
+                    styles.tierEditBtn,
+                    isFrsVal && styles.tierEditBtnActiveFresh,
+                  ]}
+                  onPress={() => setIsFrsVal(true)}
+                >
+                  <Landmark size={14} color={isFrsVal ? Colors.badgeSuccessText : Colors.brandAccent} />
+                  <Text style={[styles.tierEditBtnText, isFrsVal && { color: Colors.badgeSuccessText, fontWeight: '800' }]}>
+                    🏛️ FRS Member
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.tierEditBtn,
+                    !isFrsVal && styles.tierEditBtnActiveLegacy,
+                  ]}
+                  onPress={() => setIsFrsVal(false)}
+                >
+                  <Briefcase size={14} color={!isFrsVal ? Colors.textPrimary : Colors.textMuted} />
+                  <Text style={[styles.tierEditBtnText, !isFrsVal && { color: Colors.textPrimary, fontWeight: '800' }]}>
+                    💼 Non-FRS Client
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
               <Text style={[styles.fieldLabel, { marginTop: 10 }]}>Phone Number</Text>
               <TextInput
@@ -2005,7 +2107,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         visible={imageModalVisible}
         imageUri={lead?.source_image_uri || null}
         title="Proof of Contact Request"
-        subtitle={`${lead?.name || 'Educator'} • ${lead?.school || 'ValuTeachers'}`}
+        subtitle={`${lead?.name || 'Client'} • ${lead?.school || 'Review Card'}`}
         onClose={() => setImageModalVisible(false)}
       />
 

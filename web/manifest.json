@@ -1,7 +1,7 @@
 {
-  "name": "SnapDialer - ValuTeachers Power Dialer",
+  "name": "SnapDialer - Retirement Power Dialer",
   "short_name": "SnapDialer",
-  "description": "High-speed field card scanner, power dialer, and FRS scheduling HUD for ValuTeachers.",
+  "description": "High-speed field card scanner, power dialer, and retirement scheduling HUD.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F8FAFC",

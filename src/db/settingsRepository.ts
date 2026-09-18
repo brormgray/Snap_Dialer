@@ -5,6 +5,7 @@ export class SettingsRepository {
   private static defaultSettings: AppSettings = {
     gemini_api_key: '',
     user_name: 'Alex',
+    agency_name: 'ValuTeachers',
     auto_advance_seconds: 3,
     auto_advance_enabled: true,
   };
@@ -23,6 +24,7 @@ export class SettingsRepository {
     for (const row of rows) {
       if (row.key === 'gemini_api_key') settings.gemini_api_key = row.value;
       if (row.key === 'user_name') settings.user_name = row.value;
+      if (row.key === 'agency_name') settings.agency_name = row.value;
       if (row.key === 'auto_advance_seconds') settings.auto_advance_seconds = parseInt(row.value, 10) || 3;
       if (row.key === 'auto_advance_enabled') settings.auto_advance_enabled = row.value === '1' || row.value === 'true' || (row.value as any) === true;
     }

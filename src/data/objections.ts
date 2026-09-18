@@ -14,7 +14,7 @@ export const FRS_OBJECTIONS: ObjectionCard[] = [
     objection: '“I already have a financial advisor / I have someone for that.”',
     quickRebuttal: 'Acknowledge outside advisor, clarify you specialize exclusively in their state FRS Pension & DROP calculation.',
     verbatimScript:
-      '“That is wonderful! Most educators we work with have an outside advisor for their general savings. My role with ValuTeachers is strictly to calculate your Florida Retirement System state pension numbers, your DROP timeline, and how your district contract integrates with those benefits. We don’t replace your outside advisor—we provide the official FRS state analysis so you have total clarity. I will be on campus Thursday during your planning period—can I pop into your room for 10 minutes just to hand you your numbers?”',
+      '“That is wonderful! Most educators we work with have an outside advisor for their general savings. My role is strictly to calculate your Florida Retirement System state pension numbers, your DROP timeline, and how your benefits integrate with your retirement goals. We don’t replace your outside advisor—we provide the official analysis so you have total clarity. I will be on campus Thursday during your planning period—can I pop into your room for 10 minutes just to hand you your numbers?”',
     psychologyNote: 'Teachers think you want to manage their 401(k). Differentiate yourself as the state pension specialist.',
   },
   {
@@ -50,7 +50,7 @@ export const FRS_OBJECTIONS: ObjectionCard[] = [
     objection: '“Are you with the school district or the union?”',
     quickRebuttal: 'Clarify approved payroll vendor and independent FRS educational specialist.',
     verbatimScript:
-      '“ValuTeachers is an approved 403(b)/457(b) educational partner serving Florida public school districts. We specialize in providing independent, objective FRS pension and DROP education that teachers often don’t receive in standard district orientations. I have your report card request right here—I’m visiting your campus to give you the personalized breakdown you requested.”',
+      '“We are an approved educational retirement partner serving public school districts and professionals. We specialize in providing independent, objective retirement and pension education that people often don’t receive in standard orientations. I have your review card request right here—I’m reaching out to give you the personalized breakdown you requested.”',
     psychologyNote: 'Reassure them of your legitimate campus presence and cite their original requested card.',
   },
   {

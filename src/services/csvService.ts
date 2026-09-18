@@ -63,7 +63,7 @@ export class CsvService {
   /**
    * Triggers client-side browser download or native mobile share of the CSV file
    */
-  static async downloadCsv(leads: Lead[], filenamePrefix: string = 'ValuTeachers_Pipeline'): Promise<boolean> {
+  static async downloadCsv(leads: Lead[], filenamePrefix: string = 'SnapDialer_Pipeline'): Promise<boolean> {
     try {
       const csvString = this.generateCsv(leads);
       const dateStr = new Date().toISOString().slice(0, 10);

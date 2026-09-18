@@ -73,7 +73,7 @@ import { AppointmentSchedulerModal } from '../components/AppointmentSchedulerMod
 
 export default function DialerHudScreen({ route, navigation }: any) {
   const listId = route.params?.listId || 'master_queue';
-  const listTitle = route.params?.listTitle || 'ValuTeachers Calling Queue';
+  const listTitle = route.params?.listTitle || 'Retirement Calling Queue';
   const schoolName = route.params?.schoolName;
 
   const [queue, setQueue] = useState<Lead[]>([]);
@@ -515,13 +515,17 @@ export default function DialerHudScreen({ route, navigation }: any) {
           templates[0] || {
             id: 'tpl_just_called',
             title: 'No Answer - Just Called Follow-up',
-            body: 'Hi {{name}}, this is {{my_name}} with ValuTeachers! I just tried giving you a quick call regarding your FRS Report Card from {{school}}. Feel free to call me back, or text me a good time during your planning period to connect!',
+            body: currentLead.is_frs !== false
+              ? 'Hi {{name}}, this is {{my_name}} with {{company}}! I just tried giving you a quick call regarding your FRS Report Card from {{school}}. Feel free to call me back, or text me a good time during your planning period to connect!'
+              : 'Hi {{name}}, this is {{my_name}} with {{company}}! I just tried giving you a quick call regarding your retirement review. Feel free to call me back, or text me a good time to connect!',
           };
 
         const interpolatedSms = TelephonyService.interpolateTemplate(
           matchingTemplate,
           currentLead,
-          appSettings?.user_name || 'Alex'
+          appSettings?.user_name || 'Alex',
+          new Date(),
+          appSettings?.agency_name
         );
 
         setSelectedTemplate(matchingTemplate);
@@ -755,7 +759,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
 
     const hasAppt = Boolean(currentLead.appointment_scheduled_at) || currentLead.last_disposition === 'appointment_set';
     const initialTone = hasAppt ? 'meeting_confirmation' : undefined;
-    const initialDraft = AiSmsService.getSmartFallbackSMS(currentLead, appSettings?.user_name || 'Alex', initialTone);
+    const initialDraft = AiSmsService.getSmartFallbackSMS(currentLead, appSettings?.user_name || 'Alex', initialTone, new Date(), appSettings?.agency_name);
     setCustomSmsBody(initialDraft);
 
     if (currentLead.text_ok === false || currentLead.text_ok === (0 as any)) {
@@ -956,7 +960,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
     } else {
       // Standalone Quick SMS from HUD dock
       try {
-        const noteToRecord = 'Sent persuasive ValuTeachers SMS';
+        const noteToRecord = 'Sent persuasive follow-up SMS';
         const updatedNotes = NotesService.addNote(currentLead.notes, noteToRecord);
         currentLead.notes = updatedNotes;
         await LeadsRepository.updateLeadNotes(currentLead.id, updatedNotes);
@@ -1080,7 +1084,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
       <SafeAreaView style={styles.container}>
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color="#3B82F6" />
-          <Text style={styles.loadingText}>Loading ValuTeachers Queue...</Text>
+          <Text style={styles.loadingText}>Loading Calling Queue...</Text>
         </View>
       </SafeAreaView>
     );
@@ -1095,7 +1099,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
           <Flame size={64} color={Colors.badgeWarningText} />
           <Text style={styles.finishedTitle}>Session Complete!</Text>
           <Text style={styles.finishedSubtitle}>
-            You have called all active educators in "{listTitle}".
+            You have called all active leads in "{listTitle}".
           </Text>
 
           <View style={styles.sessionSummaryBox}>
@@ -1145,7 +1149,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
         </TouchableOpacity>
         <View style={{ alignItems: 'center', flex: 1, marginHorizontal: 6 }}>
           <Text style={styles.queueCounter} numberOfLines={1}>
-            Educator {currentIndex + 1} of {queue.length}
+            Contact {currentIndex + 1} of {queue.length}
           </Text>
           <Text style={styles.listSubheading} numberOfLines={1} ellipsizeMode="tail">{listTitle}</Text>
         </View>
@@ -1255,6 +1259,22 @@ export default function DialerHudScreen({ route, navigation }: any) {
               ) : null}
             </View>
             <View style={{ alignItems: 'flex-end', gap: 4 }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: currentLead.is_frs !== false ? 'rgba(139, 92, 246, 0.18)' : 'rgba(59, 130, 246, 0.18)',
+                  borderColor: currentLead.is_frs !== false ? '#8B5CF6' : '#3B82F6',
+                  borderWidth: 1,
+                  borderRadius: 6,
+                  paddingHorizontal: 6,
+                  paddingVertical: 2,
+                }}
+              >
+                <Text style={{ color: currentLead.is_frs !== false ? '#C084FC' : '#60A5FA', fontSize: 9, fontWeight: '800' }}>
+                  {currentLead.is_frs !== false ? '🏛️ FRS' : '💼 NON-FRS'}
+                </Text>
+              </View>
               {currentLead.priority_tier === 3 ? (
                 <View style={styles.hudLegacyBadge}>
                   <Archive size={10} color={Colors.badgeNeutralText} />
@@ -1608,7 +1628,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
         visible={imageModalVisible}
         imageUri={currentLead?.source_image_uri || null}
         title="Proof of Contact Request"
-        subtitle={`${currentLead?.name || 'Educator'} • ${currentLead?.school || 'ValuTeachers'}`}
+        subtitle={`${currentLead?.name || 'Client'} • ${currentLead?.school || 'Review Card'}`}
         onClose={() => setImageModalVisible(false)}
       />
 

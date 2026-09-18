@@ -149,7 +149,7 @@ export default function ZoomableImageModal({
           <View style={styles.footer}>
             <ShieldCheck size={16} color={Colors.badgeSuccessText} />
             <Text style={styles.footerText}>
-              Verified ValuTeachers Card • Stored Securely in Local Device Sandbox
+              Verified Review Card • Stored Securely in Local Device Sandbox
             </Text>
           </View>
         </SafeAreaView>

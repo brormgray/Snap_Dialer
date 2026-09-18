@@ -63,6 +63,7 @@ export interface Lead {
 
   // --- Client Conversion & Production Fields ---
   is_client?: boolean;
+  is_frs?: boolean; // Defaults to true (FRS educator/client). If false, non-FRS prospect/client
   client_since?: string | null;
   products?: ClientProduct[] | null;
   annualized_premium?: number | null; // Ongoing flow annual premium in USD
@@ -152,6 +153,7 @@ export interface ExtractedLeadItem {
 
   // Optional client & drip fields
   is_client?: boolean;
+  is_frs?: boolean;
   client_since?: string | null;
   products?: ClientProduct[];
   annualized_premium?: number | null;
@@ -193,6 +195,7 @@ export interface ClientProductionKPIs {
 export interface AppSettings {
   gemini_api_key?: string;
   user_name: string;
+  agency_name?: string; // Agency / RIA / Company represented (e.g. "ValuTeachers"), used dynamically in messaging
   auto_advance_seconds: number;
   auto_advance_enabled: boolean;
 }

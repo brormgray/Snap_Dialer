@@ -130,7 +130,8 @@ export class TelephonyService {
     template: SMSTemplate,
     lead: Lead,
     myName: string = 'Alex',
-    refDate: Date = new Date()
+    refDate: Date = new Date(),
+    agencyNameOverride?: string
   ): string {
     const primaryMeetingPref =
       lead.meeting_preferences && lead.meeting_preferences.length > 0
@@ -149,12 +150,14 @@ export class TelephonyService {
       flow_annuity: '403(b) Flow Annuity',
       annuity_transfer: 'Annuity Transfer-In',
       life_insurance: 'Life Insurance plan',
-      investments: 'ValuTeachers retirement plan',
+      investments: 'Retirement investment plan',
     };
-    let productLabel = 'ValuTeachers retirement plan';
+    let productLabel = 'Retirement plan';
     if (lead.products && lead.products.length > 0) {
       productLabel = lead.products.map((p) => PRODUCT_MAP[p] || p).join(' & ');
     }
+
+    const company = (lead.company || agencyNameOverride || '').trim();
 
     let formattedAnniversary = 'your policy anniversary';
     const targetDateStr = lead.annual_review_due_date || lead.policy_effective_date;
@@ -171,7 +174,18 @@ export class TelephonyService {
     // Time & Date Aware tokens
     const apptTokens = DateTimeAwareService.getAppointmentTokens(lead, refDate);
 
-    return template.body
+    let body = template.body;
+    if (!company) {
+      body = body
+        .replace(/\s*with\s+{{company}}/gi, '')
+        .replace(/\s*with\s+{{agency_name}}/gi, '')
+        .replace(/\s*with\s+{{agency}}/gi, '')
+        .replace(/,\s*{{company}}/gi, '')
+        .replace(/,\s*{{agency_name}}/gi, '')
+        .replace(/,\s*{{agency}}/gi, '');
+    }
+
+    return body
       .replace(/{{name}}/gi, () => firstName)
       .replace(/{{first_name}}/gi, () => firstName)
       .replace(/{{last_name}}/gi, () => lastName)
@@ -181,7 +195,9 @@ export class TelephonyService {
       .replace(/{{room_number}}/gi, () => roomText)
       .replace(/{{years_in_frs}}/gi, () => (lead.years_in_frs ? `${lead.years_in_frs} years` : 'your time'))
       .replace(/{{meeting_pref}}/gi, () => primaryMeetingPref)
-      .replace(/{{company}}/gi, () => lead.company || 'ValuTeachers')
+      .replace(/{{company}}/gi, () => company)
+      .replace(/{{agency_name}}/gi, () => company)
+      .replace(/{{agency}}/gi, () => company)
       .replace(/{{note}}/gi, () => lead.notes || '')
       .replace(/{{notes}}/gi, () => lead.notes || '')
       .replace(/{{product}}/gi, () => productLabel)

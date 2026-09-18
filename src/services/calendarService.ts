@@ -25,7 +25,7 @@ export class CalendarService {
     const nowStr = formatDate(new Date());
     const startStr = formatDate(event.startDate);
     const endStr = formatDate(event.endDate);
-    const uid = `snapdialer_${Date.now()}_${Math.random().toString(36).substring(2, 9)}@valuteachers.com`;
+    const uid = `snapdialer_${Date.now()}_${Math.random().toString(36).substring(2, 9)}@snapdialer.app`;
     const alarmMins = event.alarmMinutes || 15;
 
     const cleanText = (str: string) =>
@@ -34,7 +34,7 @@ export class CalendarService {
     return [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//ValuTeachers//SnapDialer FRS Scheduling Engine//EN',
+      'PRODID:-//SnapDialer//Retirement Scheduling Engine//EN',
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
       'BEGIN:VEVENT',
@@ -157,20 +157,24 @@ export class CalendarService {
     const validStart = (scheduledDate instanceof Date && !isNaN(scheduledDate.getTime())) ? scheduledDate : new Date();
     const endDate = new Date(validStart.getTime() + durationMinutes * 60000);
     const roomStr = lead.room_number ? `Room ${lead.room_number}` : 'Classroom';
-    const schoolStr = lead.school || 'Campus';
+    const schoolStr = lead.school || (lead.is_frs !== false ? 'Campus' : 'Office/Remote');
     const planningStr = lead.planning_period ? ` (${lead.planning_period})` : '';
 
-    const title = `🎯 FRS Sit-Down: ${lead.name}${planningStr}`;
+    const title = lead.is_frs !== false
+      ? `🎯 FRS Sit-Down: ${lead.name}${planningStr}`
+      : `🎯 Retirement Review: ${lead.name}`;
     const location = `${schoolStr} • ${roomStr}`;
 
     const description = [
-      `ValuTeachers FRS & Retirement Review with ${lead.name}`,
-      `School: ${schoolStr} • ${roomStr}`,
-      `Planning Period: ${lead.planning_period || 'Not specified'}`,
+      lead.is_frs !== false
+        ? `FRS & Retirement Review with ${lead.name}`
+        : `Retirement Strategy Review with ${lead.name}`,
+      `Location: ${schoolStr} • ${roomStr}`,
+      lead.planning_period ? `Best Window: ${lead.planning_period}` : null,
       `Phone: ${lead.phone}`,
-      lead.years_in_frs ? `Years in FRS: ${lead.years_in_frs}` : null,
+      lead.is_frs !== false && lead.years_in_frs ? `Years in FRS: ${lead.years_in_frs}` : null,
       lead.frs_interests?.length ? `Focus Topics: ${lead.frs_interests.join(', ')}` : null,
-      lead.custom_questions ? `Card Inquiries: "${lead.custom_questions}"` : null,
+      lead.custom_questions ? `Inquiries: "${lead.custom_questions}"` : null,
       customNotes ? `Appointment Notes: ${customNotes}` : null,
     ]
       .filter(Boolean)

@@ -145,7 +145,7 @@ export function ClientPortfolioCard({ lead, onSave }: ClientPortfolioCardProps) 
           <View style={{ flex: 1 }}>
             <Text style={styles.cardTitle}>CLIENT PORTFOLIO & POLICY</Text>
             <Text style={styles.cardSubtitle}>
-              {isClient ? 'Active ValuTeachers Client' : 'Prospect • Not yet converted'}
+              {isClient ? 'Active Client' : 'Prospect • Not yet converted'}
             </Text>
           </View>
         </View>

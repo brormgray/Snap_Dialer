@@ -74,8 +74,8 @@ export class LeadsRepository {
             id, list_id, name, phone, school, email, age, planning_period, 
             room_number, years_in_frs, text_ok, frs_knowledge, frs_interests, 
             custom_questions, meeting_preferences, annual_salary, present_403b_contribution, 
-            source_image_uri, company, notes, priority_tier, cadence_step, last_disposition, attempts_count, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'pending', 0, ?, ?)`,
+            source_image_uri, company, notes, priority_tier, is_frs, cadence_step, last_disposition, attempts_count, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'pending', 0, ?, ?)`,
           [
             leadId,
             listId,
@@ -95,9 +95,10 @@ export class LeadsRepository {
             item.annual_salary || null,
             item.present_403b_contribution || null,
             item.source_image_uri || imageUri || null,
-            item.company || 'ValuTeachers',
+            item.company || null,
             item.notes || null,
             item.priority_tier || 1,
+            item.is_frs !== undefined ? (item.is_frs ? 1 : 0) : 1,
             now,
             now,
           ]
@@ -184,8 +185,8 @@ export class LeadsRepository {
         id, list_id, name, phone, school, email, age, planning_period, 
         room_number, years_in_frs, text_ok, frs_knowledge, frs_interests, 
         custom_questions, meeting_preferences, annual_salary, present_403b_contribution, 
-        source_image_uri, company, notes, priority_tier, cadence_step, last_disposition, attempts_count, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'pending', 0, ?, ?)`,
+        source_image_uri, company, notes, priority_tier, is_frs, cadence_step, last_disposition, attempts_count, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'pending', 0, ?, ?)`,
       [
         leadId,
         targetListId,
@@ -205,9 +206,10 @@ export class LeadsRepository {
         item.annual_salary || null,
         item.present_403b_contribution || null,
         item.source_image_uri || imageUri || null,
-        item.company || 'ValuTeachers',
+        item.company || null,
         item.notes || null,
         targetTier,
+        item.is_frs !== undefined ? (item.is_frs ? 1 : 0) : 1,
         now,
         now,
       ]
@@ -243,9 +245,10 @@ export class LeadsRepository {
         annual_salary: item.annual_salary || null,
         present_403b_contribution: item.present_403b_contribution || null,
         source_image_uri: imageUri || null,
-        company: 'ValuTeachers',
+        company: item.company || null,
         notes: item.notes || null,
         priority_tier: targetTier,
+        is_frs: item.is_frs !== undefined ? item.is_frs : true,
         cadence_step: 1,
         last_disposition: 'pending',
         attempts_count: 0,
@@ -558,6 +561,7 @@ export class LeadsRepository {
     priority_tier?: number;
     list_id?: string;
     is_client?: boolean;
+    is_frs?: boolean;
     client_since?: string | null;
     products?: ClientProduct[] | null;
     annualized_premium?: number | null;
@@ -593,6 +597,7 @@ export class LeadsRepository {
     const now = new Date().toISOString();
 
     const isClient = leadData.is_client !== undefined ? (leadData.is_client ? 1 : 0) : (current?.is_client ? 1 : 0);
+    const isFrs = leadData.is_frs !== undefined ? (leadData.is_frs ? 1 : 0) : (current?.is_frs !== false ? 1 : 0);
     const clientSince = leadData.client_since !== undefined ? leadData.client_since : (current?.client_since || (isClient ? now : null));
     const products = leadData.products !== undefined ? JSON.stringify(leadData.products || []) : JSON.stringify(current?.products || []);
     const annualizedPremium = leadData.annualized_premium !== undefined ? leadData.annualized_premium : (current?.annualized_premium || null);
@@ -624,7 +629,7 @@ export class LeadsRepository {
     await db.runAsync(
       `UPDATE leads 
        SET name = ?, phone = ?, school = ?, email = ?, room_number = ?, planning_period = ?, years_in_frs = ?, notes = ?, priority_tier = ?, list_id = ?,
-           is_client = ?, client_since = ?, products = ?, annualized_premium = ?, transfer_assets_volume = ?, policy_effective_date = ?, annual_review_due_date = ?,
+           is_client = ?, is_frs = ?, client_since = ?, products = ?, annualized_premium = ?, transfer_assets_volume = ?, policy_effective_date = ?, annual_review_due_date = ?,
            drip_track = ?, drip_step = ?, last_drip_sent_at = ?, next_drip_scheduled_at = ?,
            appointment_scheduled_at = ?, appointment_outcome = ?, appointment_completed_at = ?, last_disposition = ?, updated_at = ? 
        WHERE id = ?`,
@@ -640,6 +645,7 @@ export class LeadsRepository {
         leadData.priority_tier !== undefined ? Number(leadData.priority_tier) : (current?.priority_tier ?? 1),
         leadData.list_id !== undefined ? leadData.list_id : (current?.list_id || 'master_queue'),
         isClient,
+        isFrs,
         clientSince,
         products,
         annualizedPremium,
@@ -701,7 +707,7 @@ export class LeadsRepository {
         transfer_assets_volume: payload.transferAssetsVolume || 0,
         policy_effective_date: payload.policyEffectiveDate || now.split('T')[0],
         annual_review_due_date: payload.annualReviewDueDate,
-        notes: payload.notes || 'Converted to ValuTeachers client after sit-down.',
+        notes: payload.notes || 'Converted to client after sit-down.',
         drip_track: 'client_annual_review',
       });
       await db.runAsync(
@@ -979,6 +985,7 @@ export class LeadsRepository {
         let customQuestions = master.custom_questions;
 
         let isClient = Boolean(master.is_client);
+        let isFrs = master.is_frs !== false;
         let clientSince = master.client_since;
         let annualizedPremium = Number(master.annualized_premium) || null;
         let transferVolume = Number(master.transfer_assets_volume) || null;
@@ -997,6 +1004,10 @@ export class LeadsRepository {
 
         for (const dup of duplicates) {
           duplicatesRemoved++;
+
+          if (dup.is_frs === false) {
+            isFrs = false;
+          }
 
           // Merge client and policy details
           if (dup.is_client) {
@@ -1100,6 +1111,7 @@ export class LeadsRepository {
              frs_interests = ?,
              meeting_preferences = ?,
              is_client = ?,
+             is_frs = ?,
              client_since = ?,
              products = ?,
              annualized_premium = ?,
@@ -1130,6 +1142,7 @@ export class LeadsRepository {
             JSON.stringify(Array.from(interestsSet)),
             JSON.stringify(Array.from(prefSet)),
             isClient ? 1 : 0,
+            isFrs ? 1 : 0,
             clientSince || null,
             JSON.stringify(Array.from(productsSet)),
             annualizedPremium,
@@ -1201,6 +1214,7 @@ export class LeadsRepository {
     }
 
     const isClient = raw.is_client === 1 || raw.is_client === true || raw.is_client === 'true';
+    const isFrs = raw.is_frs === undefined || raw.is_frs === null || raw.is_frs === 1 || raw.is_frs === true || raw.is_frs === 'true';
     const dripTrack = raw.drip_track || 'none';
     let apptOutcome = raw.appointment_outcome || null;
     let apptCompletedAt = raw.appointment_completed_at || null;
@@ -1292,6 +1306,7 @@ export class LeadsRepository {
 
       // Client Conversion Hydration
       is_client: isClient,
+      is_frs: isFrs,
       client_since: raw.client_since || null,
       products,
       annualized_premium:

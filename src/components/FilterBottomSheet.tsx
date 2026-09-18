@@ -17,6 +17,8 @@ import {
   RotateCcw,
   Check,
   Filter,
+  Landmark,
+  Briefcase,
 } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
 import { HapticsService } from '../services/hapticsService';
@@ -32,6 +34,8 @@ export interface FilterBottomSheetProps {
   onSelectCampaign: (listId: string) => void;
   priorityFilter: 'all' | 'fresh' | 'legacy';
   onSelectPriority: (tier: 'all' | 'fresh' | 'legacy') => void;
+  frsFilter?: 'all' | 'frs' | 'non_frs';
+  onSelectFrs?: (filter: 'all' | 'frs' | 'non_frs') => void;
   totalLeadsCount: number;
   filteredCount: number;
   onResetFilters: () => void;
@@ -48,6 +52,8 @@ export function FilterBottomSheet({
   onSelectCampaign,
   priorityFilter,
   onSelectPriority,
+  frsFilter = 'all',
+  onSelectFrs,
   totalLeadsCount,
   filteredCount,
   onResetFilters,
@@ -57,7 +63,8 @@ export function FilterBottomSheet({
   const activeFiltersCount =
     (selectedSchool !== 'all' ? 1 : 0) +
     (selectedListId !== 'all' ? 1 : 0) +
-    (priorityFilter !== 'all' ? 1 : 0);
+    (priorityFilter !== 'all' ? 1 : 0) +
+    (frsFilter !== 'all' ? 1 : 0);
 
   return (
     <Modal
@@ -121,6 +128,82 @@ export function FilterBottomSheet({
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
+            {/* Client Type / Pension System Filter */}
+            {onSelectFrs && (
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>CLIENT TYPE / RETIREMENT SYSTEM</Text>
+                <View style={styles.pillGrid}>
+                  <TouchableOpacity
+                    style={[
+                      styles.pill,
+                      (frsFilter === 'all' || !frsFilter) && styles.pillActive,
+                    ]}
+                    onPress={() => {
+                      HapticsService.tick();
+                      onSelectFrs('all');
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.pillText,
+                        (frsFilter === 'all' || !frsFilter) && styles.pillTextActive,
+                      ]}
+                    >
+                      All Leads
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.pill,
+                      frsFilter === 'frs' && styles.pillActive,
+                    ]}
+                    onPress={() => {
+                      HapticsService.tick();
+                      onSelectFrs(frsFilter === 'frs' ? 'all' : 'frs');
+                    }}
+                  >
+                    <Landmark
+                      size={13}
+                      color={frsFilter === 'frs' ? '#FFFFFF' : Colors.brandAccent}
+                    />
+                    <Text
+                      style={[
+                        styles.pillText,
+                        frsFilter === 'frs' && styles.pillTextActive,
+                      ]}
+                    >
+                      🏛️ FRS Members
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.pill,
+                      frsFilter === 'non_frs' && styles.pillActive,
+                    ]}
+                    onPress={() => {
+                      HapticsService.tick();
+                      onSelectFrs(frsFilter === 'non_frs' ? 'all' : 'non_frs');
+                    }}
+                  >
+                    <Briefcase
+                      size={13}
+                      color={frsFilter === 'non_frs' ? '#FFFFFF' : Colors.brandAccent}
+                    />
+                    <Text
+                      style={[
+                        styles.pillText,
+                        frsFilter === 'non_frs' && styles.pillTextActive,
+                      ]}
+                    >
+                      💼 Non-FRS
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
             {/* Priority Tiers */}
             <View style={styles.section}>
               <Text style={styles.sectionLabel}>PRIORITY LEVEL</Text>

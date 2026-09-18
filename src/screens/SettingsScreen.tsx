@@ -35,6 +35,7 @@ import {
   AlertCircle,
   Lock,
   Sparkles,
+  Briefcase,
 } from 'lucide-react-native';
 import { SettingsRepository } from '../db/settingsRepository';
 import { LeadsRepository } from '../db/leadsRepository';
@@ -50,6 +51,7 @@ import { Colors } from '../theme/colors';
 export default function SettingsScreen({ navigation }: any) {
   const [apiKey, setApiKey] = useState<string>('');
   const [userName, setUserName] = useState<string>('Alex');
+  const [agencyName, setAgencyName] = useState<string>('ValuTeachers');
   const [autoAdvanceEnabled, setAutoAdvanceEnabled] = useState<boolean>(true);
   const [autoAdvanceSeconds, setAutoAdvanceSeconds] = useState<string>('3');
   const [leadCount, setLeadCount] = useState<number>(0);
@@ -100,6 +102,7 @@ export default function SettingsScreen({ navigation }: any) {
     const s = await SettingsRepository.getSettings();
     setApiKey(s.gemini_api_key || '');
     setUserName(s.user_name || 'Alex');
+    setAgencyName(s.agency_name !== undefined ? s.agency_name : 'ValuTeachers');
     setAutoAdvanceEnabled(s.auto_advance_enabled);
     setAutoAdvanceSeconds(String(s.auto_advance_seconds || 3));
 
@@ -171,12 +174,13 @@ export default function SettingsScreen({ navigation }: any) {
     await HapticsService.success();
     await SettingsRepository.saveSetting('gemini_api_key', apiKey.trim());
     await SettingsRepository.saveSetting('user_name', userName.trim() || 'Alex');
+    await SettingsRepository.saveSetting('agency_name', agencyName.trim());
     await SettingsRepository.saveSetting('auto_advance_enabled', autoAdvanceEnabled ? '1' : '0');
     await SettingsRepository.saveSetting(
       'auto_advance_seconds',
       parseInt(autoAdvanceSeconds, 10) || 3
     );
-    showBanner('✓ Settings & Caller Name Saved!');
+    showBanner('✓ Settings & Caller Profile Saved!');
     Alert.alert('Settings Saved', `Caller name updated to "${userName.trim() || 'Alex'}" and preferences saved.`);
   };
 
@@ -263,8 +267,9 @@ export default function SettingsScreen({ navigation }: any) {
       const res = await BackupService.restoreBackupFromJson(pastedJson.trim(), overwrite);
       setIsRestoring(false);
       if (res.success) {
-        setPasteModalVisible(false);
         setPastedJson('');
+        setPasteModalVisible(false);
+        await loadSettings();
         await HapticsService.success();
         showBanner(`✓ ${res.message}`);
         Alert.alert('Restore Complete', res.message);
@@ -281,7 +286,7 @@ export default function SettingsScreen({ navigation }: any) {
   const handleExportPipelineCsv = async () => {
     await HapticsService.medium();
     const leads = await LeadsRepository.getAllLeads();
-    const success = await CsvService.downloadCsv(leads, 'ValuTeachers_Full_Pipeline');
+    const success = await CsvService.downloadCsv(leads, 'SnapDialer_Full_Pipeline');
     if (success) {
       await HapticsService.success();
       showBanner('✓ Pipeline CSV exported successfully.');
@@ -476,7 +481,7 @@ export default function SettingsScreen({ navigation }: any) {
     setPinEnabled(true);
     setShowPinSetupModal(false);
     showBanner('✓ 4-Digit PIN protection enabled!');
-    Alert.alert('Field Privacy Active', 'Your educator pipeline is now locked. The app will prompt for PIN on launch or after 5 minutes of inactivity.');
+    Alert.alert('Field Privacy Active', 'Your client pipeline is now locked. The app will prompt for PIN on launch or after 5 minutes of inactivity.');
   };
 
   // 6. Wipe All Leads
@@ -575,6 +580,21 @@ export default function SettingsScreen({ navigation }: any) {
             onChangeText={setUserName}
           />
 
+          <View style={[styles.cardHeaderRow, { marginTop: 14 }]}>
+            <Briefcase size={18} color="#3B82F6" />
+            <Text style={styles.cardTitle}>Agency / Company / RIA Name</Text>
+          </View>
+          <Text style={styles.cardDesc}>
+            Specifies your organization (e.g. ValuTeachers) and replaces <Text style={styles.tokenTag}>{'{{company}}'}</Text> in drip messages. Leave blank if independent or unaffiliated.
+          </Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g. ValuTeachers"
+            placeholderTextColor="#64748B"
+            value={agencyName}
+            onChangeText={setAgencyName}
+          />
+
           <TouchableOpacity
             style={[styles.actionButtonSecondary, { marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }]}
             onPress={() => {
@@ -633,7 +653,7 @@ export default function SettingsScreen({ navigation }: any) {
           <Text style={styles.cardDesc}>
             {Platform.OS === 'web'
               ? 'Multi-Gigabyte Dexie.js IndexedDB engine with compound B-Tree indexes, isolated photo binary storage, and browser eviction protection.'
-              : 'Native on-device SQLite database (snap_dialer_valuteachers.db) with WAL journal mode.'}
+              : 'Native on-device SQLite database with WAL journal mode.'}
           </Text>
 
           {storageQuota && (
