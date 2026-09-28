@@ -1110,6 +1110,20 @@ export default function ListsScreen({ navigation }: any) {
                     <Text style={[styles.cardActionBtnText, { color: Colors.brandAccent }]}>AI Text</Text>
                   </TouchableOpacity>
 
+                  <TouchableOpacity
+                    style={[styles.cardActionBtn, styles.bookActionBtn]}
+                    onPress={() => navigation.navigate('LeadDetail', {
+                      leadId: item.id,
+                      autoOpenScheduler: true,
+                      initialPurpose: item.is_client ? 'annual_review' : 'frs_review',
+                    })}
+                  >
+                    <Calendar size={15} color="#D97706" />
+                    <Text style={[styles.cardActionBtnText, { color: '#D97706', fontWeight: '700' }]}>
+                      Book
+                    </Text>
+                  </TouchableOpacity>
+
                   {PipelineStateService.isDispoNeeded(item) ? (
                     <TouchableOpacity
                       style={[styles.cardActionBtn, styles.dispoActionBtn]}
@@ -1726,6 +1740,10 @@ const styles = StyleSheet.create({
   quickDispoActionBtn: {
     backgroundColor: 'rgba(139, 92, 246, 0.12)',
     borderColor: 'rgba(139, 92, 246, 0.4)',
+  },
+  bookActionBtn: {
+    backgroundColor: 'rgba(217, 119, 6, 0.12)',
+    borderColor: 'rgba(217, 119, 6, 0.35)',
   },
   deleteLeadBtn: {
     padding: 8,

@@ -33,11 +33,74 @@ import { TelephonyService } from '../services/telephonyService';
 import { AiSmsService } from '../services/aiSmsService';
 import { SettingsRepository } from '../db/settingsRepository';
 
+export type MeetingPurpose =
+  | 'annual_review'
+  | 'product_enhancement'
+  | 'frs_review'
+  | 'policy_service'
+  | 'general_sitdown'
+  | 'custom'
+  | string;
+
+export interface PurposeOption {
+  id: string;
+  label: string;
+  icon: string;
+  defaultNote: string;
+  calendarTitle: string;
+}
+
+export const MEETING_PURPOSES: PurposeOption[] = [
+  {
+    id: 'annual_review',
+    label: 'Annual Review',
+    icon: '🌟',
+    defaultNote: 'Annual Client Review: Reviewing 403(b) annuity performance, policy values, and beneficiary designations.',
+    calendarTitle: 'Annual Client Review',
+  },
+  {
+    id: 'product_enhancement',
+    label: 'Product Enhancement',
+    icon: '🚀',
+    defaultNote: 'Product Enhancement & Update: Reviewing annuity transfer-in, IUL/life protection, and supplemental retirement plan options.',
+    calendarTitle: 'Product Enhancement & Policy Update',
+  },
+  {
+    id: 'frs_review',
+    label: 'FRS Pension & DROP',
+    icon: '🏛️',
+    defaultNote: 'FRS Pension & DROP Consultation: DROP entry calculation, pension vs investment plan, and retirement roadmap.',
+    calendarTitle: 'FRS Pension & DROP Review',
+  },
+  {
+    id: 'policy_service',
+    label: 'Policy Service',
+    icon: '📑',
+    defaultNote: 'Policy Service & Delivery: Policy delivery review, allocation adjustment, and servicing documentation.',
+    calendarTitle: 'Policy Service Consultation',
+  },
+  {
+    id: 'general_sitdown',
+    label: 'Sit-Down / Consult',
+    icon: '☕',
+    defaultNote: 'Confirmed Sit-Down: One-on-one retirement consultation and customized benefit illustration.',
+    calendarTitle: 'Retirement Strategy Sit-Down',
+  },
+  {
+    id: 'custom',
+    label: 'Custom / Other',
+    icon: '✏️',
+    defaultNote: 'Meeting consultation and review.',
+    calendarTitle: 'Sit-Down Consultation',
+  },
+];
+
 export interface AppointmentSchedulerModalProps {
   visible: boolean;
   lead: Lead | null;
   initialDate?: Date | null;
   initialNotes?: string;
+  initialPurpose?: string;
   onClose: () => void;
   onSave: (payload: {
     scheduledDate: Date;
@@ -45,6 +108,7 @@ export interface AppointmentSchedulerModalProps {
     roomNumber?: string;
     notes?: string;
     locationType?: string;
+    purpose?: string;
   }) => Promise<void>;
 }
 
@@ -58,6 +122,7 @@ function AppointmentSchedulerModalContent({
   lead,
   initialDate,
   initialNotes = '',
+  initialPurpose,
   onClose,
   onSave,
 }: AppointmentSchedulerModalProps & { lead: Lead }) {
@@ -108,6 +173,22 @@ function AppointmentSchedulerModalContent({
   }, []);
 
   // 3. Selection States
+  const [selectedPurpose, setSelectedPurpose] = useState<string>(() => {
+    if (initialPurpose && MEETING_PURPOSES.some((p) => p.id === initialPurpose)) {
+      return initialPurpose;
+    }
+    if (initialPurpose) return 'custom';
+    return lead.is_client ? 'annual_review' : lead.is_frs !== false ? 'frs_review' : 'general_sitdown';
+  });
+
+  const [purposeText, setPurposeText] = useState<string>(() => {
+    if (initialPurpose) {
+      const match = MEETING_PURPOSES.find((p) => p.id === initialPurpose);
+      return match ? match.label : initialPurpose;
+    }
+    return lead.is_client ? 'Annual Review' : lead.is_frs !== false ? 'FRS Pension & DROP' : 'Sit-Down / Consult';
+  });
+
   const [selectedDayKey, setSelectedDayKey] = useState<string>('');
   const [showFullMonthGrid, setShowFullMonthGrid] = useState<boolean>(false);
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date());
@@ -130,6 +211,40 @@ function AppointmentSchedulerModalContent({
   useEffect(() => {
     if (!visible) return;
 
+    // Resolve Purpose
+    const matchedPreset = initialPurpose
+      ? MEETING_PURPOSES.find(
+          (p) => p.id === initialPurpose || p.label.toLowerCase() === initialPurpose.toLowerCase()
+        )
+      : null;
+
+    let resolvedId = 'custom';
+    let resolvedText = initialPurpose || '';
+
+    if (matchedPreset) {
+      resolvedId = matchedPreset.id;
+      resolvedText = matchedPreset.label;
+    } else if (!initialPurpose) {
+      if (lead.is_client) {
+        resolvedId = 'annual_review';
+        resolvedText = 'Annual Review';
+      } else if (lead.is_frs !== false) {
+        resolvedId = 'frs_review';
+        resolvedText = 'FRS Pension & DROP';
+      } else {
+        resolvedId = 'general_sitdown';
+        resolvedText = 'Sit-Down / Consult';
+      }
+    }
+
+    setSelectedPurpose(resolvedId);
+    setPurposeText(resolvedText);
+
+    const activePurposeObj = MEETING_PURPOSES.find((p) => p.id === resolvedId);
+    const resolvedInitialNotes = initialNotes || (activePurposeObj ? activePurposeObj.defaultNote : '');
+    setNotes(resolvedInitialNotes);
+
+    // Initial Date Handling
     let initD: Date | null = null;
     if (initialDate && !isNaN(initialDate.getTime())) {
       initD = initialDate;
@@ -153,7 +268,7 @@ function AppointmentSchedulerModalContent({
       // Check if matches a known period
       const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
       const foundP = schoolSchedule.find((p) => p.startTime === timeStr);
-      if (foundP) {
+      if (foundP && lead.is_frs !== false && !lead.is_client) {
         setSelectedPeriodId(foundP.id);
         setTimeMode('period');
       } else {
@@ -167,13 +282,20 @@ function AppointmentSchedulerModalContent({
         setCalendarMonth(new Date(defaultDay.date.getFullYear(), defaultDay.date.getMonth(), 1));
       }
 
-      // Default to educator's matched period or Period 3
-      if (matchedPeriod) {
+      // Default time mode: Clients & Non-FRS default to Custom Time
+      const preferCustomTime = Boolean(lead.is_client || lead.is_frs === false || !matchedPeriod);
+      if (preferCustomTime) {
+        setTimeMode('custom');
+        setCustomHour(10);
+        setCustomMinute(0);
+        setCustomAmPm('AM');
+      } else if (matchedPeriod) {
         setSelectedPeriodId(matchedPeriod.id);
         const [sH, sM] = matchedPeriod.startTime.split(':').map(Number);
         setCustomHour(sH % 12 === 0 ? 12 : sH % 12);
         setCustomMinute(sM);
         setCustomAmPm(sH >= 12 ? 'PM' : 'AM');
+        setTimeMode('period');
       } else {
         const p3 = schoolSchedule[2] || schoolSchedule[0];
         if (p3) {
@@ -183,14 +305,49 @@ function AppointmentSchedulerModalContent({
           setCustomMinute(sM);
           setCustomAmPm(sH >= 12 ? 'PM' : 'AM');
         }
+        setTimeMode('period');
       }
-      setTimeMode('period');
+    }
+
+    // Default location: Clients/Non-FRS default to office or phone/virtual
+    if (lead.is_client || lead.is_frs === false) {
+      setLocationType('office');
+    } else {
+      setLocationType('classroom');
     }
 
     setRoomNumber(lead.room_number || '');
-    setNotes(initialNotes || '');
     setShowFullMonthGrid(false);
-  }, [visible, lead, initialDate]);
+  }, [visible, lead, initialDate, initialPurpose, initialNotes]);
+
+  // Handle Purpose Selection
+  const handleSelectPurpose = (purposeId: string) => {
+    HapticsService.tick();
+    setSelectedPurpose(purposeId);
+    const purposeObj = MEETING_PURPOSES.find((p) => p.id === purposeId);
+    if (!purposeObj) return;
+
+    if (purposeId === 'custom') {
+      if (!purposeText || MEETING_PURPOSES.some((p) => p.label === purposeText)) {
+        setPurposeText('');
+      }
+      return;
+    }
+
+    setPurposeText(purposeObj.label);
+    const isCurrentADefaultNote = MEETING_PURPOSES.some((p) => p.defaultNote === notes.trim());
+    if (!notes.trim() || isCurrentADefaultNote) {
+      setNotes(purposeObj.defaultNote);
+    }
+  };
+
+  // Handle Quick Date Jumps
+  const handleQuickJump = (targetDate: Date) => {
+    HapticsService.tick();
+    const dKey = targetDate.toISOString().slice(0, 10);
+    setSelectedDayKey(dKey);
+    setCalendarMonth(new Date(targetDate.getFullYear(), targetDate.getMonth(), 1));
+  };
 
   // Handle Bell Period Selection
   const handleSelectPeriod = (period: BellPeriod) => {
@@ -252,16 +409,29 @@ function AppointmentSchedulerModalContent({
   // 1-Tap Calendar Piping Handlers
   const getModalLocationStr = () => {
     const isFrs = lead.is_frs !== false;
-    const defaultLoc = isFrs ? 'Campus' : 'Phone / Remote';
+    if (locationType === 'office') return 'Advisor Office • ValuTeachers';
+    if (locationType === 'in_person') return 'Client In-Person / Home';
+    if (locationType === 'virtual') return 'Virtual / Zoom Video Call';
+    if (locationType === 'phone') return 'Phone Consultation';
+    if (locationType === 'coffee') return 'Coffee / Local Meeting';
+    const defaultLoc = isFrs ? 'Campus' : 'Office / Remote';
     return roomNumber
       ? `${lead.school || (isFrs ? 'Campus' : 'Office/Remote')} • Room ${roomNumber}`
       : lead.school || defaultLoc;
   };
 
+  const getActivePurposeTitle = () => {
+    const trimmed = purposeText.trim();
+    if (trimmed) return trimmed;
+    const activePurposeObj = MEETING_PURPOSES.find((p) => p.id === selectedPurpose);
+    return activePurposeObj ? activePurposeObj.calendarTitle : 'Sit-Down Consultation';
+  };
+
   const handleExportAppleIcs = async () => {
     await HapticsService.medium();
     const locationStr = getModalLocationStr();
-    const event = CalendarService.buildEducatorEvent(lead, computedScheduledDate, durationMinutes, notes);
+    const purposeTitle = getActivePurposeTitle();
+    const event = CalendarService.buildEducatorEvent(lead, computedScheduledDate, durationMinutes, notes, purposeTitle);
     event.location = locationStr;
     await CalendarService.downloadIcsFile(event);
   };
@@ -269,7 +439,8 @@ function AppointmentSchedulerModalContent({
   const handleOpenGoogleCal = async () => {
     await HapticsService.medium();
     const locationStr = getModalLocationStr();
-    const event = CalendarService.buildEducatorEvent(lead, computedScheduledDate, durationMinutes, notes);
+    const purposeTitle = getActivePurposeTitle();
+    const event = CalendarService.buildEducatorEvent(lead, computedScheduledDate, durationMinutes, notes, purposeTitle);
     event.location = locationStr;
     CalendarService.openGoogleCalendar(event);
   };
@@ -277,7 +448,8 @@ function AppointmentSchedulerModalContent({
   const handleOpenOutlookCal = async () => {
     await HapticsService.medium();
     const locationStr = getModalLocationStr();
-    const event = CalendarService.buildEducatorEvent(lead, computedScheduledDate, durationMinutes, notes);
+    const purposeTitle = getActivePurposeTitle();
+    const event = CalendarService.buildEducatorEvent(lead, computedScheduledDate, durationMinutes, notes, purposeTitle);
     event.location = locationStr;
     CalendarService.openOutlookCalendar(event);
   };
@@ -308,12 +480,14 @@ function AppointmentSchedulerModalContent({
     setIsSaving(true);
     try {
       const scheduledISO = computedScheduledDate.toISOString();
+      const finalPurpose = getActivePurposeTitle();
       await onSave({
         scheduledDate: computedScheduledDate,
         scheduledISO,
         roomNumber: roomNumber.trim() || undefined,
         notes: notes.trim() || undefined,
         locationType,
+        purpose: finalPurpose,
       });
       onClose();
     } catch (e) {
@@ -364,6 +538,68 @@ function AppointmentSchedulerModalContent({
           </View>
 
           <ScrollView style={styles.scrollBody} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            {/* Section 0: Meeting Reason / Purpose */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>0. MEETING PURPOSE / REASON</Text>
+                <Text style={styles.sectionSubHint}>Any Reason • Custom or Preset</Text>
+              </View>
+
+              {/* Freeform Editable Purpose Input */}
+              <View style={styles.purposeInputCard}>
+                <View style={styles.purposeInputRow}>
+                  <Sparkles size={16} color={Colors.brandAccent} style={{ marginRight: 8 }} />
+                  <TextInput
+                    style={styles.purposeTextInput}
+                    value={purposeText}
+                    onChangeText={(text) => {
+                      setPurposeText(text);
+                      const matched = MEETING_PURPOSES.find(
+                        (p) => p.label.toLowerCase() === text.trim().toLowerCase()
+                      );
+                      setSelectedPurpose(matched ? matched.id : 'custom');
+                    }}
+                    placeholder="Type ANY purpose (e.g. Annual Review, 403b, DROP, Tax...)"
+                    placeholderTextColor={Colors.textMuted}
+                  />
+                  {purposeText.length > 0 ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setPurposeText('');
+                        setSelectedPurpose('custom');
+                      }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={{ padding: 4 }}
+                    >
+                      <X size={15} color={Colors.textMuted} />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              </View>
+
+              {/* Quick Preset Suggestion Chips */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.purposeStrip}>
+                {MEETING_PURPOSES.map((p) => {
+                  const isSelected =
+                    selectedPurpose === p.id ||
+                    (p.id !== 'custom' && purposeText.trim().toLowerCase() === p.label.toLowerCase());
+                  return (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={[styles.purposePill, isSelected && styles.purposePillActive]}
+                      onPress={() => handleSelectPurpose(p.id)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.purposePillIcon}>{p.icon}</Text>
+                      <Text style={[styles.purposePillText, isSelected && styles.purposePillTextActive]}>
+                        {p.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
             {/* Section 1: Select Day */}
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
@@ -383,6 +619,57 @@ function AppointmentSchedulerModalContent({
                   ) : (
                     <ChevronDown size={14} color={Colors.brandAccent} />
                   )}
+                </TouchableOpacity>
+              </View>
+
+              {/* Quick Jump Shortcuts */}
+              <View style={styles.quickJumpRow}>
+                <Text style={styles.quickJumpLabel}>Quick Jumps:</Text>
+                <TouchableOpacity
+                  style={styles.quickJumpBtn}
+                  onPress={() => {
+                    const tomorrow = new Date();
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    handleQuickJump(tomorrow);
+                  }}
+                >
+                  <Text style={styles.quickJumpBtnText}>Tomorrow</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.quickJumpBtn}
+                  onPress={() => {
+                    const nextWeek = new Date();
+                    nextWeek.setDate(nextWeek.getDate() + 7);
+                    handleQuickJump(nextWeek);
+                  }}
+                >
+                  <Text style={styles.quickJumpBtnText}>+1 Wk</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.quickJumpBtn}
+                  onPress={() => {
+                    const nextMonth = new Date();
+                    nextMonth.setMonth(nextMonth.getMonth() + 1);
+                    handleQuickJump(nextMonth);
+                  }}
+                >
+                  <Text style={styles.quickJumpBtnText}>+1 Mo</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.quickJumpBtn, styles.quickJumpBtnGold]}
+                  onPress={() => {
+                    if (lead.annual_review_due_date && !isNaN(new Date(lead.annual_review_due_date).getTime())) {
+                      handleQuickJump(new Date(lead.annual_review_due_date));
+                    } else {
+                      const nextYear = new Date();
+                      nextYear.setFullYear(nextYear.getFullYear() + 1);
+                      handleQuickJump(nextYear);
+                    }
+                  }}
+                >
+                  <Text style={[styles.quickJumpBtnText, styles.quickJumpBtnGoldText]}>
+                    🌟 Annual Review (+1 Yr)
+                  </Text>
                 </TouchableOpacity>
               </View>
 
@@ -557,12 +844,48 @@ function AppointmentSchedulerModalContent({
               ) : (
                 /* Custom Time Stepper & Duration */
                 <View style={styles.customTimeBox}>
+                  {/* Quick Times Presets */}
+                  <View style={styles.quickTimesRow}>
+                    <Text style={styles.quickTimeLabel}>Presets:</Text>
+                    {[
+                      { h: 9, m: 0, ampm: 'AM' as const },
+                      { h: 10, m: 30, ampm: 'AM' as const },
+                      { h: 1, m: 15, ampm: 'PM' as const },
+                      { h: 3, m: 30, ampm: 'PM' as const },
+                      { h: 5, m: 0, ampm: 'PM' as const },
+                      { h: 6, m: 30, ampm: 'PM' as const },
+                    ].map((t, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        style={[
+                          styles.quickTimeChip,
+                          customHour === t.h && customMinute === t.m && customAmPm === t.ampm && styles.quickTimeChipActive,
+                        ]}
+                        onPress={() => {
+                          HapticsService.tick();
+                          setCustomHour(t.h);
+                          setCustomMinute(t.m);
+                          setCustomAmPm(t.ampm);
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.quickTimeChipText,
+                            customHour === t.h && customMinute === t.m && customAmPm === t.ampm && styles.quickTimeChipTextActive,
+                          ]}
+                        >
+                          {t.h}:{String(t.m).padStart(2, '0')} {t.ampm}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
                   <View style={styles.customTimeRow}>
                     {/* Hours */}
                     <View style={styles.timeStepperCol}>
                       <Text style={styles.timeStepperLabel}>Hour</Text>
                       <View style={styles.hourSelectorRow}>
-                        {[8, 9, 10, 11, 12, 1, 2, 3, 4].map((h) => (
+                        {[7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8].map((h) => (
                           <TouchableOpacity
                             key={h}
                             style={[styles.hourChip, customHour === h && styles.hourChipActive]}
@@ -629,7 +952,7 @@ function AppointmentSchedulerModalContent({
                   {/* Duration Selector */}
                   <View style={styles.durationRow}>
                     <Text style={styles.durationLabel}>Duration:</Text>
-                    {[15, 20, 25, 30, 45].map((dur) => (
+                    {[15, 20, 25, 30, 45, 60].map((dur) => (
                       <TouchableOpacity
                         key={dur}
                         style={[styles.durChip, durationMinutes === dur && styles.durChipActive]}
@@ -648,15 +971,17 @@ function AppointmentSchedulerModalContent({
               )}
             </View>
 
-            {/* Section 3: Location & Classroom Room Number */}
+            {/* Section 3: Location / Setting */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>3. LOCATION / CLASSROOM</Text>
+              <Text style={styles.sectionTitle}>3. LOCATION / SETTING</Text>
               <View style={styles.locationChipsRow}>
                 {[
-                  { id: 'classroom', label: '🏫 Classroom / Room #', icon: MapPin },
-                  { id: 'lounge', label: '☕ Faculty Lounge', icon: MapPin },
-                  { id: 'phone', label: '📞 Phone Sit-Down', icon: Clock },
-                  { id: 'virtual', label: '💻 Virtual / Zoom', icon: ExternalLink },
+                  { id: 'classroom', label: '🏫 School Classroom' },
+                  { id: 'office', label: '🏢 Advisor Office' },
+                  { id: 'in_person', label: '🏠 Client Home' },
+                  { id: 'virtual', label: '💻 Virtual / Zoom' },
+                  { id: 'phone', label: '📞 Phone Sit-Down' },
+                  { id: 'coffee', label: '☕ Coffee / Neutral' },
                 ].map((loc) => {
                   const isSelected = locationType === loc.id;
                   return (
@@ -690,15 +1015,15 @@ function AppointmentSchedulerModalContent({
               )}
             </View>
 
-            {/* Section 4: Call Note Confirmation */}
+            {/* Section 4: Appointment Notes */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>4. APPOINTMENT NOTES</Text>
+              <Text style={styles.sectionTitle}>4. APPOINTMENT NOTES & AGENDA</Text>
               <TextInput
                 style={styles.notesInput}
-                placeholder="e.g. Confirmed sit-down during planning period. Bringing FRS DROP benefit illustration."
+                placeholder="e.g. Confirmed sit-down. Reviewing annuity performance and benefit options."
                 placeholderTextColor={Colors.textMuted}
                 multiline
-                numberOfLines={2}
+                numberOfLines={3}
                 value={notes}
                 onChangeText={setNotes}
               />
@@ -709,7 +1034,9 @@ function AppointmentSchedulerModalContent({
               <View style={styles.pipingHeader}>
                 <View style={styles.pipingTitleRow}>
                   <Sparkles size={15} color={Colors.heavenlyGold} />
-                  <Text style={styles.pipingTitle}>CONFIRMED SIT-DOWN PREVIEW</Text>
+                  <Text style={styles.pipingTitle}>
+                    {MEETING_PURPOSES.find((p) => p.id === selectedPurpose)?.label.toUpperCase() || 'CONFIRMED SIT-DOWN'} PREVIEW
+                  </Text>
                 </View>
                 <Text style={styles.pipingDateSummary}>
                   {computedScheduledDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} @{' '}
@@ -844,6 +1171,32 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     letterSpacing: 0.6,
   },
+  sectionSubHint: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.brandAccent,
+    textTransform: 'uppercase',
+  },
+  purposeInputCard: {
+    backgroundColor: Colors.bgApp,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.borderSubtle,
+    paddingHorizontal: 12,
+    paddingVertical: 2,
+    marginTop: 2,
+  },
+  purposeInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  purposeTextInput: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    paddingVertical: 8,
+  },
   toggleCalendarBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -857,6 +1210,107 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: Colors.brandAccent,
+  },
+  purposeStrip: {
+    gap: 8,
+    paddingVertical: 4,
+  },
+  purposePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: Colors.bgApp,
+    borderWidth: 1.5,
+    borderColor: Colors.borderSubtle,
+  },
+  purposePillActive: {
+    backgroundColor: 'rgba(212, 160, 23, 0.15)',
+    borderColor: Colors.borderGold,
+  },
+  purposePillIcon: {
+    fontSize: 14,
+  },
+  purposePillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  purposePillTextActive: {
+    color: Colors.heavenlyGold,
+    fontWeight: '800',
+  },
+  quickJumpRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+    marginBottom: 6,
+  },
+  quickJumpLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    marginRight: 2,
+  },
+  quickJumpBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: Colors.bgApp,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  quickJumpBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  quickJumpBtnGold: {
+    backgroundColor: 'rgba(212, 160, 23, 0.14)',
+    borderColor: Colors.borderGold,
+  },
+  quickJumpBtnGoldText: {
+    color: Colors.heavenlyGold,
+    fontWeight: '800',
+  },
+  quickTimesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 10,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderSubtle,
+  },
+  quickTimeLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  quickTimeChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  quickTimeChipActive: {
+    backgroundColor: Colors.brandAccent,
+    borderColor: Colors.brandAccent,
+  },
+  quickTimeChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+  },
+  quickTimeChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   dayStrip: {
     gap: 8,

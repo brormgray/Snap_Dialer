@@ -1226,6 +1226,207 @@ describe('Post-Appointment Lifecycle & Dispo Queue Architecture', () => {
     assert.strictEqual(lastDisp, 'appointment_set', 'last_disposition must remain appointment_set');
     assert.strictEqual(apptOutcome, null, 'appointment_outcome must remain null');
   });
+
+  // --------------------------------------------------------------------------
+  // Direct Scheduling & Meeting Purpose Extension
+  // --------------------------------------------------------------------------
+  function loadActualCalendarService() {
+    const servicePath = path.resolve('src/services/calendarService.ts');
+    const src = fs.readFileSync(servicePath, 'utf8');
+    const transpiled = ts.transpileModule(src, {
+      compilerOptions: {
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2022,
+      },
+    });
+
+    const moduleObj = { exports: {} };
+    const requireMock = (id) => {
+      if (id.includes('bellSchedules')) {
+        return {
+          getScheduleForSchool: () => [
+            { id: '1', name: 'Period 1', startTime: '08:30', endTime: '09:20' },
+            { id: '2', name: 'Period 2', startTime: '09:25', endTime: '10:15' },
+          ],
+          matchPeriodId: () => null,
+        };
+      }
+      return {
+        Platform: { OS: 'web' },
+        Linking: { openURL: () => Promise.resolve() },
+        Share: { share: () => Promise.resolve() },
+      };
+    };
+
+    const runner = new Function('module', 'exports', 'require', transpiled.outputText);
+    runner(moduleObj, moduleObj.exports, requireMock);
+
+    return moduleObj.exports.CalendarService;
+  }
+
+  const ActualCalendarService = loadActualCalendarService();
+
+  // 32. CalendarService custom meeting purposes
+  it('buildEducatorEvent dynamically customizes title and description based on meetingPurpose', () => {
+    const lead = {
+      id: 'lead_client_1',
+      name: 'Sarah Connor',
+      phone: '3865551234',
+      school: 'West High School',
+      room_number: '101',
+      is_client: true,
+    };
+    const startDate = new Date('2026-10-15T14:00:00.000Z');
+    const endDate = new Date('2026-10-15T15:00:00.000Z');
+
+    // 1) Annual Review
+    const annualReviewEvent = ActualCalendarService.buildEducatorEvent(
+      lead,
+      startDate,
+      60,
+      'Office Suite 300 notes',
+      'annual_review'
+    );
+    assert.match(annualReviewEvent.title, /🎯 Annual Client Review: Sarah Connor/);
+    assert.match(annualReviewEvent.description, /Annual Client Review & Portfolio Inspection/);
+
+    // 2) Product Enhancement
+    const upgradeEvent = ActualCalendarService.buildEducatorEvent(
+      lead,
+      startDate,
+      30,
+      'Virtual call notes',
+      'product_enhancement'
+    );
+    assert.match(upgradeEvent.title, /🎯 Product Enhancement: Sarah Connor/);
+    assert.match(upgradeEvent.description, /Product Enhancement & Benefits Upgrade/);
+
+    // 3) General Sit-Down
+    const sitdownEvent = ActualCalendarService.buildEducatorEvent(
+      lead,
+      startDate,
+      45,
+      null,
+      'general_sitdown'
+    );
+    assert.match(sitdownEvent.title, /🎯 Sit-Down Consultation: Sarah Connor/);
+
+    // 4) Policy Service
+    const policyEvent = ActualCalendarService.buildEducatorEvent(
+      lead,
+      startDate,
+      20,
+      null,
+      'policy_service'
+    );
+    assert.match(policyEvent.title, /🎯 Policy Service: Sarah Connor/);
+
+    // 5) Default / FRS Review
+    const defaultEvent = ActualCalendarService.buildEducatorEvent(
+      lead,
+      startDate,
+      20,
+      null
+    );
+    assert.match(defaultEvent.title, /🎯 FRS Sit-Down: Sarah Connor/);
+
+    // 6) UNRESTRICTED Custom Reason (Any arbitrary purpose entered by the user)
+    const customReasonEvent = ActualCalendarService.buildEducatorEvent(
+      lead,
+      startDate,
+      30,
+      'Reviewing spouse 401(k) rollover and estate planning',
+      '403(b) Rollover & Tax Planning'
+    );
+    assert.match(customReasonEvent.title, /🎯 403\(b\) Rollover & Tax Planning: Sarah Connor/);
+    assert.match(customReasonEvent.description, /403\(b\) Rollover & Tax Planning with Sarah Connor/);
+
+    const casualSitdownEvent = ActualCalendarService.buildEducatorEvent(
+      lead,
+      startDate,
+      30,
+      null,
+      'Coffee & Catch-Up'
+    );
+    assert.match(casualSitdownEvent.title, /🎯 Coffee & Catch-Up: Sarah Connor/);
+  });
+
+  // 33. Direct Annual Review and Product Enhancement scheduling on existing clients
+  it('allows scheduling an annual review on an existing client and updates appointment state without dropping client info', () => {
+    const existingClient = {
+      id: 'client_777',
+      name: 'Deborah Vance',
+      phone: '4075558888',
+      email: 'dvance@school.edu',
+      school: 'Winter Park High',
+      is_client: true,
+      products: ['flow_annuity', 'life_insurance'],
+      annualized_premium: 12500,
+      client_since: '2024-03-15T00:00:00.000Z',
+      annual_review_due_date: '2026-10-15',
+      last_disposition: 'connected',
+      appointment_scheduled_at: null,
+      appointment_outcome: null,
+      notes: 'Happy with current annuity performance.',
+    };
+
+    // Simulate booking action from LeadDetailScreen / AppointmentSchedulerModal
+    const targetDateISO = '2026-10-15T18:00:00.000Z'; // 2:00 PM EDT
+    const bookedClient = {
+      ...existingClient,
+      last_disposition: 'appointment_set',
+      appointment_scheduled_at: targetDateISO,
+      follow_up_at: targetDateISO,
+      appointment_outcome: null,
+      appointment_completed_at: null,
+      appointment_notes: 'Meeting Purpose: Annual Client Review\nLocation: Advisor Office',
+      updated_at: new Date().toISOString(),
+    };
+
+    // Assert appointment is active
+    assert.strictEqual(bookedClient.last_disposition, 'appointment_set');
+    assert.strictEqual(bookedClient.appointment_scheduled_at, targetDateISO);
+    assert.strictEqual(bookedClient.appointment_outcome, null);
+
+    // Assert client attributes remain 100% intact
+    assert.strictEqual(bookedClient.is_client, true);
+    assert.deepStrictEqual(bookedClient.products, ['flow_annuity', 'life_insurance']);
+    assert.strictEqual(bookedClient.annualized_premium, 12500);
+    assert.strictEqual(bookedClient.client_since, '2024-03-15T00:00:00.000Z');
+
+    // Assert upcoming appointment classification
+    const now = new Date('2026-10-14T12:00:00.000Z');
+    assert.strictEqual(ActualPipelineStateService.isUpcomingAppointment(bookedClient, now), true);
+  });
+
+  // 34. Client Playbook visibility for any newly scheduled appointment
+  it('ensures any scheduled appointment appears in Daily Playbook for the scheduled day', () => {
+    const scheduledDay = new Date('2026-10-15T12:00:00.000Z');
+    const targetAppointmentISO = '2026-10-15T18:30:00.000Z'; // 2:30 PM EDT
+
+    const clientWithNewSitdown = {
+      id: 'client_sitdown_1',
+      name: 'Robert Miller',
+      is_client: true,
+      last_disposition: 'appointment_set',
+      appointment_scheduled_at: targetAppointmentISO,
+      follow_up_at: targetAppointmentISO,
+      appointment_outcome: null,
+    };
+
+    assert.strictEqual(
+      ActualPipelineStateService.isAppointmentToday(clientWithNewSitdown, scheduledDay, 'America/New_York'),
+      true,
+      'Newly scheduled client appointment must appear in Daily Playbook on the scheduled day'
+    );
+
+    const differentDay = new Date('2026-10-16T12:00:00.000Z');
+    assert.strictEqual(
+      ActualPipelineStateService.isAppointmentToday(clientWithNewSitdown, differentDay, 'America/New_York'),
+      false,
+      'Must not appear on a different day'
+    );
+  });
 });
 
 

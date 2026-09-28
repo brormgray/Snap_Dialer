@@ -155,7 +155,8 @@ export class CalendarService {
     lead: Lead,
     scheduledDate?: Date,
     durationMinutes: number = 20,
-    customNotes?: string | null
+    customNotes?: string | null,
+    meetingPurpose?: string | null
   ): CalendarEventPayload {
     const validStart = (scheduledDate instanceof Date && !isNaN(scheduledDate.getTime())) ? scheduledDate : new Date();
     const endDate = new Date(validStart.getTime() + durationMinutes * 60000);
@@ -164,13 +165,45 @@ export class CalendarService {
     const schoolStr = lead.school || (isFrs ? 'Campus' : 'Office/Remote');
     const planningStr = isFrs && lead.planning_period ? ` (${lead.planning_period})` : '';
 
-    const title = isFrs
+    const PURPOSE_MAP: Record<string, { label: string; desc: string }> = {
+      annual_review: {
+        label: 'Annual Client Review',
+        desc: 'Annual Client Review & Portfolio Inspection',
+      },
+      product_enhancement: {
+        label: 'Product Enhancement',
+        desc: 'Product Enhancement & Benefits Upgrade',
+      },
+      frs_review: {
+        label: 'FRS Pension & DROP Review',
+        desc: 'FRS Pension & DROP Strategy Consultation',
+      },
+      policy_service: {
+        label: 'Policy Service',
+        desc: 'Policy Service & Beneficiary Review',
+      },
+      general_sitdown: {
+        label: 'Sit-Down Consultation',
+        desc: 'General Retirement & Financial Sit-Down Consultation',
+      },
+    };
+
+    const purposeConfig = meetingPurpose ? PURPOSE_MAP[meetingPurpose] : undefined;
+    const purposeLabel = purposeConfig ? purposeConfig.label : meetingPurpose;
+
+    const title = purposeLabel
+      ? `🎯 ${purposeLabel}: ${lead.name}${planningStr}`
+      : isFrs
       ? `🎯 FRS Sit-Down: ${lead.name}${planningStr}`
       : `🎯 Retirement Review: ${lead.name}`;
     const location = roomStr ? `${schoolStr} • ${roomStr}` : schoolStr;
 
     const description = [
-      isFrs
+      purposeConfig
+        ? `${purposeConfig.desc} with ${lead.name}`
+        : purposeLabel
+        ? `${purposeLabel} with ${lead.name}`
+        : isFrs
         ? `FRS & Retirement Review with ${lead.name}`
         : `Retirement Strategy Review with ${lead.name}`,
       `Location: ${location}`,

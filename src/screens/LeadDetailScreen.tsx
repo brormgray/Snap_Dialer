@@ -90,10 +90,27 @@ export default function LeadDetailScreen({ route, navigation }: any) {
   const [showDispositionRow, setShowDispositionRow] = useState<boolean>(false);
   const [callStartTime, setCallStartTime] = useState<number | null>(null);
   const [apptSchedulerVisible, setApptSchedulerVisible] = useState<boolean>(false);
+  const [schedulerInitialNotes, setSchedulerInitialNotes] = useState<string>('');
+  const [schedulerInitialPurpose, setSchedulerInitialPurpose] = useState<string | undefined>(undefined);
+  const [schedulerInitialDate, setSchedulerInitialDate] = useState<Date | null>(null);
   const [callbackModalVisible, setCallbackModalVisible] = useState<boolean>(false);
   const [otherModalVisible, setOtherModalVisible] = useState<boolean>(false);
   const [otherDispoNote, setOtherDispoNote] = useState<string>('');
   const [otherDispoChips, setOtherDispoChips] = useState<string[]>([]);
+
+  const openSchedulerModalWithContext = (
+    purposeTitle?: string,
+    purposeId?: string,
+    targetDateStr?: string
+  ) => {
+    let targetDate: Date | null = null;
+    if (targetDateStr && !isNaN(new Date(targetDateStr).getTime())) {
+      targetDate = new Date(targetDateStr);
+    }
+    setSchedulerInitialPurpose(purposeId);
+    setSchedulerInitialDate(targetDate);
+    setApptSchedulerVisible(true);
+  };
 
   // Edit form state
   const [name, setName] = useState<string>('');
@@ -119,8 +136,26 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       if (route.params?.startCall && loadedLead) {
         handleCall();
       }
+      if (route.params?.autoOpenScheduler && loadedLead) {
+        if (route.params?.initialSchedulerNotes) {
+          setSchedulerInitialNotes(route.params.initialSchedulerNotes);
+        }
+        if (route.params?.initialPurpose) {
+          setSchedulerInitialPurpose(route.params.initialPurpose);
+        }
+        if (route.params?.initialSchedulerDate) {
+          setSchedulerInitialDate(new Date(route.params.initialSchedulerDate));
+        }
+        setApptSchedulerVisible(true);
+      }
     });
-  }, [leadId, route.params?.openDispo, route.params?.startCall]);
+  }, [
+    leadId,
+    route.params?.openDispo,
+    route.params?.startCall,
+    route.params?.autoOpenScheduler,
+    route.params?.initialPurpose,
+  ]);
 
   const loadLeadData = async (): Promise<Lead | null> => {
     const [l, lists] = await Promise.all([
@@ -322,7 +357,8 @@ export default function LeadDetailScreen({ route, navigation }: any) {
   const handleScheduleAppointmentWithCalendar = async (
     scheduledDateISO: string,
     periodName?: string,
-    customNotes?: string
+    customNotes?: string,
+    purpose?: string
   ) => {
     if (!lead) return;
     await HapticsService.success();
@@ -340,7 +376,8 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       minute: '2-digit',
     });
 
-    const note = `Confirmed Sit-Down scheduled for ${dateFormatted} @ ${timeFormatted}${periodName ? ` (${periodName})` : ''}${customNotes ? `. Notes: ${customNotes}` : ''}.`;
+    const purposePrefix = purpose?.trim() ? `[${purpose.trim()}] ` : '';
+    const note = `${purposePrefix}Confirmed Sit-Down scheduled for ${dateFormatted} @ ${timeFormatted}${periodName ? ` (${periodName})` : ''}${customNotes ? `. Notes: ${customNotes}` : ''}.`;
     const updatedNotes = NotesService.addNote(lead.notes, note);
 
     await LeadsRepository.scheduleAppointment(lead.id, scheduledDateISO, updatedNotes);
@@ -363,7 +400,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     });
 
     await loadLeadData();
-    showToast(`✓ Confirmed Sit-Down: ${dateFormatted} @ ${timeFormatted}`);
+    showToast(`✓ Scheduled: ${purpose?.trim() || 'Sit-Down'} (${dateFormatted} @ ${timeFormatted})`);
   };
 
   const handleLogCallOutcome = async (disposition: CallDisposition, customNote?: string) => {
@@ -1276,10 +1313,168 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                           ✏️ Reschedule / Change Sit-Down Time
                         </Text>
                       </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={{
+                          width: '100%',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: 'rgba(212, 160, 23, 0.14)',
+                          borderColor: Colors.borderGold,
+                          borderWidth: 1,
+                          paddingVertical: 10,
+                          borderRadius: 10,
+                          gap: 6,
+                          marginTop: 2,
+                        }}
+                        onPress={() => {
+                          HapticsService.medium();
+                          openSchedulerModalWithContext(
+                            lead.is_client ? 'Annual Client Review' : 'New Sit-Down Meeting',
+                            lead.is_client ? 'annual_review' : 'general_sitdown'
+                          );
+                        }}
+                      >
+                        <Calendar size={14} color={Colors.heavenlyGold} />
+                        <Text style={{ color: Colors.heavenlyGold, fontSize: 13, fontWeight: '800' }}>
+                          📅 Book Another / Additional Meeting
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                   </View>
                 );
               })()}
+
+              {/* Direct Sit-Down & Client Review Scheduler Entrypoint (When No Confirmed Appt Active) */}
+              {lead.last_disposition !== 'appointment_set' && (
+                <View
+                  style={{
+                    backgroundColor: 'rgba(212, 160, 23, 0.10)',
+                    borderColor: Colors.borderGold,
+                    borderWidth: 1.5,
+                    borderRadius: 14,
+                    padding: 14,
+                    marginVertical: 10,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                      <Calendar size={16} color={Colors.heavenlyGold} />
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: Colors.heavenlyGold, letterSpacing: 0.5 }}>
+                        {lead.is_client ? 'SCHEDULE CLIENT REVIEW / SIT-DOWN' : 'SCHEDULE SIT-DOWN MEETING'}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        backgroundColor: 'rgba(56, 189, 248, 0.16)',
+                        borderColor: '#38BDF8',
+                        borderWidth: 1,
+                        borderRadius: 6,
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                      }}
+                    >
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: '#38BDF8' }}>ANYTIME</Text>
+                    </View>
+                  </View>
+
+                  <Text style={{ fontSize: 12, color: Colors.textPrimary, marginBottom: 10, lineHeight: 17 }}>
+                    {lead.is_client
+                      ? 'Schedule an annual review, product enhancement/update, or in-person consultation for whenever you like.'
+                      : 'Lock in a confirmed sit-down for FRS retirement review, 403(b) illustration, or classroom consultation.'}
+                  </Text>
+
+                  <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                    <TouchableOpacity
+                      style={{
+                        flex: 1,
+                        minWidth: 140,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: Colors.brandAccent,
+                        paddingVertical: 11,
+                        borderRadius: 10,
+                        gap: 6,
+                      }}
+                      onPress={() => {
+                        HapticsService.medium();
+                        openSchedulerModalWithContext(
+                          lead.is_client ? 'Annual Client Review' : 'Confirmed Sit-Down',
+                          lead.is_client ? 'annual_review' : 'frs_review'
+                        );
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Calendar size={15} color="#FFFFFF" />
+                      <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '800' }}>
+                        {lead.is_client ? '📅 Book Annual Review' : '📅 Book Sit-Down'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {lead.is_client ? (
+                      <TouchableOpacity
+                        style={{
+                          flex: 1,
+                          minWidth: 140,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: 'rgba(56, 189, 248, 0.14)',
+                          borderColor: '#38BDF8',
+                          borderWidth: 1.5,
+                          paddingVertical: 11,
+                          borderRadius: 10,
+                          gap: 6,
+                        }}
+                        onPress={() => {
+                          HapticsService.medium();
+                          openSchedulerModalWithContext(
+                            'Product Enhancement & Policy Update',
+                            'product_enhancement'
+                          );
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Sparkles size={15} color="#38BDF8" />
+                        <Text style={{ color: '#38BDF8', fontSize: 13, fontWeight: '800' }}>
+                          🚀 Product Update
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        style={{
+                          flex: 1,
+                          minWidth: 140,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: Colors.bgDark,
+                          borderColor: Colors.borderGold,
+                          borderWidth: 1.5,
+                          paddingVertical: 11,
+                          borderRadius: 10,
+                          gap: 6,
+                        }}
+                        onPress={() => {
+                          HapticsService.medium();
+                          openSchedulerModalWithContext(
+                            'General Retirement Consultation',
+                            'general_sitdown'
+                          );
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Clock size={15} color={Colors.heavenlyGold} />
+                        <Text style={{ color: Colors.heavenlyGold, fontSize: 13, fontWeight: '800' }}>
+                          ☕ Custom Meeting
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              )}
 
               {/* Scheduled Callback Reminder Card */}
               {(lead.last_disposition === 'callback_requested' || !!lead.follow_up_at) && lead.last_disposition !== 'appointment_set' && (() => {
@@ -1432,6 +1627,13 @@ export default function LeadDetailScreen({ route, navigation }: any) {
               <ClientPortfolioCard
                 key={`portfolio_${lead.id}_${lead.is_client ? 1 : 0}_${lead.appointment_outcome || ''}_${lead.updated_at || ''}`}
                 lead={lead}
+                onScheduleReview={(purpose, targetDate) => {
+                  openSchedulerModalWithContext(
+                    purpose === 'annual_review' ? 'Annual Client Review' : 'Product Enhancement & Update',
+                    purpose,
+                    targetDate
+                  );
+                }}
                 onSave={async (portfolioUpdates) => {
                   const isNowClient = Boolean(portfolioUpdates.is_client);
                   const isDripNurture = portfolioUpdates.drip_track === 'prospect_nurture';
@@ -1916,6 +2118,29 @@ export default function LeadDetailScreen({ route, navigation }: any) {
             </Text>
           </TouchableOpacity>
 
+          {/* Dedicated Sit-Down & Review Scheduler Button on Dock */}
+          <TouchableOpacity
+            style={[
+              styles.stickyApptButton,
+              lead.last_disposition === 'appointment_set' && styles.stickyApptButtonActive,
+            ]}
+            onPress={() => {
+              HapticsService.medium();
+              openSchedulerModalWithContext(
+                lead.is_client ? 'Annual Client Review' : 'Confirmed Sit-Down',
+                lead.is_client ? 'annual_review' : 'frs_review'
+              );
+            }}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={lead.last_disposition === 'appointment_set' ? 'View/Reschedule sit-down' : 'Schedule sit-down meeting'}
+          >
+            <Calendar size={17} color={lead.last_disposition === 'appointment_set' ? '#FFFFFF' : Colors.heavenlyGold} />
+            <Text style={[styles.stickyApptButtonText, lead.last_disposition === 'appointment_set' && styles.stickyApptButtonTextActive]}>
+              {lead.last_disposition === 'appointment_set' ? 'Appt' : 'Book'}
+            </Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={styles.stickySmsButton}
             onPress={() => openSmsModal()}
@@ -1939,7 +2164,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
             accessibilityRole="button"
             accessibilityLabel={lead.follow_up_at ? 'Edit scheduled callback' : 'Schedule callback'}
           >
-            <Calendar size={18} color={lead.follow_up_at ? '#FFFFFF' : Colors.badgeWarningText} />
+            <Clock size={17} color={lead.follow_up_at ? '#FFFFFF' : Colors.badgeWarningText} />
             {lead.follow_up_at ? <View style={styles.callbackActiveDot} /> : null}
           </TouchableOpacity>
 
@@ -2173,11 +2398,21 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         <AppointmentSchedulerModal
           visible={apptSchedulerVisible}
           lead={lead}
-          initialDate={lead.appointment_scheduled_at ? new Date(lead.appointment_scheduled_at) : undefined}
-          onClose={() => setApptSchedulerVisible(false)}
-          onSave={async ({ scheduledISO, notes }) => {
+          initialDate={schedulerInitialDate || (lead.appointment_scheduled_at ? new Date(lead.appointment_scheduled_at) : undefined)}
+          initialNotes={schedulerInitialNotes}
+          initialPurpose={schedulerInitialPurpose}
+          onClose={() => {
             setApptSchedulerVisible(false);
-            await handleScheduleAppointmentWithCalendar(scheduledISO, lead.planning_period || undefined, notes);
+            setSchedulerInitialNotes('');
+            setSchedulerInitialPurpose(undefined);
+            setSchedulerInitialDate(null);
+          }}
+          onSave={async ({ scheduledISO, notes, purpose }) => {
+            setApptSchedulerVisible(false);
+            setSchedulerInitialNotes('');
+            setSchedulerInitialPurpose(undefined);
+            setSchedulerInitialDate(null);
+            await handleScheduleAppointmentWithCalendar(scheduledISO, lead.planning_period || undefined, notes, purpose);
           }}
         />
       )}
@@ -3133,22 +3368,22 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   stickyCallButton: {
-    flex: 2,
+    flex: 1.5,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.callActive,
     paddingVertical: 13,
     borderRadius: 12,
-    gap: 8,
+    gap: 6,
   },
   stickyCallButtonText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
   },
   stickyDispoButton: {
-    width: 68,
+    width: 58,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -3157,7 +3392,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(139, 92, 246, 0.4)',
-    gap: 4,
+    gap: 3,
   },
   stickyDispoButtonActive: {
     backgroundColor: '#8B5CF6',
@@ -3165,29 +3400,53 @@ const styles = StyleSheet.create({
   },
   stickyDispoButtonText: {
     color: '#8B5CF6',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
   },
   stickyDispoButtonTextActive: {
     color: '#FFFFFF',
   },
+  stickyApptButton: {
+    width: 60,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(212, 160, 23, 0.12)',
+    paddingVertical: 13,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.borderGold,
+    gap: 3,
+  },
+  stickyApptButtonActive: {
+    backgroundColor: Colors.brandPrimary,
+    borderColor: Colors.borderGold,
+  },
+  stickyApptButtonText: {
+    color: Colors.heavenlyGold,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  stickyApptButtonTextActive: {
+    color: '#FFFFFF',
+  },
   stickySmsButton: {
-    flex: 2,
+    flex: 1.5,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.brandAccent,
     paddingVertical: 13,
     borderRadius: 12,
-    gap: 8,
+    gap: 6,
   },
   stickySmsButtonText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
   },
   stickyDncButton: {
-    width: 46,
+    width: 42,
     height: 46,
     alignItems: 'center',
     justifyContent: 'center',

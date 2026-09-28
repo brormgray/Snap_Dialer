@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Switch } from 'react-native';
-import { Award, Check, Calendar, Clock, ShieldCheck } from 'lucide-react-native';
+import { Award, Check, Calendar, Clock, ShieldCheck, Sparkles } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
 import { HapticsService } from '../services/hapticsService';
 import { Lead, ClientProduct, DripTrack } from '../types';
 
-interface ClientPortfolioCardProps {
+export interface ClientPortfolioCardProps {
   lead: Lead;
   onSave: (updatedPortfolio: Partial<Lead>) => Promise<void>;
+  onScheduleReview?: (purpose: 'annual_review' | 'product_enhancement' | string, targetDate?: string) => void;
 }
 
 const AVAILABLE_PRODUCTS: { id: ClientProduct; label: string }[] = [
@@ -17,7 +18,7 @@ const AVAILABLE_PRODUCTS: { id: ClientProduct; label: string }[] = [
   { id: 'investments', label: 'Investments' },
 ];
 
-export function ClientPortfolioCard({ lead, onSave }: ClientPortfolioCardProps) {
+export function ClientPortfolioCard({ lead, onSave, onScheduleReview }: ClientPortfolioCardProps) {
   const [isClient, setIsClient] = useState<boolean>(lead.is_client || false);
   const [selectedProducts, setSelectedProducts] = useState<ClientProduct[]>(lead.products || []);
   const [annualPremium, setAnnualPremium] = useState<string>(
@@ -252,6 +253,33 @@ export function ClientPortfolioCard({ lead, onSave }: ClientPortfolioCardProps) 
         </View>
       </View>
 
+      {/* 1-Tap Review & Sit-Down Scheduling Entrypoints */}
+      <View style={styles.clientReviewActionsRow}>
+        <TouchableOpacity
+          style={styles.scheduleReviewBtn}
+          onPress={() => {
+            HapticsService.medium();
+            onScheduleReview?.('annual_review', nextReviewDate.trim() || undefined);
+          }}
+          activeOpacity={0.8}
+        >
+          <Calendar size={14} color={Colors.heavenlyGold} />
+          <Text style={styles.scheduleReviewBtnText}>📅 Schedule Annual Review</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.scheduleEnhancementBtn}
+          onPress={() => {
+            HapticsService.medium();
+            onScheduleReview?.('product_enhancement');
+          }}
+          activeOpacity={0.8}
+        >
+          <Sparkles size={14} color="#38BDF8" />
+          <Text style={styles.scheduleEnhancementBtnText}>🚀 Product Enhancement</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Quick Drip Selector Segment */}
       <Text style={[styles.fieldSectionLabel, { marginTop: 10 }]}>AUTOMATED DRIP CADENCE:</Text>
       <View style={styles.segmentContainer}>
@@ -476,6 +504,51 @@ const styles = StyleSheet.create({
   savePortfolioBtnText: {
     color: '#FFFFFF',
     fontSize: 13,
+    fontWeight: '800',
+  },
+  clientReviewActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 2,
+    marginBottom: 12,
+    flexWrap: 'wrap',
+  },
+  scheduleReviewBtn: {
+    flex: 1,
+    minWidth: 140,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(212, 160, 23, 0.12)',
+    borderColor: Colors.borderGold,
+    borderWidth: 1.5,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  scheduleReviewBtnText: {
+    color: Colors.heavenlyGold,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  scheduleEnhancementBtn: {
+    flex: 1,
+    minWidth: 140,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    borderColor: '#38BDF8',
+    borderWidth: 1.5,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  scheduleEnhancementBtnText: {
+    color: '#38BDF8',
+    fontSize: 12,
     fontWeight: '800',
   },
 });
