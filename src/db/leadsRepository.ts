@@ -413,7 +413,7 @@ export class LeadsRepository {
 
     await db.withTransactionAsync(async () => {
       // Update lead
-      if (disposition === 'callback_requested') {
+      if (disposition === 'callback_requested' || disposition === 'appointment_set') {
         await db.runAsync(
           `UPDATE leads 
            SET last_disposition = ?, 
@@ -1223,14 +1223,18 @@ export class LeadsRepository {
 
     // Auto-healing rule 1: If client is true but appointment_outcome is null or disposition is still appointment_set
     if (isClient) {
-      if (!apptOutcome) {
-        apptOutcome = 'converted';
-        apptCompletedAt = apptCompletedAt || raw.client_since || raw.updated_at || raw.created_at || new Date().toISOString();
-        needsHealing = true;
-      }
-      if (lastDisp === 'appointment_set') {
-        lastDisp = 'connected';
-        needsHealing = true;
+      // Protect legitimate active/upcoming appointments scheduled with existing clients
+      const hasActiveAppointment = lastDisp === 'appointment_set' && Boolean(raw.appointment_scheduled_at);
+      if (!hasActiveAppointment) {
+        if (!apptOutcome) {
+          apptOutcome = 'converted';
+          apptCompletedAt = apptCompletedAt || raw.client_since || raw.updated_at || raw.created_at || new Date().toISOString();
+          needsHealing = true;
+        }
+        if (lastDisp === 'appointment_set') {
+          lastDisp = 'connected';
+          needsHealing = true;
+        }
       }
     }
 

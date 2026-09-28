@@ -1,5 +1,60 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
+import ts from 'typescript';
+
+function loadActualPipelineStateService() {
+  const servicePath = path.resolve('src/services/pipelineStateService.ts');
+  const src = fs.readFileSync(servicePath, 'utf8');
+  const transpiled = ts.transpileModule(src, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  });
+
+  const moduleObj = { exports: {} };
+  const requireMock = (id) => {
+    if (id.includes('bellSchedules')) {
+      return {
+        getScheduleForSchool: () => [
+          { id: '1', name: 'Period 1', startTime: '08:30', endTime: '09:20' },
+          { id: '2', name: 'Period 2', startTime: '09:25', endTime: '10:15' },
+          { id: '3', name: 'Period 3', startTime: '10:20', endTime: '11:10' },
+          { id: '4', name: 'Period 4', startTime: '11:15', endTime: '12:05' },
+          { id: '5', name: 'Period 5', startTime: '12:40', endTime: '13:30' },
+          { id: '6', name: 'Period 6', startTime: '13:35', endTime: '14:25' },
+          { id: '7', name: 'Period 7', startTime: '14:30', endTime: '15:20' },
+        ],
+        matchPeriodId: () => null,
+      };
+    }
+    if (id.includes('calendarService')) {
+      return {
+        CalendarService: {
+          calculateNextPlanningDate: () => new Date(),
+        },
+      };
+    }
+    if (id.includes('notesService')) {
+      return {
+        NotesService: {
+          parseNotes: () => [],
+          addNote: (prev, n) => `${n}\n\n${prev || ''}`,
+        },
+      };
+    }
+    return {};
+  };
+
+  const runner = new Function('module', 'exports', 'require', transpiled.outputText);
+  runner(moduleObj, moduleObj.exports, requireMock);
+
+  return moduleObj.exports.PipelineStateService;
+}
+
+const ActualPipelineStateService = loadActualPipelineStateService();
 
 describe('Post-Appointment Lifecycle & Dispo Queue Architecture', () => {
   // Domain simulation of PipelineStateService logic
@@ -1046,6 +1101,130 @@ describe('Post-Appointment Lifecycle & Dispo Queue Architecture', () => {
     handleBannerPress(multipleDispoLeads);
     assert.strictEqual(filteredTabSet, 'dispo_needed', 'Must filter to dispo_needed tab when multiple leads need review');
     assert.strictEqual(navigatedToLeadId, null);
+  });
+
+  // 30. Existing Client Newly Scheduled Appointment in Playbook & Pipeline
+  it('guarantees newly scheduled appointments for existing clients appear in Today Playbook and Appts Set', () => {
+    // Current time: Monday Sep 28, 2026 at 11:00 AM EDT (15:00:00 UTC)
+    const now = new Date('2026-09-28T15:00:00.000Z');
+
+    // Existing client with active annuity who books an appointment for today at 2:00 PM EDT (18:00:00 UTC)
+    const clientWithNewApptToday = {
+      id: 'client_elena_1',
+      name: 'Elena Rostova',
+      phone: '3865551234',
+      school: 'Deland High School',
+      is_client: true,
+      products: ['flow_annuity'],
+      annualized_premium: 8500,
+      client_since: '2025-01-15T10:00:00.000Z',
+      last_disposition: 'appointment_set',
+      appointment_scheduled_at: '2026-09-28T18:00:00.000Z',
+      appointment_outcome: null,
+      appointment_completed_at: null,
+    };
+
+    // 1. isAppointmentCompleted must be FALSE for active newly scheduled appointment
+    assert.strictEqual(
+      ActualPipelineStateService.isAppointmentCompleted(clientWithNewApptToday),
+      false,
+      'Active newly scheduled appointment for client must not be considered completed'
+    );
+
+    // 2. isUpcomingAppointment must be TRUE
+    assert.strictEqual(
+      ActualPipelineStateService.isUpcomingAppointment(clientWithNewApptToday, now),
+      true,
+      'Appointment scheduled for 2:00 PM today must be upcoming at 11:00 AM'
+    );
+
+    // 3. isUpcomingAppointmentToday must be TRUE (calendar parity in America/New_York)
+    assert.strictEqual(
+      ActualPipelineStateService.isUpcomingAppointmentToday(clientWithNewApptToday, now, 'America/New_York'),
+      true,
+      'Must appear in Today Advisor Playbook sit-downs list'
+    );
+
+    // 4. isActiveAppointment must be TRUE (Appts Set tab & count)
+    assert.strictEqual(
+      ActualPipelineStateService.isActiveAppointment(clientWithNewApptToday),
+      true,
+      'Must appear in Appts Set tab and count badge'
+    );
+
+    // 5. Effective outcome must be null while active
+    assert.strictEqual(
+      ActualPipelineStateService.getEffectiveAppointmentOutcome(clientWithNewApptToday),
+      null,
+      'Effective appointment outcome must be null while appointment is pending'
+    );
+
+    // 6. When appointment window passes (e.g. at 3:00 PM EDT / 19:00:00 UTC) without an outcome:
+    const pastApptNow = new Date('2026-09-28T19:00:00.000Z');
+    assert.strictEqual(
+      ActualPipelineStateService.isUpcomingAppointment(clientWithNewApptToday, pastApptNow),
+      false
+    );
+    assert.strictEqual(
+      ActualPipelineStateService.isDispoNeeded(clientWithNewApptToday, pastApptNow),
+      true,
+      'Window ended appointment must trigger Dispo Due alert in Playbook'
+    );
+
+    // 7. When outcome is logged (e.g. wrap up with additional policy or review complete):
+    const wrappedUpClient = {
+      ...clientWithNewApptToday,
+      appointment_outcome: 'converted',
+      appointment_completed_at: '2026-09-28T18:30:00.000Z',
+    };
+    assert.strictEqual(
+      ActualPipelineStateService.isAppointmentCompleted(wrappedUpClient),
+      true,
+      'Once outcome is recorded, appointment is concluded'
+    );
+    assert.strictEqual(
+      ActualPipelineStateService.isDispoNeeded(wrappedUpClient, pastApptNow),
+      false,
+      'Concluded appointment must leave Dispo Due queue'
+    );
+  });
+
+  // 31. hydrateLead preservation of client appointments
+  it('hydrateLead protects active client appointments from being auto-healed into connected/converted', () => {
+    // Raw database record of client with newly booked appointment
+    const rawClientLead = {
+      id: 'client_active_appt',
+      name: 'Marcus Bell',
+      is_client: 1,
+      products: '["flow_annuity"]',
+      annualized_premium: 6000,
+      client_since: '2025-06-01T10:00:00.000Z',
+      last_disposition: 'appointment_set',
+      appointment_scheduled_at: '2026-09-28T18:00:00.000Z',
+      appointment_outcome: null,
+      appointment_completed_at: null,
+      updated_at: '2026-09-28T11:00:00.000Z',
+    };
+
+    // Hydration simulation matching LeadsRepository.hydrateLead logic
+    const isClient = rawClientLead.is_client === 1 || rawClientLead.is_client === true;
+    let apptOutcome = rawClientLead.appointment_outcome || null;
+    let apptCompletedAt = rawClientLead.appointment_completed_at || null;
+    let lastDisp = rawClientLead.last_disposition || 'pending';
+
+    const hasActiveAppointment = lastDisp === 'appointment_set' && Boolean(rawClientLead.appointment_scheduled_at);
+    if (isClient && !hasActiveAppointment) {
+      if (!apptOutcome) {
+        apptOutcome = 'converted';
+        apptCompletedAt = apptCompletedAt || rawClientLead.client_since || new Date().toISOString();
+      }
+      if (lastDisp === 'appointment_set') {
+        lastDisp = 'connected';
+      }
+    }
+
+    assert.strictEqual(lastDisp, 'appointment_set', 'last_disposition must remain appointment_set');
+    assert.strictEqual(apptOutcome, null, 'appointment_outcome must remain null');
   });
 });
 

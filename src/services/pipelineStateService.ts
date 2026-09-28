@@ -224,14 +224,21 @@ export class PipelineStateService {
 
   /**
    * Returns whether a sit-down appointment has already been concluded/dispositioned.
-   * A sit-down is completed only if the educator converted to a client (is_client: true)
-   * or has an explicit appointment_outcome / appointment_completed_at timestamp.
+   * - If the lead is in an active appointment_set state without an explicit outcome, the appointment is NOT completed (even for existing clients!).
+   * - If an explicit appointment_outcome or appointment_completed_at is present, it is completed.
+   * - If the lead is a client and NOT currently in an active appointment_set state, their past conversion is completed.
    */
   static isAppointmentCompleted(lead: Lead): boolean {
+    if (lead.last_disposition === 'appointment_set' && !lead.appointment_outcome && !lead.appointment_completed_at) {
+      return false;
+    }
+    if (Boolean(lead.appointment_outcome || lead.appointment_completed_at)) {
+      return true;
+    }
     if (Boolean(lead.is_client)) {
       return true;
     }
-    return Boolean(lead.appointment_outcome || lead.appointment_completed_at);
+    return false;
   }
 
   /**
@@ -247,11 +254,11 @@ export class PipelineStateService {
 
   /**
    * Resolves the effective appointment outcome:
-   * Explicit outcome > 'converted' (if client)
+   * Explicit outcome > 'converted' (if client and not actively in appointment_set)
    */
   static getEffectiveAppointmentOutcome(lead: Lead): AppointmentOutcome | null {
     if (lead.appointment_outcome) return lead.appointment_outcome;
-    if (Boolean(lead.is_client)) return 'converted';
+    if (Boolean(lead.is_client) && lead.last_disposition !== 'appointment_set') return 'converted';
     return null;
   }
 

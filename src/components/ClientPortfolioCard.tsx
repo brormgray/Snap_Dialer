@@ -100,11 +100,15 @@ export function ClientPortfolioCard({ lead, onSave }: ClientPortfolioCardProps) 
       let appointmentCompletedAt = lead.appointment_completed_at;
       let lastDisposition = lead.last_disposition;
 
+      const hasActiveAppointment = lead.last_disposition === 'appointment_set' && Boolean(lead.appointment_scheduled_at);
+
       if (isClient) {
-        appointmentOutcome = 'converted';
-        appointmentCompletedAt = appointmentCompletedAt || nowISO;
-        if (lastDisposition === 'appointment_set') {
-          lastDisposition = 'connected';
+        if (!hasActiveAppointment) {
+          appointmentOutcome = 'converted';
+          appointmentCompletedAt = appointmentCompletedAt || nowISO;
+          if (lastDisposition === 'appointment_set') {
+            lastDisposition = 'connected';
+          }
         }
       } else if (dripTrack === 'prospect_nurture') {
         if (lead.last_disposition === 'appointment_set' || lead.appointment_scheduled_at) {

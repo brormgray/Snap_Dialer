@@ -173,13 +173,17 @@ export class IndexedDbStorage {
       let lastDispo = l.last_disposition || 'pending';
 
       // Auto-heal appointment lifecycle state on load
-      if (isClient) {
+      const hasActiveAppointment = lastDispo === 'appointment_set' && Boolean(l.appointment_scheduled_at);
+
+      if (isClient && !hasActiveAppointment) {
         if (!apptOutcome) apptOutcome = 'converted';
         if (!apptCompletedAt && l.client_since) apptCompletedAt = l.client_since;
       } else if (
-        apptOutcome === 'nurture_drip' ||
-        (typeof l.notes === 'string' && l.notes.includes('[Sit-Down Wrap-Up] Enrolled in FRS Prospect Nurture Drip')) ||
-        (l.drip_track === 'prospect_nurture' && Boolean(l.appointment_scheduled_at))
+        !isClient && (
+          apptOutcome === 'nurture_drip' ||
+          (typeof l.notes === 'string' && l.notes.includes('[Sit-Down Wrap-Up] Enrolled in FRS Prospect Nurture Drip')) ||
+          (l.drip_track === 'prospect_nurture' && Boolean(l.appointment_scheduled_at))
+        )
       ) {
         if (apptOutcome !== 'nurture_drip') apptOutcome = 'nurture_drip';
         if (!apptCompletedAt) apptCompletedAt = l.updated_at || l.created_at || new Date().toISOString();

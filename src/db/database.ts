@@ -746,8 +746,10 @@ export class DexieDatabaseAdapter implements IDatabase {
           lead.attempts_count = Number(params[1]) || (lead.attempts_count || 0) + 1;
           lead.cadence_step = Number(params[2]) || (lead.cadence_step || 0) + 1;
           lead.last_attempt_at = params[3] || new Date().toISOString();
-          if (s.includes('follow_up_at = null') || s.includes('follow_up_at=null') || lead.last_disposition !== 'callback_requested') {
-            lead.follow_up_at = null;
+          if (lead.last_disposition !== 'appointment_set') {
+            if (s.includes('follow_up_at = null') || s.includes('follow_up_at=null') || lead.last_disposition !== 'callback_requested') {
+              lead.follow_up_at = null;
+            }
           }
           if (params[4] !== undefined && params[4] !== null) {
             lead.notes = params[4];

@@ -1443,9 +1443,12 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                   let syncDisposition = portfolioUpdates.last_disposition || lead.last_disposition;
 
                   if (isNowClient) {
-                    syncOutcome = 'converted';
-                    syncCompletedAt = syncCompletedAt || nowISO;
-                    if (hadApptSet) syncDisposition = 'connected';
+                    const hasActiveAppt = hadApptSet && Boolean(lead.appointment_scheduled_at);
+                    if (!hasActiveAppt) {
+                      syncOutcome = 'converted';
+                      syncCompletedAt = syncCompletedAt || nowISO;
+                      if (hadApptSet) syncDisposition = 'connected';
+                    }
                   } else if (isDripNurture && hadApptSet) {
                     if (!syncOutcome) syncOutcome = 'nurture_drip';
                     syncCompletedAt = syncCompletedAt || nowISO;

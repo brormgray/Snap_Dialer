@@ -230,3 +230,17 @@ Whenever the codebase is modified:
   - Web export & live deploy: Deployed to `valuteachers-dialer.surge.sh`.
   - Version control: Committed and pushed to GitHub `main` and `master` branches.
 
+### 8.10 Client Appointment Scheduling Parity & Today's Playbook Visibility (`pipelineStateService.ts`, `leadsRepository.ts`, `indexedDbStorage.ts`, `TodayCockpitCard.tsx`)
+- **Universal Appointment Eligibility for Existing Clients**:
+  - Previously, `PipelineStateService.isAppointmentCompleted` blindly checked `if (Boolean(lead.is_client)) return true;`. This falsely treated any new sit-down booked with an existing client (e.g. annual reviews, annuity checkups) as already completed, completely suppressing them from `TodayCockpitCard.tsx` ("TODAY'S ADVISOR PLAYBOOK" and Metric 3 "Sit-Downs Today"), as well as the `Appts Set` pipeline tab.
+  - Refactored `PipelineStateService.isAppointmentCompleted`: if `last_disposition === 'appointment_set'` and no explicit `appointment_outcome` or `appointment_completed_at` is set, the appointment is strictly recognized as active and un-completed, regardless of client status.
+  - Updated `getEffectiveAppointmentOutcome` to only default to `'converted'` when a client is NOT currently in an active `appointment_set` disposition.
+- **Hydration & Storage Protection for Client Appointments**:
+  - In `LeadsRepository.hydrateLead` and `IndexedDbStorage.normalizeState`, restricted legacy auto-healing of `last_disposition = 'connected'` and `appointment_outcome = 'converted'` to only apply when `!raw.appointment_scheduled_at`. Active appointments scheduled for clients are now defensively preserved with `last_disposition = 'appointment_set'` and `appointment_outcome = null`.
+  - In `LeadsRepository.updateLeadDisposition`, preserved `follow_up_at` when `disposition === 'appointment_set'`.
+  - In `ClientPortfolioCard.tsx` and `LeadDetailScreen.tsx`, guarded portfolio saves to ensure existing active appointments (`hasActiveAppointment`) are not reverted to `connected` or marked `converted` when editing client policy values.
+- **Full Lifecycle Flow for Client Appointments**:
+  - Any appointment scheduled via the dialer HUD or dossier with an existing client now immediately appears in Today's Advisor Playbook for the scheduled day.
+  - Once the appointment window elapses, it routes cleanly into the "⚠️ Sit-Downs Need Dispo" alert queue for review and wrap-up logging.
+
+

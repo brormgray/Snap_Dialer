@@ -641,6 +641,9 @@ export default function DialerHudScreen({ route, navigation }: any) {
           const scheduledISO = scheduledDate.toISOString();
           currentLead.appointment_scheduled_at = scheduledISO;
           currentLead.last_disposition = 'appointment_set';
+          currentLead.appointment_outcome = null;
+          currentLead.appointment_completed_at = null;
+          currentLead.follow_up_at = scheduledISO;
 
           setQueue((prev) => {
             const next = [...prev];
@@ -650,6 +653,9 @@ export default function DialerHudScreen({ route, navigation }: any) {
                 notes: updatedNotes,
                 last_disposition: 'appointment_set',
                 appointment_scheduled_at: scheduledISO,
+                appointment_outcome: null,
+                appointment_completed_at: null,
+                follow_up_at: scheduledISO,
               };
             }
             return next;
@@ -661,7 +667,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
             updatedNotes || undefined
           );
         }
-        if (disposition !== 'callback_requested') {
+        if (disposition !== 'callback_requested' && disposition !== 'appointment_set') {
           currentLead.follow_up_at = null;
         }
         currentLead.last_disposition = disposition;
@@ -672,11 +678,22 @@ export default function DialerHudScreen({ route, navigation }: any) {
               ...next[currentIndex],
               notes: updatedNotes,
               last_disposition: disposition,
-              follow_up_at: disposition === 'callback_requested' ? next[currentIndex].follow_up_at : null,
+              follow_up_at:
+                disposition === 'callback_requested' || disposition === 'appointment_set'
+                  ? currentLead.follow_up_at || next[currentIndex].follow_up_at
+                  : null,
               appointment_scheduled_at:
                 disposition === 'appointment_set'
                   ? currentLead.appointment_scheduled_at || next[currentIndex].appointment_scheduled_at
                   : next[currentIndex].appointment_scheduled_at,
+              appointment_outcome:
+                disposition === 'appointment_set'
+                  ? null
+                  : next[currentIndex].appointment_outcome,
+              appointment_completed_at:
+                disposition === 'appointment_set'
+                  ? null
+                  : next[currentIndex].appointment_completed_at,
             };
           }
           return next;
