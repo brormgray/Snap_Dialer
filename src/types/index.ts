@@ -81,6 +81,7 @@ export interface Lead {
   appointment_scheduled_at?: string | null; // ISO 8601 string of confirmed sit-down
   appointment_outcome?: AppointmentOutcome | null; // Post-appointment disposition outcome
   appointment_completed_at?: string | null; // ISO 8601 timestamp of when dispo was recorded
+  appointment_notes?: string | null; // Dedicated appointment purpose, agenda, or location notes
 }
 
 export interface LeadList {

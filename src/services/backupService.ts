@@ -306,6 +306,36 @@ export class BackupService {
               lead.updated_at || new Date().toISOString(),
             ]
           );
+
+          if (lead.is_client || lead.appointment_scheduled_at || lead.appointment_notes) {
+            await db.runAsync(
+              `UPDATE leads SET 
+                is_client = ?, client_since = ?, products = ?, annualized_premium = ?, transfer_assets_volume = ?,
+                policy_effective_date = ?, annual_review_due_date = ?, drip_track = ?, drip_step = ?,
+                last_drip_sent_at = ?, next_drip_scheduled_at = ?, appointment_scheduled_at = ?,
+                appointment_outcome = ?, appointment_completed_at = ?, appointment_notes = ?, follow_up_at = ?
+               WHERE id = ?`,
+              [
+                lead.is_client ? 1 : 0,
+                lead.client_since || null,
+                typeof lead.products === 'string' ? lead.products : JSON.stringify(lead.products || []),
+                lead.annualized_premium || 0,
+                lead.transfer_assets_volume || 0,
+                lead.policy_effective_date || null,
+                lead.annual_review_due_date || null,
+                lead.drip_track || 'none',
+                lead.drip_step || 0,
+                lead.last_drip_sent_at || null,
+                lead.next_drip_scheduled_at || null,
+                lead.appointment_scheduled_at || null,
+                lead.appointment_outcome || null,
+                lead.appointment_completed_at || null,
+                lead.appointment_notes || null,
+                lead.follow_up_at || null,
+                leadId,
+              ]
+            );
+          }
         }
 
         // Restore Call Logs

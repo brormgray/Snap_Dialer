@@ -187,15 +187,16 @@ export class PipelineStateService {
   }
 
   static formatDateKey(d: Date, timeZone: string): string {
+    const valid = (d instanceof Date && !isNaN(d.getTime())) ? d : new Date();
     try {
       return new Intl.DateTimeFormat('en-CA', {
         timeZone,
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
-      }).format(d);
+      }).format(valid);
     } catch {
-      return d.toISOString().slice(0, 10);
+      return valid.toISOString().slice(0, 10);
     }
   }
 

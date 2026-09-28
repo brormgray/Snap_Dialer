@@ -664,7 +664,8 @@ export default function DialerHudScreen({ route, navigation }: any) {
           await LeadsRepository.scheduleAppointment(
             currentLead.id,
             scheduledISO,
-            updatedNotes || undefined
+            updatedNotes || undefined,
+            noteToRecord || undefined
           );
         }
         if (disposition !== 'callback_requested' && disposition !== 'appointment_set') {

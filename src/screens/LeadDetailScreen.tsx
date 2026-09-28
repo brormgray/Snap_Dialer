@@ -144,7 +144,10 @@ export default function LeadDetailScreen({ route, navigation }: any) {
           setSchedulerInitialPurpose(route.params.initialPurpose);
         }
         if (route.params?.initialSchedulerDate) {
-          setSchedulerInitialDate(new Date(route.params.initialSchedulerDate));
+          const parsedD = new Date(route.params.initialSchedulerDate);
+          if (!isNaN(parsedD.getTime())) {
+            setSchedulerInitialDate(parsedD);
+          }
         }
         setApptSchedulerVisible(true);
       }
@@ -380,7 +383,10 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     const note = `${purposePrefix}Confirmed Sit-Down scheduled for ${dateFormatted} @ ${timeFormatted}${periodName ? ` (${periodName})` : ''}${customNotes ? `. Notes: ${customNotes}` : ''}.`;
     const updatedNotes = NotesService.addNote(lead.notes, note);
 
-    await LeadsRepository.scheduleAppointment(lead.id, scheduledDateISO, updatedNotes);
+    const appointmentReason = (purpose?.trim() || customNotes?.trim())
+      ? [purpose?.trim(), customNotes?.trim()].filter(Boolean).join(' - ')
+      : 'Sit-Down Meeting';
+    await LeadsRepository.scheduleAppointment(lead.id, scheduledDateISO, updatedNotes, appointmentReason);
 
     if (periodName && periodName !== lead.planning_period) {
       await LeadsRepository.updateLeadDetails({

@@ -85,6 +85,18 @@ export class SnapDialerDexieDB extends Dexie {
           }
         });
       });
+
+    this.version(5)
+      .stores({
+        leads: 'id, list_id, school, priority_tier, last_disposition, follow_up_at, is_client, is_frs, drip_track, annual_review_due_date, next_drip_scheduled_at, appointment_outcome, appointment_scheduled_at, created_at',
+      })
+      .upgrade(async (tx) => {
+        await tx.table('leads').toCollection().modify((lead: any) => {
+          if (lead.appointment_notes === undefined) {
+            lead.appointment_notes = null;
+          }
+        });
+      });
   }
 
   /**

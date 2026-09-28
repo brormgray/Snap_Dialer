@@ -1,6 +1,25 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { DateTimeAwareService } from '../src/services/dateTimeAwareService.ts';
+import fs from 'node:fs';
+import path from 'node:path';
+import ts from 'typescript';
+
+function loadDateTimeAwareService() {
+  const servicePath = path.resolve('src/services/dateTimeAwareService.ts');
+  const src = fs.readFileSync(servicePath, 'utf8');
+  const transpiled = ts.transpileModule(src, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  });
+  const moduleObj = { exports: {} };
+  const runner = new Function('module', 'exports', transpiled.outputText);
+  runner(moduleObj, moduleObj.exports);
+  return moduleObj.exports.DateTimeAwareService;
+}
+
+const DateTimeAwareService = loadDateTimeAwareService();
 
 describe('Time & Date Aware SMS Composition & Relative Appointment Phrasing', () => {
   // Reference anchor time: Monday, September 7, 2026 at 10:00 AM EDT

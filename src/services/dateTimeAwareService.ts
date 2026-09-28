@@ -46,36 +46,51 @@ export class DateTimeAwareService {
    * Returns a normalized YYYY-MM-DD string in the target timezone
    */
   static formatDateKey(date: Date, timeZone: string = this.DEFAULT_TIMEZONE): string {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(date);
+    const valid = (date instanceof Date && !isNaN(date.getTime())) ? date : new Date();
+    try {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(valid);
+    } catch {
+      return valid.toISOString().slice(0, 10);
+    }
   }
 
   /**
    * Returns a clean localized time string (e.g., "1:15 PM")
    */
   static formatTime(date: Date, timeZone: string = this.DEFAULT_TIMEZONE): string {
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone,
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-    }).format(date);
+    const valid = (date instanceof Date && !isNaN(date.getTime())) ? date : new Date();
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      }).format(valid);
+    } catch {
+      return valid.toLocaleTimeString();
+    }
   }
 
   /**
    * Returns a clean localized date string (e.g., "Thu, Sep 17")
    */
   static formatDate(date: Date, timeZone: string = this.DEFAULT_TIMEZONE): string {
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone,
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    }).format(date);
+    const valid = (date instanceof Date && !isNaN(date.getTime())) ? date : new Date();
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+      }).format(valid);
+    } catch {
+      return valid.toLocaleDateString();
+    }
   }
 
   /**

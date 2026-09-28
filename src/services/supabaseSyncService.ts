@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS snap_leads (
   last_disposition TEXT DEFAULT 'pending',
   last_attempt_at TIMESTAMPTZ,
   follow_up_at TIMESTAMPTZ,
+  appointment_notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -113,6 +114,9 @@ CREATE POLICY "Anon Full Access snap_cadence_rules" ON snap_cadence_rules FOR AL
 
 DROP POLICY IF EXISTS "Anon Full Access snap_sms_templates" ON snap_sms_templates;
 CREATE POLICY "Anon Full Access snap_sms_templates" ON snap_sms_templates FOR ALL USING (true) WITH CHECK (true);
+
+-- Ensure newly added columns exist on existing databases
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS appointment_notes TEXT;
 `;
 
 /**
@@ -198,11 +202,11 @@ async function saveToNativeSqlite(db: IDatabase, lists: any[], leads: any[], log
           `INSERT OR REPLACE INTO leads (
             id, list_id, name, phone, school, email, age, planning_period, room_number, years_in_frs, text_ok,
             frs_knowledge, frs_interests, custom_questions, meeting_preferences, annual_salary, present_403b_contribution,
-            source_image_uri, company, notes, priority_tier, cadence_step, last_attempt_at, last_disposition, follow_up_at, attempts_count,
+            source_image_uri, company, notes, priority_tier, is_frs, cadence_step, last_attempt_at, last_disposition, follow_up_at, attempts_count,
             is_client, client_since, products, annualized_premium, transfer_assets_volume, policy_effective_date, annual_review_due_date,
             drip_track, drip_step, last_drip_sent_at, next_drip_scheduled_at, appointment_scheduled_at, appointment_outcome, appointment_completed_at,
-            created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            appointment_notes, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             lead.id,
             lead.list_id || '',
@@ -225,6 +229,7 @@ async function saveToNativeSqlite(db: IDatabase, lists: any[], leads: any[], log
             lead.company || null,
             lead.notes || null,
             lead.priority_tier || 1,
+            lead.is_frs !== undefined ? (lead.is_frs === false || lead.is_frs === 0 ? 0 : 1) : 1,
             lead.cadence_step || 1,
             lead.last_attempt_at || null,
             lead.last_disposition || 'pending',
@@ -244,6 +249,7 @@ async function saveToNativeSqlite(db: IDatabase, lists: any[], leads: any[], log
             lead.appointment_scheduled_at || null,
             lead.appointment_outcome || null,
             lead.appointment_completed_at || null,
+            lead.appointment_notes || null,
             lead.created_at || new Date().toISOString(),
             lead.updated_at || new Date().toISOString(),
           ]

@@ -613,8 +613,9 @@ export class LeadsRepository {
     let apptCompletedAt = leadData.appointment_completed_at !== undefined ? leadData.appointment_completed_at : (current?.appointment_completed_at || null);
     let finalDispo = leadData.last_disposition !== undefined ? leadData.last_disposition : (current?.last_disposition || 'pending');
 
-    // Normalization: converting to client automatically resolves appointment
-    if (isClient) {
+    // Normalization: converting to client resolves appointment ONLY IF an appointment was NOT scheduled or currently pending
+    const hasActiveAppt = (finalDispo === 'appointment_set' || Boolean(apptScheduledAt)) && !leadData.appointment_completed_at && !current?.appointment_completed_at;
+    if (isClient && !hasActiveAppt) {
       if (!apptOutcome) {
         apptOutcome = 'converted';
       }
@@ -672,7 +673,8 @@ export class LeadsRepository {
   static async scheduleAppointment(
     leadId: string,
     scheduledDateISO: string,
-    note?: string
+    note?: string,
+    appointmentNotes?: string
   ): Promise<void> {
     const db = await getDatabase();
     const now = new Date().toISOString();
@@ -684,9 +686,10 @@ export class LeadsRepository {
            appointment_completed_at = NULL,
            last_disposition = 'appointment_set',
            notes = COALESCE(?, notes),
+           appointment_notes = COALESCE(?, appointment_notes),
            updated_at = ?
        WHERE id = ?`,
-      [scheduledDateISO, scheduledDateISO, note || null, now, leadId]
+      [scheduledDateISO, scheduledDateISO, note || null, appointmentNotes || null, now, leadId]
     );
   }
 
@@ -1337,6 +1340,7 @@ export class LeadsRepository {
       appointment_scheduled_at: raw.appointment_scheduled_at || null,
       appointment_outcome: apptOutcome,
       appointment_completed_at: apptCompletedAt,
+      appointment_notes: raw.appointment_notes || null,
     };
   }
 }

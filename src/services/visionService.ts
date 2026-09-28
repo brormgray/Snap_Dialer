@@ -210,7 +210,23 @@ Never output conversational text. Output pure JSON adhering to the schema.`;
         } else {
           jsonStr = jsonStr.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
         }
-        const parsedRaw: any = JSON.parse(jsonStr);
+        let parsedRaw: any;
+        try {
+          parsedRaw = JSON.parse(jsonStr);
+        } catch {
+          // If JSON.parse fails (e.g., trailing commas or minor LLM formatting glitches), sanitize and retry
+          try {
+            const sanitized = jsonStr.replace(/,\s*([\]}])/g, '$1');
+            parsedRaw = JSON.parse(sanitized);
+          } catch {
+            // Graceful fallback: extract using on-device unstructured parser if valid leads exist
+            const fallbackLeads = this.parseUnstructuredText(rawText);
+            if (fallbackLeads.length > 0) {
+              return fallbackLeads;
+            }
+            throw new Error(`Failed to parse AI response JSON: ${jsonStr.slice(0, 120)}...`);
+          }
+        }
         const parsed: any[] = Array.isArray(parsedRaw)
           ? parsedRaw
           : (parsedRaw && typeof parsedRaw === 'object' ? [parsedRaw] : []);

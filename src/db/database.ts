@@ -580,6 +580,7 @@ export class DexieDatabaseAdapter implements IDatabase {
         appointment_outcome: existingLead?.appointment_outcome || null,
         appointment_scheduled_at: existingLead?.appointment_scheduled_at || null,
         appointment_completed_at: existingLead?.appointment_completed_at || null,
+        appointment_notes: existingLead?.appointment_notes || null,
         created_at: createdAt || existingLead?.created_at || new Date().toISOString(),
         updated_at: updatedAt || new Date().toISOString(),
       };
@@ -831,7 +832,8 @@ export class DexieDatabaseAdapter implements IDatabase {
               } else {
                 lead.updated_at = params[pIdx] || new Date().toISOString();
               }
-              if (lead.is_client) {
+              const hasActiveAppt = (lead.last_disposition === 'appointment_set' || Boolean(lead.appointment_scheduled_at)) && !lead.appointment_completed_at;
+              if (lead.is_client && !hasActiveAppt) {
                 if (!lead.appointment_outcome) lead.appointment_outcome = 'converted';
                 if (!lead.appointment_completed_at) lead.appointment_completed_at = new Date().toISOString();
                 if (lead.last_disposition === 'appointment_set') lead.last_disposition = 'connected';
@@ -931,11 +933,17 @@ export class DexieDatabaseAdapter implements IDatabase {
             if (s.includes('follow_up_at = ?')) {
               lead.follow_up_at = params[1];
               if (params[2]) lead.notes = params[2];
+              if (s.includes('appointment_notes') && params[3]) {
+                lead.appointment_notes = params[3];
+              }
             } else if (s.includes('planning_period = coalesce(?, planning_period)')) {
               if (params[1]) lead.planning_period = params[1];
               if (params[2]) lead.notes = lead.notes ? `${lead.notes}\n\n${params[2]}` : params[2];
             } else if (s.includes('notes = coalesce(?, notes)')) {
               if (params[1]) lead.notes = params[1];
+              if (s.includes('appointment_notes') && params[2]) {
+                lead.appointment_notes = params[2];
+              }
             } else if (params[1]) {
               lead.notes = lead.notes ? `${lead.notes}\n\n${params[1]}` : params[1];
             }
@@ -1199,6 +1207,7 @@ async function initNativeDatabase(db: any): Promise<void> {
       appointment_scheduled_at TEXT,
       appointment_outcome TEXT,
       appointment_completed_at TEXT,
+      appointment_notes TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (list_id) REFERENCES lists(id) ON DELETE CASCADE
@@ -1287,6 +1296,7 @@ async function initNativeDatabase(db: any): Promise<void> {
     'appointment_scheduled_at TEXT',
     'appointment_outcome TEXT',
     'appointment_completed_at TEXT',
+    'appointment_notes TEXT',
   ];
   for (const col of columnsToAdd) {
     try {

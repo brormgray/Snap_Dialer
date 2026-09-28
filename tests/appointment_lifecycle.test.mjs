@@ -1427,6 +1427,73 @@ describe('Post-Appointment Lifecycle & Dispo Queue Architecture', () => {
       'Must not appear on a different day'
     );
   });
+
+  // 35. Normalization safeguard: client detail edits must never auto-complete active scheduled appointments
+  it('guarantees that updating client details does not auto-resolve or wipe active appointments', () => {
+    const activeClientWithAppt = {
+      id: 'client_active_sitdown',
+      name: 'Eleanor Vance',
+      is_client: true,
+      last_disposition: 'appointment_set',
+      appointment_scheduled_at: '2026-10-20T18:00:00.000Z',
+      appointment_outcome: null,
+      appointment_completed_at: null,
+      appointment_notes: 'Annual Annuity Review & Allocation Rebalance',
+    };
+
+    // Simulate updateLeadDetails normalization logic
+    const finalDispo = activeClientWithAppt.last_disposition;
+    const apptScheduledAt = activeClientWithAppt.appointment_scheduled_at;
+    const hasActiveAppt = (finalDispo === 'appointment_set' || Boolean(apptScheduledAt)) &&
+      !activeClientWithAppt.appointment_completed_at;
+
+    let apptOutcome = activeClientWithAppt.appointment_outcome;
+    let apptCompletedAt = activeClientWithAppt.appointment_completed_at;
+    let resolvedDispo = finalDispo;
+
+    if (activeClientWithAppt.is_client && !hasActiveAppt) {
+      if (!apptOutcome) apptOutcome = 'converted';
+      if (!apptCompletedAt) apptCompletedAt = new Date().toISOString();
+      if (resolvedDispo === 'appointment_set') resolvedDispo = 'connected';
+    }
+
+    assert.strictEqual(apptOutcome, null, 'Active appointment outcome must remain null');
+    assert.strictEqual(apptCompletedAt, null, 'Active appointment completed_at must remain null');
+    assert.strictEqual(resolvedDispo, 'appointment_set', 'Active appointment disposition must remain appointment_set');
+    assert.strictEqual(activeClientWithAppt.appointment_notes, 'Annual Annuity Review & Allocation Rebalance');
+  });
+
+  // 36. Planning Heatmap confirmed appointment detection accuracy
+  it('accurately identifies confirmed sit-downs across both prospect and client records', () => {
+    const prospectAppt = {
+      id: 'prospect_1',
+      last_disposition: 'appointment_set',
+      appointment_scheduled_at: '2026-10-15T15:00:00.000Z',
+      appointment_completed_at: null,
+    };
+    const clientAppt = {
+      id: 'client_1',
+      is_client: true,
+      last_disposition: 'appointment_set',
+      appointment_scheduled_at: '2026-10-15T17:00:00.000Z',
+      appointment_completed_at: null,
+    };
+    const completedAppt = {
+      id: 'client_done',
+      is_client: true,
+      last_disposition: 'connected',
+      appointment_scheduled_at: '2026-10-10T17:00:00.000Z',
+      appointment_completed_at: '2026-10-10T18:00:00.000Z',
+    };
+
+    const isConfirmed = (lead) =>
+      (lead.last_disposition === 'appointment_set' || Boolean(lead.appointment_scheduled_at)) &&
+      !lead.appointment_completed_at;
+
+    assert.strictEqual(isConfirmed(prospectAppt), true, 'Prospect with active appointment is confirmed');
+    assert.strictEqual(isConfirmed(clientAppt), true, 'Client with active appointment is confirmed');
+    assert.strictEqual(isConfirmed(completedAppt), false, 'Completed appointment is not pending confirmed');
+  });
 });
 
 

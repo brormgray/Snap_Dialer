@@ -92,7 +92,9 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
   };
 
   const scopedLeads = selectedSchool === 'All' ? leads : leads.filter((l) => (l.school || 'VOL') === selectedSchool);
-  const apptLeads = scopedLeads.filter((l) => l.last_disposition === 'appointment_set');
+  const apptLeads = scopedLeads.filter(
+    (l) => (l.last_disposition === 'appointment_set' || Boolean(l.appointment_scheduled_at)) && !l.appointment_completed_at
+  );
   const totalSlotsCount = scopedLeads.filter((l) => Boolean(l.planning_period)).length;
 
   return (
@@ -173,7 +175,9 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
 
           {periods.map((period) => {
             const periodLeads = getLeadsForPeriod(period.id);
-            const confirmedInPeriod = periodLeads.filter((l) => l.last_disposition === 'appointment_set');
+            const confirmedInPeriod = periodLeads.filter(
+              (l) => (l.last_disposition === 'appointment_set' || Boolean(l.appointment_scheduled_at)) && !l.appointment_completed_at
+            );
 
             return (
               <View key={period.id} style={styles.periodCard}>
@@ -200,7 +204,9 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
                 ) : (
                   <View style={styles.leadsGrid}>
                     {periodLeads.map((lead) => {
-                      const isConfirmed = lead.last_disposition === 'appointment_set';
+                      const isConfirmed =
+                        (lead.last_disposition === 'appointment_set' || Boolean(lead.appointment_scheduled_at)) &&
+                        !lead.appointment_completed_at;
 
                       return (
                         <TouchableOpacity
