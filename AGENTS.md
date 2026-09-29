@@ -7,6 +7,7 @@ Whenever any part of the codebase is updated, fixed, enhanced, refactored, or ad
    - Run `npx tsc --noEmit` to verify type integrity.
    - Run `node --test tests/*.test.mjs` to ensure all tests pass.
 2. **Build & Live Deployment**:
+   - Run `node scripts/version-sync.js sync` (or `patch` if releasing a new patch iteration) to synchronize `package.json`, `app.json`, `src/constants/version.ts`, and `web/sw.js`.
    - Run `npx expo export -p web` to generate the production web bundle.
    - Run `node deploy-surge.js` to deploy to live hosting.
 3. **MANDATORY: Automatic Commit & Push to Git / GitHub**:

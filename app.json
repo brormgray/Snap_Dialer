@@ -2,7 +2,7 @@
   "expo": {
     "name": "SnapDialer",
     "slug": "snap-dialer",
-    "version": "1.7.2",
+    "version": "1.8.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,

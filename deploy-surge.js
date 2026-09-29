@@ -64,15 +64,19 @@ try {
     }
 
     // 1b. Write live version.json endpoint for client update checks
+    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+    const currentVersion = pkg.version || '1.8.0';
     const buildTimestamp = Date.now();
+    const buildDate = new Date(buildTimestamp).toISOString().slice(0, 10);
     const versionPayload = {
-      version: '1.7.2',
-      edition: 'ValuTeachers Special Edition',
+      version: currentVersion,
+      edition: 'Retirement Edition',
+      buildDate: buildDate,
       buildTime: buildTimestamp,
-      cacheName: `snapdialer-pwa-v1.7.2-${buildTimestamp}`
+      cacheName: `snapdialer-pwa-v${currentVersion}-${buildTimestamp}`
     };
     fs.writeFileSync(path.join(distDir, 'version.json'), JSON.stringify(versionPayload, null, 2), 'utf8');
-    console.log('[PWA] Generated dist/version.json (v1.7.2)');
+    console.log(`[PWA] Generated dist/version.json (v${currentVersion})`);
 
     // 2. Patch index.html with iOS Safari PWA tags & active ServiceWorker update detector
     const indexHtmlPath = path.join(distDir, 'index.html');
@@ -177,7 +181,7 @@ try {
         relativeUrls.unshift('/');
       }
 
-      const cacheVersion = `snapdialer-pwa-v1.7.2-${Date.now()}`;
+      const cacheVersion = `snapdialer-pwa-v${currentVersion}-${Date.now()}`;
       let swContent = fs.readFileSync(swSrc, 'utf8');
       swContent = swContent.replace(/const CACHE_NAME = ['"][^'"]+['"];/, `const CACHE_NAME = '${cacheVersion}';`);
       swContent = swContent.replace(/const ASSETS_TO_CACHE = \[[^\]]*\];/s, `const ASSETS_TO_CACHE = ${JSON.stringify(relativeUrls, null, 2)};`);

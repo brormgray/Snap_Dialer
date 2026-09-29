@@ -44,7 +44,7 @@ import { CsvService } from '../services/csvService';
 import { HapticsService } from '../services/hapticsService';
 import { SupabaseSyncService, SUPABASE_SQL_SETUP } from '../services/supabaseSyncService';
 import { SecurityService } from '../services/securityService';
-import { APP_VERSION, APP_EDITION } from '../constants/version';
+import { APP_VERSION, APP_EDITION, APP_BUILD_DATE } from '../constants/version';
 import { PwaUpdateService, PwaUpdateInfo } from '../services/pwaUpdateService';
 import { Colors } from '../theme/colors';
 
@@ -953,10 +953,10 @@ export default function SettingsScreen({ navigation }: any) {
         {/* PWA Version & Dynamic Cache Controller */}
         <View style={styles.versionFooter}>
           <View style={styles.versionHeaderRow}>
-            <Text style={styles.versionText}>SnapDialer v{APP_VERSION} • {APP_EDITION}</Text>
+            <Text style={styles.versionText}>SnapDialer v{APP_VERSION} • {APP_EDITION} ({APP_BUILD_DATE})</Text>
             {updateInfo?.hasUpdate && (
               <View style={styles.updateBadge}>
-                <Text style={styles.updateBadgeText}>v{updateInfo.serverVersion} Available</Text>
+                <Text style={styles.updateBadgeText}>⚡ v{updateInfo.serverVersion} Available</Text>
               </View>
             )}
           </View>

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'snapdialer-pwa-v1.7.2';
+const CACHE_NAME = 'snapdialer-pwa-v1.8.0';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
