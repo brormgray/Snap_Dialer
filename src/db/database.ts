@@ -632,11 +632,25 @@ export class DexieDatabaseAdapter implements IDatabase {
         this.cadence_rules.push(ruleObj);
       }
     } else if (s.includes("set last_disposition = 'pending'") || s.includes("where last_disposition in ('no_answer', 'voicemail')")) {
+      const hasCutoff = params && params.length >= 2;
+      const cutoffTime = hasCutoff ? new Date(params[1]).getTime() : null;
+      let changes = 0;
       for (const lead of this.leads) {
         if (['no_answer', 'voicemail'].includes(lead.last_disposition)) {
-          lead.last_disposition = 'pending';
+          if (cutoffTime !== null && !isNaN(cutoffTime)) {
+            const leadTime = new Date(lead.last_attempt_at || lead.updated_at || lead.created_at || 0).getTime();
+            if (leadTime < cutoffTime) {
+              lead.last_disposition = 'pending';
+              lead.updated_at = params[0] || new Date().toISOString();
+              changes++;
+            }
+          } else {
+            lead.last_disposition = 'pending';
+            changes++;
+          }
         }
       }
+      return { changes };
     } else if (s.includes('update call_logs set lead_id = ? where lead_id = ?')) {
       const newLeadId = params[0];
       const oldLeadId = params[1];

@@ -288,6 +288,30 @@ export class LeadsRepository {
     );
   }
 
+  /**
+   * Automatically recycles unanswered and voicemail leads from previous calendar weeks
+   * back to 'pending' on weekly reset (Sunday 00:00:00 onwards).
+   */
+  static async autoRecyclePreviousWeeksUnanswered(now: Date = new Date()): Promise<number> {
+    const db = await getDatabase();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+    const startOfWeekISO = startOfWeek.toISOString();
+    const nowISO = now.toISOString();
+
+    const result = await db.runAsync(
+      `UPDATE leads 
+       SET last_disposition = 'pending',
+           updated_at = ?
+       WHERE last_disposition IN ('no_answer', 'voicemail')
+         AND COALESCE(last_attempt_at, updated_at, created_at) < ?`,
+      [nowISO, startOfWeekISO]
+    );
+
+    return result?.changes || 0;
+  }
+
   static async getAllLists(): Promise<LeadList[]> {
     const db = await getDatabase();
     return await db.getAllAsync<LeadList>('SELECT * FROM lists ORDER BY created_at DESC');

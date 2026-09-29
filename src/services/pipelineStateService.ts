@@ -201,6 +201,88 @@ export class PipelineStateService {
   }
 
   /**
+   * Returns the start of the current calling week (Sunday at 00:00:00.000)
+   */
+  static getStartOfWeek(now: Date = new Date()): Date {
+    const d = new Date(now);
+    d.setDate(d.getDate() - d.getDay()); // Sunday is 0
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  /**
+   * Returns the end of the current calling week (Saturday at 23:59:59.999)
+   */
+  static getEndOfWeek(now: Date = new Date()): Date {
+    const start = this.getStartOfWeek(now);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    return end;
+  }
+
+  /**
+   * Checks whether a given timestamp falls within the current calling week (Sunday 00:00 -> Saturday 23:59)
+   */
+  static isDateInCurrentWeek(dateInput: Date | string | null | undefined, now: Date = new Date()): boolean {
+    if (!dateInput) return false;
+    const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+    if (isNaN(d.getTime())) return false;
+    const start = this.getStartOfWeek(now);
+    const end = this.getEndOfWeek(now);
+    return d.getTime() >= start.getTime() && d.getTime() <= end.getTime();
+  }
+
+  /**
+   * Checks whether an appointment is scheduled for THIS WEEK (Sunday -> Saturday)
+   */
+  static isAppointmentThisWeek(lead: Lead, now: Date = new Date()): boolean {
+    if (!this.isActiveAppointment(lead)) return false;
+    const window = this.getAppointmentWindow(lead, now);
+    if (!window) return false;
+    return this.isDateInCurrentWeek(window.startDate, now);
+  }
+
+  /**
+   * Returns all active confirmed appointments scheduled for the current week
+   */
+  static getAppointmentsThisWeek(leads: Lead[], now: Date = new Date()): Lead[] {
+    return leads.filter((l) => this.isAppointmentThisWeek(l, now));
+  }
+
+  /**
+   * Checks whether a lead had an unanswered outreach attempt (no_answer / voicemail) THIS WEEK
+   */
+  static isUnansweredThisWeek(lead: Lead, now: Date = new Date()): boolean {
+    if (!['no_answer', 'voicemail'].includes(lead.last_disposition || '')) return false;
+    if (!lead.last_attempt_at) return true; // Fallback for newly recorded without attempt date
+    return this.isDateInCurrentWeek(lead.last_attempt_at, now);
+  }
+
+  /**
+   * Checks whether a lead was connected/spoken with THIS WEEK
+   */
+  static isSpokeThisWeek(lead: Lead, now: Date = new Date()): boolean {
+    if (!['connected', 'spoke'].includes(lead.last_disposition || '')) return false;
+    const activityDate = lead.last_attempt_at || lead.updated_at;
+    if (!activityDate) return true;
+    return this.isDateInCurrentWeek(activityDate, now);
+  }
+
+  /**
+   * Checks whether a scheduled callback is due THIS WEEK (or overdue from earlier)
+   */
+  static isCallbackDueThisWeek(lead: Lead, now: Date = new Date()): boolean {
+    if (!this.isScheduledCallback(lead)) return false;
+    if (!lead.follow_up_at) return true;
+    const d = new Date(lead.follow_up_at);
+    if (isNaN(d.getTime())) return true;
+    const endOfWeek = this.getEndOfWeek(now);
+    // Overdue or due anytime up to the end of this week
+    return d.getTime() <= endOfWeek.getTime();
+  }
+
+  /**
    * Strict predicate for DISPOSITION NEEDED:
    * - Must have last_disposition === 'appointment_set'
    * - Must NOT be completed/dispositioned (checks outcome, completed_at, is_client, prospect_nurture drip)

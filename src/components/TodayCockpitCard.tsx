@@ -37,6 +37,11 @@ export function TodayCockpitCard({
     return leads.filter((l) => PipelineStateService.isUpcomingAppointmentToday(l, now));
   }, [leads, now]);
 
+  // Strictly upcoming confirmed sit-downs scheduled for the current week (Sunday -> Saturday)
+  const thisWeekSitDowns = useMemo(() => {
+    return leads.filter((l) => PipelineStateService.isAppointmentThisWeek(l, now));
+  }, [leads, now]);
+
   // All upcoming confirmed sit-downs across the pipeline
   const allUpcomingSitDowns = useMemo(() => {
     return leads.filter((l) => PipelineStateService.isUpcomingAppointment(l, now));
@@ -145,7 +150,11 @@ export function TodayCockpitCard({
           >
             <Calendar size={12} color="#10B981" />
             <Text style={[styles.collapsedSummaryText, { color: '#10B981' }]}>
-              {todaySitDowns.length} Sit-Down{todaySitDowns.length !== 1 ? 's' : ''}
+              {todaySitDowns.length > 0
+                ? `${todaySitDowns.length} Sit-Down${todaySitDowns.length !== 1 ? 's' : ''}`
+                : thisWeekSitDowns.length > 0
+                ? `${thisWeekSitDowns.length} This Week`
+                : '0 Sit-Downs'}
             </Text>
           </TouchableOpacity>
 
@@ -228,7 +237,7 @@ export function TodayCockpitCard({
           </Text>
         </TouchableOpacity>
 
-        {/* Metric 3: Upcoming Sit-Downs Today */}
+        {/* Metric 3: Upcoming Sit-Downs Today / This Week */}
         <TouchableOpacity
           style={styles.triadBox}
           onPress={() => {
@@ -241,15 +250,17 @@ export function TodayCockpitCard({
         >
           <View style={styles.triadTop}>
             <Calendar size={14} color="#10B981" />
-            <Text style={[styles.triadNumber, { color: '#10B981' }]} numberOfLines={1}>{todaySitDowns.length}</Text>
+            <Text style={[styles.triadNumber, { color: '#10B981' }]} numberOfLines={1}>
+              {todaySitDowns.length > 0 ? todaySitDowns.length : thisWeekSitDowns.length}
+            </Text>
           </View>
           <Text style={styles.triadLabel}>Sit-Downs</Text>
           <Text style={styles.triadSub} numberOfLines={1}>
             {todaySitDowns.length > 0
-              ? `${todaySitDowns.length} Today`
-              : allUpcomingSitDowns.length > 0
-              ? `${allUpcomingSitDowns.length} this week`
-              : 'None today'}
+              ? `${todaySitDowns.length} Today • ${thisWeekSitDowns.length} this wk`
+              : thisWeekSitDowns.length > 0
+              ? `${thisWeekSitDowns.length} this week`
+              : 'None this week'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -423,17 +434,24 @@ export function TodayCockpitCard({
         </View>
       )}
 
-      {/* Confirmed Upcoming Sit-Downs Preview List (STRICTLY TODAY'S SCHEDULED APPOINTMENTS) */}
-      {todaySitDowns.length > 0 && (
+      {/* Confirmed Upcoming Sit-Downs Preview List (Today's Sit-Downs, or This Week's Sit-Downs if none today) */}
+      {(todaySitDowns.length > 0 || thisWeekSitDowns.length > 0) && (
         <View style={styles.sitDownsSection}>
-          <Text style={styles.sitDownsHeader}>UPCOMING SIT-DOWNS TODAY ({todaySitDowns.length}):</Text>
+          <Text style={styles.sitDownsHeader}>
+            {todaySitDowns.length > 0
+              ? `UPCOMING SIT-DOWNS TODAY (${todaySitDowns.length}):`
+              : `UPCOMING SIT-DOWNS THIS WEEK (${thisWeekSitDowns.length}):`}
+          </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              {todaySitDowns.slice(0, 5).map((s) => {
+              {(todaySitDowns.length > 0 ? todaySitDowns : thisWeekSitDowns).slice(0, 8).map((s) => {
+                const isToday = PipelineStateService.isUpcomingAppointmentToday(s, now);
                 const planningInfo = isTeacherInPlanningNow(s.planning_period, s.school);
                 const window = PipelineStateService.getAppointmentWindow(s, now);
                 const timeStr = window?.startDate
-                  ? window.startDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                  ? isToday
+                    ? window.startDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                    : `${window.startDate.toLocaleDateString([], { weekday: 'short', month: 'numeric', day: 'numeric' })} @ ${window.startDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
                   : null;
 
                 return (

@@ -73,6 +73,9 @@ export default function ListsScreen({ navigation }: any) {
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'fresh' | 'legacy'>('all');
   const [frsFilter, setFrsFilter] = useState<'all' | 'frs' | 'non_frs'>('all');
   const [filterTab, setFilterTab] = useState<'all' | 'pending' | 'appts' | 'dispo_needed' | 'connected' | 'callback' | 'unanswered' | 'clients'>('all');
+  const [apptsScope, setApptsScope] = useState<'this_week' | 'all'>('this_week');
+  const [callbackScope, setCallbackScope] = useState<'this_week' | 'all'>('this_week');
+  const [unansweredScope, setUnansweredScope] = useState<'this_week' | 'all'>('this_week');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [advisorName, setAdvisorName] = useState<string>('Alex');
   const [loading, setLoading] = useState<boolean>(true);
@@ -150,6 +153,13 @@ export default function ListsScreen({ navigation }: any) {
 
   const loadLeads = async () => {
     try {
+      // Auto-recycle previous weeks' unanswered leads back to pending on weekly rollover (Sunday reset)
+      try {
+        await LeadsRepository.autoRecyclePreviousWeeksUnanswered();
+      } catch (err) {
+        console.warn('Weekly auto-recycle check skipped:', err);
+      }
+
       const [all, lists, schools, logs, appSettings] = await Promise.all([
         LeadsRepository.getAllLeads(),
         LeadsRepository.getAllLists(),
@@ -236,24 +246,33 @@ export default function ListsScreen({ navigation }: any) {
     // 1. Filter by Tab
     const now = new Date();
     if (filterTab === 'pending') {
-      result = result.filter((l) => !hasEverBeenCalled(l));
+      result = result.filter((l) => !l.last_disposition || l.last_disposition === 'pending');
     } else if (filterTab === 'appts') {
-      result = result.filter((l) => PipelineStateService.isActiveAppointment(l));
+      result = result.filter((l) => {
+        if (!PipelineStateService.isActiveAppointment(l)) return false;
+        if (apptsScope === 'this_week') {
+          return PipelineStateService.isAppointmentThisWeek(l, now);
+        }
+        return true;
+      });
     } else if (filterTab === 'dispo_needed') {
       result = result.filter((l) => PipelineStateService.isDispoNeeded(l, now));
     } else if (filterTab === 'connected') {
-      result = result.filter((l) => ['connected', 'spoke'].includes(l.last_disposition || ''));
+      result = result.filter((l) => PipelineStateService.isSpokeThisWeek(l, now));
     } else if (filterTab === 'callback') {
       result = result.filter((l) => {
-        const isAnswered = ['appointment_set', 'connected', 'spoke', 'do_not_call', 'bad_number', 'other'].includes(
-          l.last_disposition || ''
-        );
-        if (isAnswered) return false;
-        const hasValidFollowUp = l.follow_up_at && !isNaN(new Date(l.follow_up_at).getTime());
-        return l.last_disposition === 'callback_requested' || !!hasValidFollowUp;
+        if (callbackScope === 'this_week') {
+          return PipelineStateService.isCallbackDueThisWeek(l, now);
+        }
+        return PipelineStateService.isScheduledCallback(l);
       });
     } else if (filterTab === 'unanswered') {
-      result = result.filter((l) => ['no_answer', 'voicemail'].includes(l.last_disposition || ''));
+      result = result.filter((l) => {
+        if (unansweredScope === 'this_week') {
+          return PipelineStateService.isUnansweredThisWeek(l, now);
+        }
+        return ['no_answer', 'voicemail'].includes(l.last_disposition || '');
+      });
     } else if (filterTab === 'clients') {
       result = result.filter((l) => Boolean(l.is_client));
     }
@@ -284,7 +303,7 @@ export default function ListsScreen({ navigation }: any) {
     }
 
     return result;
-  }, [scopedLeads, filterTab, searchQuery, hasEverBeenCalled]);
+  }, [scopedLeads, filterTab, apptsScope, callbackScope, unansweredScope, searchQuery, hasEverBeenCalled]);
 
   const handleStartMasterQueue = async () => {
     await HapticsService.success();
@@ -463,37 +482,34 @@ export default function ListsScreen({ navigation }: any) {
   // Stats calculation
   const totalCount = scopedLeads.length;
 
-  // 'To Call': ONLY leads that have NOT been called at least once ever (0 attempts)
-  const pendingCount = scopedLeads.filter((l) => !hasEverBeenCalled(l)).length;
+  // 'To Call': Leads pending outreach in current cycle (0 attempts OR recycled)
+  const pendingCount = scopedLeads.filter((l) => !l.last_disposition || l.last_disposition === 'pending').length;
 
   const now = new Date();
   const upcomingCount = scopedLeads.filter((l) => PipelineStateService.isActiveAppointment(l)).length;
+  const apptsThisWeekCount = scopedLeads.filter((l) => PipelineStateService.isAppointmentThisWeek(l, now)).length;
   const dispoNeededCount = scopedLeads.filter((l) => PipelineStateService.isDispoNeeded(l, now)).length;
 
-  // 'Appts Set': Strictly reflects active confirmed sit-downs in 1:1 parity with the filter tab
-  const appointmentCount = upcomingCount;
+  // 'Appts Set': Displays weekly confirmed sit-downs by default (or all upcoming)
+  const appointmentCount = apptsScope === 'this_week' ? apptsThisWeekCount : upcomingCount;
 
-  // 'Callbacks': Leads scheduled for a callback, removed once called back and answered (connected/spoke/appt/dnc/bad_number/other)
-  const callbackCount = scopedLeads.filter((l) => {
-    const isAnswered = ['appointment_set', 'connected', 'spoke', 'do_not_call', 'bad_number', 'other'].includes(l.last_disposition || '');
-    if (isAnswered) return false;
-    const hasValidFollowUp = l.follow_up_at && !isNaN(new Date(l.follow_up_at).getTime());
-    return l.last_disposition === 'callback_requested' || !!hasValidFollowUp;
-  }).length;
+  // 'Callbacks': Leads scheduled for a callback due this week (or overdue)
+  const callbackThisWeekCount = scopedLeads.filter((l) => PipelineStateService.isCallbackDueThisWeek(l, now)).length;
+  const callbackTotalCount = scopedLeads.filter((l) => PipelineStateService.isScheduledCallback(l)).length;
+  const callbackCount = callbackScope === 'this_week' ? callbackThisWeekCount : callbackTotalCount;
 
-  const unansweredCount = scopedLeads.filter(
-    (l) => ['no_answer', 'voicemail'].includes(l.last_disposition || '')
-  ).length;
+  // 'Unanswered': Outreach calls unanswered this week
+  const unansweredThisWeekCount = scopedLeads.filter((l) => PipelineStateService.isUnansweredThisWeek(l, now)).length;
+  const unansweredTotalCount = scopedLeads.filter((l) => ['no_answer', 'voicemail'].includes(l.last_disposition || '')).length;
+  const unansweredCount = unansweredScope === 'this_week' ? unansweredThisWeekCount : unansweredTotalCount;
 
-  // 'Spoke / Connected': Leads spoken with but not yet dispositioned as a booked appt
-  const spokeCount = scopedLeads.filter(
-    (l) => ['connected', 'spoke'].includes(l.last_disposition || '')
-  ).length;
+  // 'Spoke / Connected': Leads spoken with this week
+  const spokeCount = scopedLeads.filter((l) => PipelineStateService.isSpokeThisWeek(l, now)).length;
 
-  // 'Clients': Converted clients in this scope
+  // 'Clients': Converted clients in this scope over ALL TIME
   const clientsCount = scopedLeads.filter((l) => Boolean(l.is_client)).length;
 
-  // 'Callable' = all dialable leads (never called + unanswered/voicemail). Used to drive CTA button state.
+  // 'Callable' = all dialable leads (never called + pending + unanswered/voicemail). Used to drive CTA button state.
   const callableCount = scopedLeads.filter(
     (l) => !l.last_disposition || ['pending', 'no_answer', 'voicemail'].includes(l.last_disposition)
   ).length;
@@ -505,6 +521,18 @@ export default function ListsScreen({ navigation }: any) {
 
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height && height < 550;
+
+  const handleSelectFilterTab = (tab: typeof filterTab) => {
+    HapticsService.tick();
+    setFilterTab(tab);
+    if (tab === 'all') {
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    } else {
+      setTimeout(() => {
+        flatListRef.current?.scrollToOffset({ offset: isLandscape ? 180 : 330, animated: true });
+      }, 50);
+    }
+  };
 
   const renderHeader = () => (
     <View style={{ paddingTop: 4 }}>
@@ -522,13 +550,10 @@ export default function ListsScreen({ navigation }: any) {
           if (dispoLeads.length === 1) {
             navigation.navigate('LeadDetail', { leadId: dispoLeads[0].id });
           } else {
-            setFilterTab('dispo_needed');
-            setTimeout(() => {
-              flatListRef.current?.scrollToOffset({ offset: isLandscape ? 180 : 320, animated: true });
-            }, 50);
+            handleSelectFilterTab('dispo_needed');
           }
         }}
-        onFilterAppts={() => setFilterTab('appts')}
+        onFilterAppts={() => handleSelectFilterTab('appts')}
       />
 
       {/* KPI Stats Strip */}
@@ -795,7 +820,7 @@ export default function ListsScreen({ navigation }: any) {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContent}>
           <TouchableOpacity
             style={[styles.tabChip, filterTab === 'all' && styles.tabChipActive]}
-            onPress={() => setFilterTab('all')}
+            onPress={() => handleSelectFilterTab('all')}
           >
             <Text style={[styles.tabChipText, filterTab === 'all' && styles.tabChipTextActive]}>
               All ({totalCount})
@@ -803,7 +828,7 @@ export default function ListsScreen({ navigation }: any) {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tabChip, filterTab === 'pending' && styles.tabChipActive]}
-            onPress={() => setFilterTab('pending')}
+            onPress={() => handleSelectFilterTab('pending')}
           >
             <Text style={[styles.tabChipText, filterTab === 'pending' && styles.tabChipTextActive]}>
               To Call ({pendingCount})
@@ -811,10 +836,10 @@ export default function ListsScreen({ navigation }: any) {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tabChip, filterTab === 'appts' && styles.tabChipActive]}
-            onPress={() => setFilterTab('appts')}
+            onPress={() => handleSelectFilterTab('appts')}
           >
             <Text style={[styles.tabChipText, filterTab === 'appts' && styles.tabChipTextActive]}>
-              Appts Set ({upcomingCount})
+              Appts Set ({appointmentCount})
             </Text>
           </TouchableOpacity>
           {dispoNeededCount > 0 && (
@@ -824,7 +849,7 @@ export default function ListsScreen({ navigation }: any) {
                 styles.tabChipDispoDue,
                 filterTab === 'dispo_needed' && styles.tabChipDispoDueActive,
               ]}
-              onPress={() => setFilterTab('dispo_needed')}
+              onPress={() => handleSelectFilterTab('dispo_needed')}
             >
               <Clock
                 size={12}
@@ -845,7 +870,7 @@ export default function ListsScreen({ navigation }: any) {
           {spokeCount > 0 && (
             <TouchableOpacity
               style={[styles.tabChip, filterTab === 'connected' && styles.tabChipActive]}
-              onPress={() => setFilterTab('connected')}
+              onPress={() => handleSelectFilterTab('connected')}
             >
               <Text style={[styles.tabChipText, filterTab === 'connected' && styles.tabChipTextActive]}>
                 Spoke ({spokeCount})
@@ -854,7 +879,7 @@ export default function ListsScreen({ navigation }: any) {
           )}
           <TouchableOpacity
             style={[styles.tabChip, filterTab === 'callback' && styles.tabChipActive]}
-            onPress={() => setFilterTab('callback')}
+            onPress={() => handleSelectFilterTab('callback')}
           >
             <Text style={[styles.tabChipText, filterTab === 'callback' && styles.tabChipTextActive]}>
               Callbacks ({callbackCount})
@@ -862,7 +887,7 @@ export default function ListsScreen({ navigation }: any) {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tabChip, filterTab === 'unanswered' && styles.tabChipActive]}
-            onPress={() => setFilterTab('unanswered')}
+            onPress={() => handleSelectFilterTab('unanswered')}
           >
             <Text style={[styles.tabChipText, filterTab === 'unanswered' && styles.tabChipTextActive]}>
               Unanswered ({unansweredCount})
@@ -875,7 +900,7 @@ export default function ListsScreen({ navigation }: any) {
                 filterTab === 'clients' && styles.tabChipActive,
                 { borderColor: '#10B981' },
               ]}
-              onPress={() => setFilterTab('clients')}
+              onPress={() => handleSelectFilterTab('clients')}
             >
               <Award
                 size={12}
@@ -895,6 +920,90 @@ export default function ListsScreen({ navigation }: any) {
           )}
         </ScrollView>
       </View>
+
+      {/* Sub-Scope Bar for Appts Set (This Week vs All Upcoming) */}
+      {filterTab === 'appts' && (
+        <View style={styles.subFilterBar}>
+          <TouchableOpacity
+            style={[styles.subFilterChip, apptsScope === 'this_week' && styles.subFilterChipActive]}
+            onPress={() => {
+              HapticsService.tick();
+              setApptsScope('this_week');
+            }}
+          >
+            <Text style={[styles.subFilterText, apptsScope === 'this_week' && styles.subFilterTextActive]}>
+              📅 This Week ({apptsThisWeekCount})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.subFilterChip, apptsScope === 'all' && styles.subFilterChipActive]}
+            onPress={() => {
+              HapticsService.tick();
+              setApptsScope('all');
+            }}
+          >
+            <Text style={[styles.subFilterText, apptsScope === 'all' && styles.subFilterTextActive]}>
+              🎯 All Upcoming ({upcomingCount})
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Sub-Scope Bar for Callbacks (Due This Week vs All Callbacks) */}
+      {filterTab === 'callback' && (
+        <View style={styles.subFilterBar}>
+          <TouchableOpacity
+            style={[styles.subFilterChip, callbackScope === 'this_week' && styles.subFilterChipActive]}
+            onPress={() => {
+              HapticsService.tick();
+              setCallbackScope('this_week');
+            }}
+          >
+            <Text style={[styles.subFilterText, callbackScope === 'this_week' && styles.subFilterTextActive]}>
+              ⏰ Due This Week ({callbackThisWeekCount})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.subFilterChip, callbackScope === 'all' && styles.subFilterChipActive]}
+            onPress={() => {
+              HapticsService.tick();
+              setCallbackScope('all');
+            }}
+          >
+            <Text style={[styles.subFilterText, callbackScope === 'all' && styles.subFilterTextActive]}>
+              📋 All Callbacks ({callbackTotalCount})
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Sub-Scope Bar for Unanswered (This Week vs All Historical) */}
+      {filterTab === 'unanswered' && unansweredTotalCount > unansweredThisWeekCount && (
+        <View style={styles.subFilterBar}>
+          <TouchableOpacity
+            style={[styles.subFilterChip, unansweredScope === 'this_week' && styles.subFilterChipActive]}
+            onPress={() => {
+              HapticsService.tick();
+              setUnansweredScope('this_week');
+            }}
+          >
+            <Text style={[styles.subFilterText, unansweredScope === 'this_week' && styles.subFilterTextActive]}>
+              ⚡ This Week ({unansweredThisWeekCount})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.subFilterChip, unansweredScope === 'all' && styles.subFilterChipActive]}
+            onPress={() => {
+              HapticsService.tick();
+              setUnansweredScope('all');
+            }}
+          >
+            <Text style={[styles.subFilterText, unansweredScope === 'all' && styles.subFilterTextActive]}>
+              All Unanswered ({unansweredTotalCount})
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Lead Cards List with Embedded Header */}
       {loading ? (
@@ -1603,6 +1712,35 @@ const styles = StyleSheet.create({
   },
   tabChipDispoDueTextActive: {
     color: '#000000',
+    fontWeight: '800',
+  },
+  subFilterBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 2,
+    paddingBottom: 8,
+    gap: 8,
+  },
+  subFilterChip: {
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  subFilterChipActive: {
+    backgroundColor: 'rgba(212, 175, 55, 0.16)',
+    borderColor: Colors.heavenlyGold,
+  },
+  subFilterText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.textMuted,
+  },
+  subFilterTextActive: {
+    color: Colors.heavenlyGold,
     fontWeight: '800',
   },
   leadCard: {
