@@ -8,6 +8,7 @@ import {
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
 import { TelephonyService } from './telephonyService';
+import { FrsKnowledgeBank, FrsWisdomSeed } from '../data/frsKnowledgeBank';
 
 export interface DueDripItem {
   lead: Lead;
@@ -18,6 +19,7 @@ export interface DueDripItem {
   stage?: DripStage;
   stageLabel?: string;
   suggestedNextDate?: string | null;
+  recommendedWisdomSeed?: FrsWisdomSeed;
 }
 
 export class DripDispatcherService {
@@ -235,6 +237,11 @@ export class DripDispatcherService {
             lead.annual_review_due_date
           );
 
+          const recommendedWisdomSeed =
+            syntheticLead.is_frs !== false
+              ? FrsKnowledgeBank.recommendWisdomSeed(syntheticLead)
+              : undefined;
+
           dueItems.push({
             lead: syntheticLead,
             template,
@@ -244,6 +251,7 @@ export class DripDispatcherService {
             stage: template.stage || stageInfo.stage,
             stageLabel: template.phase_label || stageInfo.label,
             suggestedNextDate,
+            recommendedWisdomSeed,
           });
         }
       }

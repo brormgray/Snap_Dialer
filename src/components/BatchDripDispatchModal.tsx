@@ -26,10 +26,11 @@ import {
 } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
 import { HapticsService } from '../services/hapticsService';
-import { TelephonyService } from '../services/telephonyService';
+import { TelephonyService } from './../services/telephonyService';
 import { DripDispatcherService, DueDripItem } from '../services/dripDispatcherService';
 import { AiSmsService } from '../services/aiSmsService';
 import { isTeacherInPlanningNow } from '../data/bellSchedules';
+import { FrsKnowledgeBank, FRS_WISDOM_BANK, FrsTopicKey, FrsWisdomSeed } from '../data/frsKnowledgeBank';
 
 interface BatchDripDispatchModalProps {
   visible: boolean;
@@ -49,11 +50,13 @@ export function BatchDripDispatchModal({
   const [isSending, setIsSending] = useState<boolean>(false);
   const [customMessage, setCustomMessage] = useState<string>('');
   const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false);
+  const [selectedFrsTopic, setSelectedFrsTopic] = useState<FrsTopicKey | undefined>(undefined);
 
   useEffect(() => {
     if (visible && dueDrips.length > 0) {
       setLocalQueue([...dueDrips]);
       setCurrentIndex(0);
+      setSelectedFrsTopic(undefined);
       setCustomMessage(dueDrips[0]?.formattedMessage || '');
     }
   }, [visible, dueDrips]);
@@ -62,10 +65,12 @@ export function BatchDripDispatchModal({
 
   const handleClose = () => {
     setCurrentIndex(0);
+    setSelectedFrsTopic(undefined);
     onClose();
   };
 
   const handleNext = () => {
+    setSelectedFrsTopic(undefined);
     if (currentIndex + 1 < localQueue.length) {
       const nextIdx = currentIndex + 1;
       setCurrentIndex(nextIdx);
@@ -75,7 +80,7 @@ export function BatchDripDispatchModal({
     }
   };
 
-  const handleGenerateAiSms = async (toneFocus?: any) => {
+  const handleGenerateAiSms = async (toneFocus?: any, topicOverride?: FrsTopicKey) => {
     if (!currentItem) return;
     setIsGeneratingAi(true);
     await HapticsService.medium();
@@ -91,11 +96,14 @@ export function BatchDripDispatchModal({
           ? 'annual_review'
           : 'nurture'
       );
+      const effectiveTopic = topicOverride || selectedFrsTopic || currentItem.recommendedWisdomSeed?.key;
       const generated = await AiSmsService.generatePersuasiveSMS(
         currentItem.lead,
         currentItem.track === 'client_annual_review' ? 'annual_review' : 'nurture',
         undefined,
-        effectiveTone
+        effectiveTone,
+        new Date(),
+        effectiveTopic
       );
       if (generated && generated.trim().length > 0) {
         setCustomMessage(generated.trim().replace(/^["']|["']$/g, ''));
@@ -405,6 +413,70 @@ export function BatchDripDispatchModal({
               </TouchableOpacity>
             </View>
 
+            {/* Seeded FRS Wisdom Insight & Quick-Switch Topic Strip */}
+            {currentItem.lead.is_frs !== false && (() => {
+              const activeSeed: FrsWisdomSeed | undefined = selectedFrsTopic
+                ? FRS_WISDOM_BANK.find((s) => s.key === selectedFrsTopic)
+                : currentItem.recommendedWisdomSeed || FrsKnowledgeBank.recommendWisdomSeed(currentItem.lead);
+
+              if (!activeSeed) return null;
+
+              return (
+                <View style={styles.wisdomPanel}>
+                  <View style={styles.wisdomHeaderRow}>
+                    <View style={styles.wisdomBadge}>
+                      <Sparkles size={11} color={Colors.heavenlyGold} />
+                      <Text style={styles.wisdomBadgeText}>SEEDED FRS INSIGHT</Text>
+                    </View>
+                    <Text style={styles.wisdomTitle} numberOfLines={1}>
+                      {activeSeed.title}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.wisdomFact} numberOfLines={2}>
+                    💡 {activeSeed.samplePhrasing}
+                  </Text>
+
+                  {/* Horizontal Quick-Switch Topic Chips */}
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.wisdomScroll}
+                    contentContainerStyle={styles.wisdomScrollContent}
+                  >
+                    {FRS_WISDOM_BANK.map((seed) => {
+                      const isSelected = activeSeed.key === seed.key;
+                      return (
+                        <TouchableOpacity
+                          key={seed.key}
+                          style={[
+                            styles.wisdomChip,
+                            isSelected && styles.wisdomChipActive,
+                          ]}
+                          onPress={() => {
+                            HapticsService.tick().catch(() => {});
+                            setSelectedFrsTopic(seed.key);
+                            handleGenerateAiSms(undefined, seed.key);
+                          }}
+                          disabled={isGeneratingAi}
+                          activeOpacity={0.7}
+                        >
+                          <Text
+                            style={[
+                              styles.wisdomChipText,
+                              isSelected && styles.wisdomChipTextActive,
+                            ]}
+                          >
+                            {seed.shortLabel}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              );
+            })()}
+
             {/* Always-Editable Message Composer Card */}
             <View style={styles.messageBox}>
               <TextInput
@@ -704,6 +776,78 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontSize: 11,
     fontWeight: '600',
+  },
+  wisdomPanel: {
+    backgroundColor: '#0F172A',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 160, 23, 0.35)',
+    padding: 12,
+    marginBottom: 10,
+  },
+  wisdomHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  wisdomBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(212, 160, 23, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2.5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 160, 23, 0.4)',
+  },
+  wisdomBadgeText: {
+    color: Colors.heavenlyGold,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  wisdomTitle: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+    flex: 1,
+  },
+  wisdomFact: {
+    color: Colors.textSecondary,
+    fontSize: 11,
+    lineHeight: 15,
+    marginBottom: 8,
+  },
+  wisdomScroll: {
+    marginTop: 2,
+  },
+  wisdomScrollContent: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingRight: 8,
+  },
+  wisdomChip: {
+    backgroundColor: '#1E293B',
+    paddingVertical: 4.5,
+    paddingHorizontal: 9,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  wisdomChipActive: {
+    backgroundColor: 'rgba(212, 160, 23, 0.22)',
+    borderColor: Colors.heavenlyGold,
+  },
+  wisdomChipText: {
+    color: Colors.textMuted,
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  wisdomChipTextActive: {
+    color: Colors.heavenlyGold,
+    fontWeight: '800',
   },
   messageBox: {
     backgroundColor: '#0F172A',

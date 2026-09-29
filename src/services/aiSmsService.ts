@@ -3,6 +3,7 @@ import { SettingsRepository } from '../db/settingsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
 import { GeminiModelService } from './geminiModelService';
 import { DateTimeAwareService, RelativeTimeInfo } from './dateTimeAwareService';
+import { FrsKnowledgeBank, FrsWisdomSeed, FrsTopicKey } from '../data/frsKnowledgeBank';
 
 export type SmsToneFocus =
   | 'meeting_confirmation'
@@ -29,13 +30,15 @@ export class AiSmsService {
    * Generates a clean, warm, friendly yet professional personalized SMS message for Florida educators.
    * Fully time-and-date aware: accurately distinguishes appointments scheduled for today vs tomorrow vs later this week,
    * ensuring that texts never erroneously claim 'later this week' for appointments occurring today.
+   * Enriched with FRS Wisdom Seeding and Conversation Thread Continuity.
    */
   static async generatePersuasiveSMS(
     lead: Lead,
     currentDisposition?: string,
     providedApiKey?: string,
     toneFocus?: SmsToneFocus,
-    refDate: Date = new Date()
+    refDate: Date = new Date(),
+    frsTopicKey?: FrsTopicKey
   ): Promise<string> {
     const settings = await SettingsRepository.getSettings();
     const agentName = settings.user_name || 'Alex';
@@ -44,7 +47,7 @@ export class AiSmsService {
 
     // If no API key, return a fully dynamic, complete tailored fallback
     if (!key || key.trim().length === 0) {
-      return this.getSmartFallbackSMS(lead, agentName, toneFocus, refDate, agencyName);
+      return this.getSmartFallbackSMS(lead, agentName, toneFocus, refDate, agencyName, frsTopicKey);
     }
 
     try {
@@ -56,9 +59,28 @@ export class AiSmsService {
           (h) =>
             `- Outreach on ${new Date(h.timestamp).toLocaleDateString()}: "${h.disposition}"${
               h.note ? ` (Note: ${h.note})` : ''
-            }`
+            }${h.sms_body ? ` [Sent SMS: "${h.sms_body}"]` : ''}`
         )
         .join('\n');
+
+      // Thread Continuity Extraction
+      const previousSms = history.find((h) => h.sms_body && h.sms_body.trim().length > 0);
+      const lastLog = history[0];
+      const wrapUpNotes = lead.appointment_notes || lastLog?.note || '';
+
+      let threadContinuitySection = '';
+      if (previousSms?.sms_body || wrapUpNotes || lead.appointment_outcome) {
+        threadContinuitySection = `
+CONVERSATION & THREAD CONTINUITY CONTEXT:
+- Previous SMS Sent: ${previousSms?.sms_body ? `"${previousSms.sms_body}"` : 'None yet'}
+- Last Outreach / Sit-Down Outcome: "${lead.appointment_outcome || lastLog?.disposition || currentDisposition || 'Outreach'}"
+- Wrap-up / Interaction Notes: "${wrapUpNotes || 'None'}"
+- Thread Continuity Directives:
+  * You are following up on this ongoing dialogue. Speak warmly and continuously, never like a stranger or cold spam bot.
+  * If a previous SMS is noted, subtly advance the conversation without repeating the exact text.
+  * If wrap-up notes indicate a topic or hesitation (e.g. spouse review, busy schedule, DROP date question), acknowledge it with reassurance.
+`;
+      }
 
       const preferredTimes = (lead.meeting_preferences || []).join(', ') || '';
       const interests = (lead.frs_interests || []).join(', ') || '';
@@ -151,6 +173,22 @@ You are writing a personalized SMS text message to a Florida public school teach
         : `You are a warm, professional, and consultative retirement advisor${agencyIntro}.
 You are writing a personalized SMS text message to a private client or prospect requesting a retirement planning consultation.`;
 
+      const wisdomSeed = isFrs
+        ? FrsKnowledgeBank.recommendWisdomSeed(lead, frsTopicKey)
+        : null;
+
+      const frsWisdomSection = wisdomSeed
+        ? `
+FRS WISDOM & VALUE SEED (CRITICAL DIRECTIVE):
+- Featured FRS Topic: ${wisdomSeed.title} (${wisdomSeed.shortLabel})
+- FRS Law / Formula Fact: "${wisdomSeed.factualInsight}"
+- Key Phrasing Guide: "${wisdomSeed.samplePhrasing}"
+- Value Seeding Directive: Subtly weave in this high-value FRS insight. Frame it consultatively as a helpful tip or insight tailored to their ${
+            lead.years_in_frs ? `${lead.years_in_frs} years of service` : 'retirement timeline'
+          }. Plant seeds of trust, authority, and confidence.
+`
+        : '';
+
       const recipientDetails = isFrs
         ? `EDUCATOR DETAILS (FROM SCANNED REPORT CARD):
 - Educator Name: ${lead.name}
@@ -159,12 +197,15 @@ You are writing a personalized SMS text message to a private client or prospect 
 - Planning Period / Time: ${lead.planning_period || 'planning period'}
 - Years in Florida Retirement System (FRS): ${lead.years_in_frs ? `${lead.years_in_frs} years` : 'Not specified'}
 - FRS Knowledge Level: "${lead.frs_knowledge || 'Moderate'}"
+- Current Annual Salary: ${lead.annual_salary ? `$${lead.annual_salary}` : 'Not listed'}
+- Present 403(b) Contribution: ${lead.present_403b_contribution ? `$${lead.present_403b_contribution}` : 'None listed'}
 - Specific Needs / Topics Checked: ${interests || 'FRS Pension calculations, DROP, and 403(b) review'}
 - Handwritten Question / Note on Card: ${handwrittenQuestion ? `"${handwrittenQuestion}"` : 'None'}
 - Special File Notes: ${agentNotes ? `"${agentNotes}"` : 'None'}
 - Requested Availability: ${preferredTimes || 'During planning period or after school'}`
         : `PROSPECT / CLIENT DETAILS:
 - Client Name: ${lead.name}
+- Current Salary / Contribution: ${lead.annual_salary || lead.present_403b_contribution || 'Not specified'}
 - Special Notes / Interests: ${handwrittenQuestion || agentNotes || 'Retirement review, 401(k)/IRA rollover, or downside protection'}
 - Requested Availability: ${preferredTimes || 'Flexible'}`;
 
@@ -182,6 +223,8 @@ ${historySummary || 'First outreach.'}
 - Representative Name: ${repLabel}
 ${toneFocus ? `- Tone / Focus Preference: ${toneFocus.replace('_', ' ')}` : ''}
 ${temporalPromptSection}
+${threadContinuitySection}
+${frsWisdomSection}
 ${dripDirectives}
 
 WRITING OBJECTIVES & GUIDELINES:
@@ -235,19 +278,21 @@ ${frsConstraint}
       console.warn('AI SMS generation failed, using intelligent fallback:', e);
     }
 
-    return this.getSmartFallbackSMS(lead, agentName, toneFocus, refDate, agencyName);
+    return this.getSmartFallbackSMS(lead, agentName, toneFocus, refDate, agencyName, frsTopicKey);
   }
 
   /**
    * Generates a fully customized, professional fallback SMS if the AI API is unreachable.
    * Completely time-and-date aware for today, tomorrow, this week, or future appointments.
+   * Dynamically seeds FRS wisdom and report card context.
    */
   static getSmartFallbackSMS(
     lead: Lead,
     agentName: string = 'Alex',
     toneFocus?: string,
     refDate: Date = new Date(),
-    agencyName?: string
+    agencyName?: string,
+    frsTopicKey?: FrsTopicKey
   ): string {
     const firstName = lead.name ? lead.name.split(' ')[0] : 'there';
     const school = lead.school || 'your school';
@@ -333,9 +378,28 @@ ${frsConstraint}
         : `Hi ${firstName}, I know how busy life gets. Should we hit pause on your retirement review for now, or did you still want to get this off your plate this month? - ${agentName}`;
     }
     if (toneFocus === 'drip_monthly' || toneFocus === 'monthly_insight') {
-      return isFrs
-        ? `Hi ${firstName}, ${agentName}${withCompany}. Quick reminder: under FRS Pension, 25 years at 1.6% replaces only 40% of your income. PS: Let me know if you want to recalculate your take-home pay during ${lead.planning_period || 'planning'}!`
-        : `Hi ${firstName}, ${agentName}${withCompany}. Quick retirement fact: relying solely on Social Security replaces only about 40% of pre-retirement earnings. PS: Let me know if you want to recalculate your optimal target in a 5-min check-in!`;
+      if (isFrs) {
+        if (frsTopicKey === 'drop_expansion') {
+          return `Hi ${firstName}, ${agentName}${withCompany}. Quick FRS update: under SB 7024, DROP is now 8 years instead of 5 for teachers—that extra 3 years can add $80k+ to your guaranteed lump sum. PS: Happy to compare your 5 vs 8-year numbers during ${lead.planning_period || 'planning'}!`;
+        }
+        if (frsTopicKey === 'sick_leave_rollover') {
+          return `Hi ${firstName}, ${agentName}${withCompany}. Quick FRS tip: rolling terminal sick leave into an approved tax-sheltered vehicle upon retirement prevents thousands in lost taxes compared to a cash payout. PS: Can review your numbers anytime during ${lead.planning_period || 'planning'}!`;
+        }
+        if (frsTopicKey === 'pretax_takehome') {
+          return `Hi ${firstName}, ${agentName}${withCompany}. Quick paycheck tip: because 403(b) contributions are pre-tax, putting $100/mo into retirement typically only reduces your take-home pay by about $75. PS: Happy to run your take-home numbers during ${lead.planning_period || 'planning'}!`;
+        }
+        if (frsTopicKey === 'downside_floor') {
+          return `Hi ${firstName}, with market swings in the headlines, a quick reminder: educator retirement annuities feature a guaranteed 0% downside floor with growth tied to market gains. PS: Happy to compare your current savings options anytime during ${lead.planning_period || 'planning'}!`;
+        }
+        if (frsTopicKey === 'second_election') {
+          return `Hi ${firstName}, ${agentName}${withCompany}. Did you know Florida gives educators a one-time "Second Election" to switch between the Pension and Investment plans if your career horizon changes? PS: Happy to review your options during ${lead.planning_period || 'planning'}!`;
+        }
+        if (frsTopicKey === 'drop_tax_trap') {
+          return `Hi ${firstName}, ${agentName}${withCompany}. Quick FRS heads-up: cashing out DROP funds triggers an automatic 20% federal tax withholding, but rolling into an educator vehicle protects 100% of your lump sum. PS: Let's catch up during ${lead.planning_period || 'planning'}!`;
+        }
+        return `Hi ${firstName}, ${agentName}${withCompany}. Quick reminder: under FRS Pension, 25 years at 1.6% replaces only 40% of your income. PS: Let me know if you want to recalculate your take-home pay during ${lead.planning_period || 'planning'}!`;
+      }
+      return `Hi ${firstName}, ${agentName}${withCompany}. Quick retirement fact: relying solely on Social Security replaces only about 40% of pre-retirement earnings. PS: Let me know if you want to recalculate your optimal target in a 5-min check-in!`;
     }
     if (toneFocus === 'drip_client' || toneFocus === 'client_check') {
       return isFrs
