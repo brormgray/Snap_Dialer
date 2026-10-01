@@ -14,9 +14,9 @@ describe('Version Synchronization & Dynamic Release Management Suite', () => {
   const deploySurge = fs.readFileSync(path.join(rootDir, 'deploy-surge.js'), 'utf8');
 
   it('ensures package.json, app.json, and version.ts are in 100% version alignment', () => {
-    assert.strictEqual(pkg.version, '1.8.0');
-    assert.strictEqual(appJson.expo.version, '1.8.0');
-    assert.ok(versionTs.includes(`export const APP_VERSION = '1.8.0';`));
+    assert.ok(pkg.version, 'package.json must specify version');
+    assert.strictEqual(appJson.expo.version, pkg.version);
+    assert.ok(versionTs.includes(`export const APP_VERSION = '${pkg.version}';`));
     assert.ok(versionTs.includes('export const APP_BUILD_DATE ='));
     assert.ok(versionTs.includes('export const APP_BUILD_TIMESTAMP ='));
   });

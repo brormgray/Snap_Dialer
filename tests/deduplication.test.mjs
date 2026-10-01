@@ -1,5 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
+import { DeduplicationService } from '../src/services/deduplicationService.ts';
 
 describe('Smart Pipeline Deduplication & Record Consolidation Engine', () => {
   function normalizePhoneKey(phone) {
@@ -357,5 +358,206 @@ describe('Smart Pipeline Deduplication & Record Consolidation Engine', () => {
 
     assert.strictEqual(apptsInLeads, 3, 'Filter tab badge must show exactly 3');
     assert.strictEqual(appointmentCount, 3, 'KPI appointment count must show exactly 3, not 6');
+  });
+
+  describe('DeduplicationService Multi-Signal Identity & Similarity Matching', () => {
+    test('normalizes phone digits, country codes, and handles phone extensions cleanly', () => {
+      assert.strictEqual(DeduplicationService.normalizePhoneDigits('(386) 555-1234'), '3865551234');
+      assert.strictEqual(DeduplicationService.normalizePhoneDigits('+1 (386) 555-1234'), '3865551234');
+      assert.strictEqual(DeduplicationService.normalizePhoneDigits('1-386-555-1234 ext 204'), '3865551234');
+      assert.strictEqual(DeduplicationService.normalizePhoneDigits('(386) 555-1234 x42'), '3865551234');
+      assert.strictEqual(DeduplicationService.normalizePhoneDigits('386.555.1234#101'), '3865551234');
+      assert.strictEqual(DeduplicationService.extractPrimary10Digits('(386) 555-1234'), '3865551234');
+    });
+
+    test('normalizes educator names with honorifics, suffixes, parentheticals, and order-agnostic tokens', () => {
+      assert.deepStrictEqual(DeduplicationService.getNameTokens('John Smith'), ['doe', 'smith'].includes('john') ? ['john', 'smith'] : ['john', 'smith']);
+      assert.deepStrictEqual(DeduplicationService.getNameTokens('Smith, John'), ['john', 'smith']);
+      assert.deepStrictEqual(DeduplicationService.getNameTokens('Dr. John M. Smith Jr.'), ['john', 'smith']);
+      assert.deepStrictEqual(DeduplicationService.getNameTokens('Mrs. Sarah Connor [4th Grade]'), ['connor', 'sarah']);
+      assert.deepStrictEqual(DeduplicationService.getNameTokens('Coach Robert Taylor (Math Dept)'), ['robert', 'taylor']);
+    });
+
+    test('normalizes school names and resolves educational aliases', () => {
+      assert.strictEqual(DeduplicationService.normalizeSchool('Deltona High School'), 'deltona');
+      assert.strictEqual(DeduplicationService.normalizeSchool('Deltona High'), 'deltona');
+      assert.strictEqual(DeduplicationService.normalizeSchool('Deltona HS'), 'deltona');
+      assert.strictEqual(DeduplicationService.normalizeSchool('Heritage Middle School'), 'heritage');
+      assert.strictEqual(DeduplicationService.normalizeSchool('Heritage MS'), 'heritage');
+      assert.strictEqual(DeduplicationService.normalizeSchool('VOL'), '');
+      assert.strictEqual(DeduplicationService.normalizeSchool('Volusia County Schools'), '');
+    });
+
+    test('detects exact 10-digit phone match with 100% confidence', () => {
+      const leadA = { name: 'Sarah Connor', phone: '(386) 555-1234', school: 'Deltona High' };
+      const leadB = { name: 'Sarah Connor', phone: '1-386-555-1234', school: 'Deltona High School' };
+      const verdict = DeduplicationService.evaluateMatch(leadA, leadB);
+      assert.strictEqual(verdict.isMatch, true);
+      assert.strictEqual(verdict.confidence, 100);
+      assert.ok(verdict.reason.includes('phone'));
+    });
+
+    test('detects educator duplicate when phone has 1-digit handwritten OCR misread', () => {
+      // Very common on handwritten cards: Gemini OCR misreads '4' as '8'
+      const leadA = { name: 'Sarah Connor', phone: '386-555-1234', school: 'Deltona High' };
+      const leadB = { name: 'Sarah Connor', phone: '386-555-1238', school: 'Deltona High' };
+      const verdict = DeduplicationService.evaluateMatch(leadA, leadB);
+      assert.strictEqual(verdict.isMatch, true);
+      assert.ok(verdict.confidence >= 95);
+      assert.ok(verdict.reason.includes('OCR phone variance'));
+    });
+
+    test('detects educator duplicate when names match and school matches despite different phone numbers', () => {
+      // Teacher wrote cell on one card and desk phone on another
+      const leadA = { name: 'Marcus Vance', phone: '386-555-9000', school: 'Mainland High School' };
+      const leadB = { name: 'Marcus Vance', phone: '386-258-4665', school: 'Mainland High' };
+      const verdict = DeduplicationService.evaluateMatch(leadA, leadB);
+      assert.strictEqual(verdict.isMatch, true);
+      assert.ok(verdict.confidence >= 95);
+      assert.ok(verdict.reason.includes('school'));
+    });
+
+    test('does NOT match different teachers with same last name or at same school (avoids false positives)', () => {
+      const teacher1 = { name: 'John Smith', phone: '386-555-1111', school: 'Mainland High' };
+      const teacher2 = { name: 'Mary Smith', phone: '386-555-2222', school: 'Mainland High' };
+      const verdict = DeduplicationService.evaluateMatch(teacher1, teacher2);
+      assert.strictEqual(verdict.isMatch, false);
+      assert.strictEqual(verdict.confidence, 0);
+    });
+
+    test('Disjoint Set clusterDuplicateLeads clusters multi-lead chains into single educator clusters', () => {
+      const leads = [
+        { id: 'l1', name: 'John Doe', phone: '386-555-0001', school: 'Deltona High' },
+        { id: 'l2', name: 'John Doe', phone: '386-555-0001', school: 'Deltona High School' },
+        { id: 'l3', name: 'John Doe', phone: '386-555-0008', school: 'Deltona High' }, // 1-digit OCR typo
+        { id: 'l4', name: 'Alice Walker', phone: '386-555-9999', school: 'Spruce Creek High' },
+      ];
+
+      const clusters = DeduplicationService.clusterDuplicateLeads(leads);
+      assert.strictEqual(clusters.length, 1, 'Should produce exactly 1 duplicate cluster');
+      assert.strictEqual(clusters[0].length, 3, 'Cluster should contain all 3 John Doe cards');
+      assert.ok(clusters[0].some((l) => l.id === 'l1'));
+      assert.ok(clusters[0].some((l) => l.id === 'l2'));
+      assert.ok(clusters[0].some((l) => l.id === 'l3'));
+    });
+
+    test('non-destructively deep-merges appointments, client conversion, and notes without data loss', () => {
+      const master = {
+        id: 'master_lead',
+        list_id: 'master_queue',
+        name: 'Sarah Connor',
+        phone: '3865551234',
+        school: 'VOL',
+        attempts_count: 1,
+        last_disposition: 'no_answer',
+        notes: '[Aug 20] Met at table scan',
+        frs_interests: ['pension'],
+        meeting_preferences: ['planning_period'],
+        is_client: false,
+        created_at: '2026-08-20T10:00:00Z',
+        updated_at: '2026-08-20T10:00:00Z',
+      };
+
+      const duplicate = {
+        id: 'dup_lead',
+        name: 'Sarah Connor',
+        phone: '3865551238', // alternate phone
+        school: 'Deltona High School',
+        room_number: 'Room 204',
+        planning_period: '3rd Period',
+        attempts_count: 3,
+        last_disposition: 'appointment_set',
+        appointment_scheduled_at: '2026-10-05T14:30:00Z',
+        appointment_outcome: null,
+        notes: '[Sep 16] Requested DROP sit-down review',
+        frs_interests: ['drop', '403b'],
+        meeting_preferences: ['after_school'],
+        is_client: true,
+        client_since: '2026-09-20T12:00:00Z',
+        annualized_premium: 3600,
+        transfer_assets_volume: 75000,
+        products: ['Fixed Indexed Annuity'],
+        created_at: '2026-09-16T14:00:00Z',
+        updated_at: '2026-09-16T14:00:00Z',
+      };
+
+      const merged = DeduplicationService.mergeRecords(master, duplicate);
+
+      // Verify ID anchored to master
+      assert.strictEqual(merged.id, 'master_lead');
+      // School updated from VOL to specific campus
+      assert.strictEqual(merged.school, 'Deltona High School');
+      // Room and planning period merged
+      assert.strictEqual(merged.room_number, 'Room 204');
+      assert.strictEqual(merged.planning_period, '3rd Period');
+      // Notes preserved from both records and alternate phone recorded
+      assert.ok(merged.notes.includes('Met at table scan'), 'Preserves original note');
+      assert.ok(merged.notes.includes('Requested DROP sit-down review'), 'Preserves duplicate note');
+      assert.ok(merged.notes.includes('Alternate Phone from Duplicate Card'), 'Records alternate phone');
+      // Highest attempts and disposition preserved
+      assert.strictEqual(merged.attempts_count, 3);
+      assert.strictEqual(merged.last_disposition, 'appointment_set');
+      assert.strictEqual(merged.appointment_scheduled_at, '2026-10-05T14:30:00Z');
+      // Client status preserved
+      assert.strictEqual(merged.is_client, true);
+      assert.strictEqual(merged.annualized_premium, 3600);
+      assert.strictEqual(merged.transfer_assets_volume, 75000);
+      assert.deepStrictEqual(merged.products, ['Fixed Indexed Annuity']);
+      // FRS Interests & preferences unioned
+      assert.ok(merged.frs_interests.includes('pension'));
+      assert.ok(merged.frs_interests.includes('drop'));
+      assert.ok(merged.frs_interests.includes('403b'));
+      assert.ok(merged.meeting_preferences.includes('planning_period'));
+      assert.ok(merged.meeting_preferences.includes('after_school'));
+    });
+
+    test('simulates 9/16/2026 duplicate re-import scenario: accurately identified and merged with zero data loss', () => {
+      // Existing educator in pipeline from 9/16/2026
+      const existingPipeline = [
+        {
+          id: 'lead_sep16_99',
+          list_id: 'campaign_september',
+          name: 'Jennifer Miller',
+          phone: '(386) 555-8822',
+          school: 'Deltona High School',
+          room_number: 'Building 2 Room 114',
+          planning_period: '2nd Period (9:20 - 10:10)',
+          years_in_frs: '12',
+          attempts_count: 2,
+          last_disposition: 'callback_requested',
+          follow_up_at: '2026-10-02T10:00:00Z',
+          notes: '[Sep 16] Original report card intake. Wants 5% salary bonus options.',
+          frs_interests: ['pension_estimate'],
+          created_at: '2026-09-16T15:30:00Z',
+          updated_at: '2026-09-16T15:30:00Z',
+        },
+      ];
+
+      // Re-imported card today (with handwritten OCR variation: '8822' read as '8828' or school written as Deltona High)
+      const scannedCardToday = {
+        name: 'Jennifer Miller',
+        phone: '386-555-8828', // 1-digit handwritten OCR misread on cell phone
+        school: 'Deltona High',
+        notes: '[Oct 01] Accidental duplicate scan of same report card',
+        frs_interests: ['drop'],
+        isValid: true,
+      };
+
+      // 1. Ingestion duplicate check
+      const { match, verdict } = DeduplicationService.findDuplicateInList(scannedCardToday, existingPipeline);
+      assert.ok(match, 'Must identify existing educator from 9/16');
+      assert.strictEqual(match.id, 'lead_sep16_99');
+      assert.strictEqual(verdict.isMatch, true);
+
+      // 2. Non-destructive merge
+      const consolidated = DeduplicationService.mergeRecords(match, scannedCardToday);
+      assert.strictEqual(consolidated.id, 'lead_sep16_99', 'Maintains permanent lead UUID');
+      assert.strictEqual(consolidated.last_disposition, 'callback_requested', 'Preserves active callback');
+      assert.strictEqual(consolidated.follow_up_at, '2026-10-02T10:00:00Z', 'Preserves follow-up date');
+      assert.ok(consolidated.notes.includes('Original report card intake'), 'Preserves historical notes');
+      assert.ok(consolidated.notes.includes('Accidental duplicate scan'), 'Preserves new note safely');
+      assert.ok(consolidated.frs_interests.includes('pension_estimate'));
+      assert.ok(consolidated.frs_interests.includes('drop'));
+    });
   });
 });

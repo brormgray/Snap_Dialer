@@ -11,14 +11,10 @@ import {
 } from '../types';
 import { PipelineStateService } from '../services/pipelineStateService';
 import { NotesService } from '../services/notesService';
+import { DeduplicationService } from '../services/deduplicationService';
 
 export function normalizePhoneKey(phone?: string | null): string {
-  if (!phone) return '';
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length === 11 && digits.startsWith('1')) {
-    return digits.substring(1);
-  }
-  return digits;
+  return DeduplicationService.normalizePhoneDigits(phone);
 }
 
 export function isValidDialablePhone(phone?: string | null): boolean {
@@ -130,7 +126,9 @@ export class LeadsRepository {
   }
 
   /**
-   * Adds a single educator lead directly to the pipeline with customizable list and priority tier
+   * Adds a single educator lead directly to the pipeline with customizable list and priority tier.
+   * Leverages DeduplicationService multi-signal detection (exact phone, 1-digit OCR typo variance,
+   * name + school similarity, email) and executes non-destructive deep merging so ZERO existing data is lost.
    */
   static async addSingleLead(
     item: ExtractedLeadItem,
@@ -143,37 +141,108 @@ export class LeadsRepository {
       throw new Error(`A valid 10-digit phone number is required to add "${item.name}".`);
     }
 
-    // If an educator with this phone number already exists, update and merge rather than duplicate
+    // Check across all existing pipeline leads for multi-signal duplicate match
     const all = await this.getAllLeads();
-    const existing = all.find((l) => normalizePhoneKey(l.phone) === targetPhoneKey);
+    const { match: existing } = DeduplicationService.findDuplicateInList(
+      {
+        name: item.name,
+        phone: item.phone,
+        school: item.school,
+        email: item.email,
+      },
+      all
+    );
+
     if (existing) {
-        let mergedNotes = existing.notes || '';
-        if (item.notes && item.notes.trim()) {
-          if (!mergedNotes.includes(item.notes.trim())) {
-            mergedNotes = mergedNotes ? `${mergedNotes}\n\n${item.notes.trim()}` : item.notes.trim();
-          }
-        }
-        await this.updateLeadDetails({
-          id: existing.id,
-          name: item.name.trim() || existing.name,
-          phone: item.phone.trim() || existing.phone,
-          school: item.school || existing.school,
-          email: item.email || existing.email,
-          room_number: item.room_number || existing.room_number,
-          planning_period: item.planning_period || existing.planning_period,
-          years_in_frs: item.years_in_frs || existing.years_in_frs,
-          notes: mergedNotes || null,
-          priority_tier: existing.priority_tier,
-          list_id: existing.list_id,
-        });
-        if (imageUri && imageUri.length > 50) {
-          try {
-            const { dexieDb } = await import('./dexieDb');
-            await dexieDb.saveLeadPhoto(existing.id, imageUri);
-          } catch {}
-        }
-        return (await this.getLeadById(existing.id)) || existing;
+      // Execute deep non-destructive record consolidation
+      const merged = DeduplicationService.mergeRecords(existing, item, imageUri);
+
+      await db.runAsync(
+        `UPDATE leads SET
+           notes = ?,
+           attempts_count = ?,
+           last_disposition = ?,
+           last_attempt_at = ?,
+           follow_up_at = ?,
+           source_image_uri = ?,
+           room_number = ?,
+           planning_period = ?,
+           email = ?,
+           years_in_frs = ?,
+           frs_knowledge = ?,
+           custom_questions = ?,
+           frs_interests = ?,
+           meeting_preferences = ?,
+           is_client = ?,
+           is_frs = ?,
+           client_since = ?,
+           products = ?,
+           annualized_premium = ?,
+           transfer_assets_volume = ?,
+           policy_effective_date = ?,
+           annual_review_due_date = ?,
+           drip_track = ?,
+           drip_step = ?,
+           next_drip_scheduled_at = ?,
+           appointment_scheduled_at = ?,
+           appointment_outcome = ?,
+           appointment_completed_at = ?,
+           updated_at = ?
+         WHERE id = ?`,
+        [
+          merged.notes || null,
+          merged.attempts_count || 0,
+          merged.last_disposition || 'pending',
+          merged.last_attempt_at || null,
+          merged.follow_up_at || null,
+          merged.source_image_uri || null,
+          merged.room_number || null,
+          merged.planning_period || null,
+          merged.email || null,
+          merged.years_in_frs || null,
+          merged.frs_knowledge || null,
+          merged.custom_questions || null,
+          JSON.stringify(merged.frs_interests || []),
+          JSON.stringify(merged.meeting_preferences || []),
+          merged.is_client ? 1 : 0,
+          merged.is_frs !== false ? 1 : 0,
+          merged.client_since || null,
+          JSON.stringify(merged.products || []),
+          merged.annualized_premium ?? null,
+          merged.transfer_assets_volume ?? null,
+          merged.policy_effective_date || null,
+          merged.annual_review_due_date || null,
+          merged.drip_track || 'none',
+          merged.drip_step || 0,
+          merged.next_drip_scheduled_at || null,
+          merged.appointment_scheduled_at || null,
+          merged.appointment_outcome || null,
+          merged.appointment_completed_at || null,
+          new Date().toISOString(),
+          existing.id,
+        ]
+      );
+
+      // If school was refined from generic VOL to a specific campus, update school
+      if (merged.school && merged.school !== existing.school && existing.school === 'VOL') {
+        try {
+          await this.updateLeadDetails({
+            id: existing.id,
+            name: merged.name,
+            phone: merged.phone,
+            school: merged.school,
+          });
+        } catch {}
       }
+
+      if (imageUri && imageUri.length > 50) {
+        try {
+          const { dexieDb } = await import('./dexieDb');
+          await dexieDb.saveLeadPhoto(existing.id, imageUri);
+        } catch {}
+      }
+      return (await this.getLeadById(existing.id)) || merged;
+    }
 
     const leadId = 'lead_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     const now = new Date().toISOString();
@@ -933,25 +1002,13 @@ export class LeadsRepository {
       };
     }
 
-    // Group leads by normalized key (require 10-digit phone key or fallback to name + school)
-    const groups = new Map<string, Lead[]>();
-    for (const lead of allLeads) {
-      const phoneKey = normalizePhoneKey(lead.phone);
-      const key =
-        phoneKey.length >= 10
-          ? `phone_${phoneKey.slice(-10)}`
-          : `name_${lead.name.toLowerCase().trim()}_${(lead.school || 'VOL').toLowerCase().trim()}`;
-
-      if (!groups.has(key)) {
-        groups.set(key, []);
-      }
-      groups.get(key)!.push(lead);
-    }
+    // Cluster duplicate leads using multi-signal similarity matching (phone, OCR typo tolerance, name + school, email)
+    const duplicateGroups = DeduplicationService.clusterDuplicateLeads(allLeads);
 
     let duplicatesRemoved = 0;
 
     await db.withTransactionAsync(async () => {
-      for (const [key, group] of groups.entries()) {
+      for (const group of duplicateGroups) {
         if (group.length <= 1) continue;
 
         // Rank the group to pick the "master / keeper" lead:
@@ -1118,6 +1175,22 @@ export class LeadsRepository {
           await db.runAsync('UPDATE call_logs SET lead_id = ? WHERE lead_id = ?', [master.id, dup.id]);
           // Delete duplicate
           await db.runAsync('DELETE FROM leads WHERE id = ?', [dup.id]);
+        }
+
+        // If master had generic 'VOL' school but a duplicate had a specific campus, update master school
+        if (master.school === 'VOL' && duplicates.some((d) => d.school && d.school !== 'VOL')) {
+          const betterSchool = duplicates.find((d) => d.school && d.school !== 'VOL')?.school;
+          if (betterSchool) {
+            master.school = betterSchool;
+            try {
+              await this.updateLeadDetails({
+                id: master.id,
+                name: master.name,
+                phone: master.phone,
+                school: betterSchool,
+              });
+            } catch {}
+          }
         }
 
         // Update master lead with all consolidated attributes

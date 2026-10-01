@@ -62,6 +62,7 @@ import { QuickDispositionModal } from '../components/QuickDispositionModal';
 import { CallbacksDueModal } from '../components/CallbacksDueModal';
 import { DripDispatcherService } from '../services/dripDispatcherService';
 import { PipelineStateService } from '../services/pipelineStateService';
+import { DeduplicationService } from '../services/deduplicationService';
 
 export default function ListsScreen({ navigation }: any) {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -94,21 +95,11 @@ export default function ListsScreen({ navigation }: any) {
   const [isQuickDispoVisible, setIsQuickDispoVisible] = useState<boolean>(false);
   const flatListRef = useRef<FlatList<Lead>>(null);
 
-  // Calculate duplicates count across the current pipeline
+  // Calculate duplicates count across the current pipeline using multi-signal clustering
   const duplicateCount = React.useMemo(() => {
     if (leads.length <= 1) return 0;
-    const phoneKeys = new Set<string>();
-    let dupes = 0;
-    for (const l of leads) {
-      const pKey = (l.phone || '').replace(/\D/g, '').replace(/^1/, '');
-      const key = pKey.length >= 7 ? `p_${pKey}` : `n_${l.name.toLowerCase().trim()}_${(l.school || 'VOL').toLowerCase().trim()}`;
-      if (phoneKeys.has(key)) {
-        dupes++;
-      } else {
-        phoneKeys.add(key);
-      }
-    }
-    return dupes;
+    const clusters = DeduplicationService.clusterDuplicateLeads(leads);
+    return clusters.reduce((acc, g) => acc + (g.length - 1), 0);
   }, [leads]);
 
   const handleDeduplicateDirectly = async () => {

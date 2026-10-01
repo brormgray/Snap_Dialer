@@ -33,6 +33,7 @@ import {
 import { VisionService } from '../services/visionService';
 import { DocumentScannerService } from '../services/documentScannerService';
 import { LeadsRepository, normalizePhoneKey, isValidDialablePhone } from '../db/leadsRepository';
+import { DeduplicationService } from '../services/deduplicationService';
 import { SettingsRepository } from '../db/settingsRepository';
 import { HapticsService } from '../services/hapticsService';
 import { ExtractedLeadItem, LeadList, Lead } from '../types';
@@ -612,12 +613,9 @@ export default function ScanSheetScreen({ navigation }: any) {
 
             {/* Editable Educator Form Fields */}
             {extractedLeads.map((item, index) => {
-              const phoneKey = normalizePhoneKey(item.phone);
               const isPhoneValid = isValidDialablePhone(item.phone);
-              const matchingExisting =
-                phoneKey.length >= 10
-                  ? existingLeads.find((l) => normalizePhoneKey(l.phone) === phoneKey)
-                  : null;
+              const { match: matchingExisting, verdict: matchVerdict } =
+                DeduplicationService.findDuplicateInList(item, existingLeads);
 
               return (
                 <View
@@ -631,7 +629,7 @@ export default function ScanSheetScreen({ navigation }: any) {
                     <View style={styles.matchNoticeBox}>
                       <Sparkles size={13} color={Colors.brandAccent} />
                       <Text style={styles.matchNoticeText}>
-                        Existing Educator in Pipeline ({matchingExisting.name} • {matchingExisting.school || 'VOL'}). Saving updates card & notes without duplicating.
+                        Existing Educator in Pipeline ({matchingExisting.name} • {matchingExisting.school || 'VOL'}). {matchVerdict?.reason || 'Record match detected'}. Saving automatically merges new notes & card details without duplicating.
                       </Text>
                     </View>
                   ) : !isPhoneValid ? (
