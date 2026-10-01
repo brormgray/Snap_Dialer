@@ -46,6 +46,7 @@ import {
   ClipboardList,
   Briefcase,
   Landmark,
+  Star,
 } from 'lucide-react-native';
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
@@ -55,6 +56,7 @@ import { HapticsService } from '../services/hapticsService';
 import { AiSmsService } from '../services/aiSmsService';
 import { CalendarService } from '../services/calendarService';
 import { DateTimeAwareService } from '../services/dateTimeAwareService';
+import { DeduplicationService } from '../services/deduplicationService';
 import { isTeacherInPlanningNow } from '../data/bellSchedules';
 import { NotesService, NoteEntry, EDUCATOR_QUICK_TAGS } from '../services/notesService';
 import { Lead, CallLog, CallDisposition, LeadList } from '../types';
@@ -115,6 +117,12 @@ export default function LeadDetailScreen({ route, navigation }: any) {
   // Edit form state
   const [name, setName] = useState<string>('');
   const [phone, setPhone] = useState<string>('');
+  const [editAlternatePhones, setEditAlternatePhones] = useState<string[]>([]);
+  const [newAltPhoneInput, setNewAltPhoneInput] = useState<string>('');
+  const [isAddingAltInView, setIsAddingAltInView] = useState<boolean>(false);
+  const [newAltPhoneInView, setNewAltPhoneInView] = useState<string>('');
+  const [dialTargetPhone, setDialTargetPhone] = useState<string | null>(null);
+  const [smsTargetPhone, setSmsTargetPhone] = useState<string | null>(null);
   const [school, setSchool] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [roomNumber, setRoomNumber] = useState<string>('');
@@ -171,6 +179,8 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       if (!isEditing) {
         setName(l.name);
         setPhone(l.phone);
+        setEditAlternatePhones(Array.isArray(l.alternate_phones) ? [...l.alternate_phones] : []);
+        setNewAltPhoneInput('');
         setSchool(l.school || '');
         setEmail(l.email || '');
         setRoomNumber(l.room_number || '');
@@ -242,6 +252,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         id: lead.id,
         name: name.trim(),
         phone: phone.trim(),
+        alternate_phones: editAlternatePhones,
         school: school.trim() || (isFrsVal ? 'VOL' : 'General Client'),
         email: email.trim() || null,
         room_number: roomNumber.trim() || null,
@@ -259,6 +270,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
               ...prev,
               name: name.trim(),
               phone: phone.trim(),
+              alternate_phones: editAlternatePhones,
               school: school.trim() || (isFrsVal ? 'VOL' : 'General Client'),
               email: email.trim() || null,
               room_number: roomNumber.trim() || null,
@@ -349,12 +361,109 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     }
   };
 
-  const handleCall = async () => {
+  const handleCall = async (targetPhone?: string) => {
     if (!lead) return;
     await HapticsService.medium();
+    const phoneToDial = targetPhone || lead.phone;
+    setDialTargetPhone(phoneToDial);
     setCallStartTime(Date.now());
     setShowDispositionRow(true);
-    await TelephonyService.makeCall(lead.phone);
+    await TelephonyService.makeCall(phoneToDial);
+  };
+
+  const handlePromoteAlternate = async (altPhone: string) => {
+    if (!lead) return;
+    const doPromote = async () => {
+      try {
+        await HapticsService.success();
+        const updated = await LeadsRepository.promoteAlternateToPrimary(lead.id, altPhone);
+        setLead({ ...updated });
+        setPhone(updated.phone);
+        setEditAlternatePhones(Array.isArray(updated.alternate_phones) ? [...updated.alternate_phones] : []);
+        showToast(`⭐ ${altPhone} promoted to Primary Line`);
+        await loadLeadData();
+      } catch (e: any) {
+        Alert.alert('Error', e?.message || 'Could not promote phone number.');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' && window.confirm(
+        `Make "${altPhone}" the primary phone number for ${lead.name}?\n\nCurrent primary (${lead.phone}) will be preserved as an alternate dialable number.`
+      );
+      if (confirmed) await doPromote();
+      return;
+    }
+
+    Alert.alert(
+      'Make Primary Number',
+      `Make "${altPhone}" the primary phone number for ${lead.name}?\n\nCurrent primary (${lead.phone}) will be preserved as an alternate dialable number.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Make Primary', onPress: doPromote },
+      ]
+    );
+  };
+
+  const handleRemoveAlternate = async (altPhone: string) => {
+    if (!lead) return;
+    const doRemove = async () => {
+      try {
+        await HapticsService.medium();
+        const updated = await LeadsRepository.removeAlternatePhone(lead.id, altPhone);
+        setLead({ ...updated });
+        setEditAlternatePhones(Array.isArray(updated.alternate_phones) ? [...updated.alternate_phones] : []);
+        showToast(`Removed alternate number ${altPhone}`);
+        await loadLeadData();
+      } catch (e: any) {
+        Alert.alert('Error', e?.message || 'Could not remove alternate phone.');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' && window.confirm(`Remove alternate number "${altPhone}" from this educator's record?`);
+      if (confirmed) await doRemove();
+      return;
+    }
+
+    Alert.alert(
+      'Remove Alternate Number',
+      `Remove "${altPhone}" from this educator's record?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: doRemove },
+      ]
+    );
+  };
+
+  const handleAddAlternateInView = async () => {
+    if (!lead) return;
+    const cleanDigits = DeduplicationService.normalizePhoneDigits(newAltPhoneInView);
+    if (cleanDigits.length < 10) {
+      Alert.alert('Invalid Number', 'Please enter a valid 10-digit phone number.');
+      return;
+    }
+    if (cleanDigits === DeduplicationService.normalizePhoneDigits(lead.phone)) {
+      Alert.alert('Already Primary', 'This number is already the primary phone line.');
+      return;
+    }
+    if ((lead.alternate_phones || []).some((p) => DeduplicationService.normalizePhoneDigits(p) === cleanDigits)) {
+      Alert.alert('Already Saved', 'This number is already in the alternate phone list.');
+      return;
+    }
+
+    try {
+      await HapticsService.success();
+      const updated = await LeadsRepository.addAlternatePhone(lead.id, newAltPhoneInView.trim());
+      setLead({ ...updated });
+      setEditAlternatePhones(Array.isArray(updated.alternate_phones) ? [...updated.alternate_phones] : []);
+      setNewAltPhoneInView('');
+      setIsAddingAltInView(false);
+      showToast(`✓ Added alternate number: ${newAltPhoneInView.trim()}`);
+      await loadLeadData();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Could not add alternate phone number.');
+    }
   };
 
   const handleScheduleAppointmentWithCalendar = async (
@@ -368,6 +477,17 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     const durationSeconds = callStartTime ? Math.max(0, Math.floor((Date.now() - callStartTime) / 1000)) : 0;
     setCallStartTime(null);
     setShowDispositionRow(false);
+
+    // If an alternate phone was dialed and yielded a confirmed sit-down, auto-promote it!
+    const isAltDial = dialTargetPhone && DeduplicationService.normalizePhoneDigits(dialTargetPhone) !== DeduplicationService.normalizePhoneDigits(lead.phone);
+    if (isAltDial && dialTargetPhone) {
+      try {
+        await LeadsRepository.promoteAlternateToPrimary(lead.id, dialTargetPhone);
+        showToast(`⭐ Sit-down set on alternate: ${dialTargetPhone} promoted to Primary Line!`);
+      } catch (err) {
+        console.warn('Auto promote on appt set failed:', err);
+      }
+    }
 
     const dateFormatted = new Date(scheduledDateISO).toLocaleDateString('en-US', {
       weekday: 'short',
@@ -434,24 +554,37 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     setCallStartTime(null);
     setShowDispositionRow(false);
 
+    const isAltDial = dialTargetPhone && DeduplicationService.normalizePhoneDigits(dialTargetPhone) !== DeduplicationService.normalizePhoneDigits(lead.phone);
+    const dialedLabel = isAltDial ? ` (Dialed Alternate: ${dialTargetPhone})` : '';
+
     const defaultNote =
       disposition === 'connected' || disposition === 'spoke'
-        ? 'Direct profile call: Spoke with educator.'
+        ? `Direct profile call: Spoke with educator.${dialedLabel}`
         : disposition === 'no_answer'
-        ? 'Direct profile call: No Answer.'
+        ? `Direct profile call: No Answer.${dialedLabel}`
         : disposition === 'voicemail'
-        ? 'Direct profile call: Left Voicemail.'
+        ? `Direct profile call: Left Voicemail.${dialedLabel}`
         : disposition === 'bad_number'
-        ? 'Direct profile call: Bad Number / Disconnected.'
+        ? `Direct profile call: Bad Number / Disconnected.${dialedLabel}`
         : disposition === 'do_not_call'
-        ? 'Direct profile call: Flagged Do Not Call.'
+        ? `Direct profile call: Flagged Do Not Call.${dialedLabel}`
         : disposition === 'other'
-        ? `Direct profile call (Other): ${customNote || 'Custom outcome recorded.'}`
-        : `Direct profile call: ${disposition}.`;
+        ? `Direct profile call (Other): ${customNote || 'Custom outcome recorded.'}${dialedLabel}`
+        : `Direct profile call: ${disposition}.${dialedLabel}`;
 
-    const noteToRecord = customNote || defaultNote;
+    const noteToRecord = customNote ? `${customNote}${dialedLabel}` : defaultNote;
     const updatedNotes = NotesService.addNote(lead.notes, noteToRecord);
     await LeadsRepository.updateLeadDisposition(lead.id, disposition, updatedNotes);
+
+    // If successful connection on an alternate phone, auto-promote it to primary!
+    if (isAltDial && dialTargetPhone && (disposition === 'connected' || (disposition as string) === 'spoke')) {
+      try {
+        await LeadsRepository.promoteAlternateToPrimary(lead.id, dialTargetPhone);
+        showToast(`⭐ Spoke on alternate: ${dialTargetPhone} promoted to Primary Line!`);
+      } catch (err) {
+        console.warn('Auto promote on contact failed:', err);
+      }
+    }
 
     await CallLogsRepository.logCall({
       leadId: lead.id,
@@ -642,9 +775,10 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     showToast(outcome === 'no_show' ? 'Marked as No-Show' : 'Marked as Declined');
   };
 
-  const openSmsModal = async (targetLead?: Lead | any) => {
+  const openSmsModal = async (targetLead?: Lead | any, targetPhone?: string) => {
     const l = (targetLead && typeof targetLead.id === 'string') ? targetLead : lead;
     if (!l) return;
+    setSmsTargetPhone(targetPhone || l.phone);
     await HapticsService.tick();
 
     if (l.text_ok === false || l.text_ok === (0 as any)) {
@@ -727,7 +861,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
 
   const handleSendSms = async () => {
     if (!lead) return;
-    const phone = lead.phone;
+    const phone = smsTargetPhone || lead.phone;
     const body = smsBody;
 
     // Launch telephony immediately to preserve iOS Safari touch gesture token
@@ -741,7 +875,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       listId: lead.list_id,
       durationSeconds: 0,
       disposition: 'sms_sent',
-      note: lead.last_disposition === 'appointment_set' ? 'Sent appointment confirmation SMS' : 'Sent persuasive follow-up SMS',
+      note: (lead.last_disposition === 'appointment_set' ? 'Sent appointment confirmation SMS' : 'Sent persuasive follow-up SMS') + (smsTargetPhone && smsTargetPhone !== lead.phone ? ` to alternate: ${smsTargetPhone}` : ''),
       smsSent: true,
       smsBody: body,
     });
@@ -951,7 +1085,17 @@ export default function LeadDetailScreen({ route, navigation }: any) {
               <View style={styles.profileTop}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.nameText}>{lead.name}</Text>
-                  <Text style={styles.phoneText}>{lead.phone}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+                    <Text style={styles.phoneText}>{lead.phone}</Text>
+                    <View style={styles.primaryPhoneBadge}>
+                      <Text style={styles.primaryPhoneBadgeText}>PRIMARY</Text>
+                    </View>
+                    {lead.alternate_phones && lead.alternate_phones.length > 0 && (
+                      <View style={styles.altCountBadge}>
+                        <Text style={styles.altCountBadgeText}>+{lead.alternate_phones.length} Alt</Text>
+                      </View>
+                    )}
+                  </View>
                   {lead.email ? <Text style={styles.emailText}>{lead.email}</Text> : null}
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 6 }}>
@@ -1046,6 +1190,109 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                     </Text>
                   </View>
                 </View>
+              </View>
+
+              {/* Multi-Number Alternate Phone Directory Card */}
+              <View style={styles.altPhonesContainer}>
+                <View style={styles.altPhonesHeaderRow}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <PhoneCall size={13} color="#38BDF8" />
+                    <Text style={styles.altPhonesHeaderText}>
+                      MULTI-NUMBER DIRECTORY ({1 + (lead.alternate_phones?.length || 0)} LINES)
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.addAltToggleBtn}
+                    onPress={() => {
+                      HapticsService.tick();
+                      setIsAddingAltInView((prev) => !prev);
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Plus size={12} color="#38BDF8" />
+                    <Text style={styles.addAltToggleBtnText}>{isAddingAltInView ? 'Cancel' : 'Add Alt #'}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {isAddingAltInView && (
+                  <View style={styles.addAltInputRow}>
+                    <TextInput
+                      style={styles.addAltInput}
+                      value={newAltPhoneInView}
+                      onChangeText={setNewAltPhoneInView}
+                      placeholder="Enter 10-digit alternate phone..."
+                      placeholderTextColor={Colors.textMuted}
+                      keyboardType="phone-pad"
+                      autoFocus
+                    />
+                    <TouchableOpacity
+                      style={[styles.addAltSubmitBtn, !newAltPhoneInView.trim() && { opacity: 0.5 }]}
+                      onPress={handleAddAlternateInView}
+                      disabled={!newAltPhoneInView.trim()}
+                    >
+                      <Text style={styles.addAltSubmitBtnText}>Save</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {lead.alternate_phones && lead.alternate_phones.length > 0 ? (
+                  <View style={{ gap: 8, marginTop: 4 }}>
+                    {lead.alternate_phones.map((altPhone, idx) => (
+                      <View key={`${altPhone}_${idx}`} style={styles.altPhoneCard}>
+                        <View style={{ flex: 1, minWidth: 140 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={styles.altPhoneText}>{altPhone}</Text>
+                            <View style={styles.altIndexBadge}>
+                              <Text style={styles.altIndexBadgeText}>Alt #{idx + 1}</Text>
+                            </View>
+                          </View>
+                          <Text style={styles.altPhoneSubtext}>Alternate dialable line</Text>
+                        </View>
+
+                        <View style={styles.altPhoneActionCluster}>
+                          <TouchableOpacity
+                            style={styles.altCallBtn}
+                            onPress={() => handleCall(altPhone)}
+                            activeOpacity={0.8}
+                          >
+                            <PhoneCall size={11} color="#FFFFFF" />
+                            <Text style={styles.altCallBtnText}>Call</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={styles.altSmsBtn}
+                            onPress={() => openSmsModal(lead, altPhone)}
+                            activeOpacity={0.8}
+                          >
+                            <MessageSquare size={11} color="#38BDF8" />
+                            <Text style={styles.altSmsBtnText}>SMS</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={styles.altPromoteBtn}
+                            onPress={() => handlePromoteAlternate(altPhone)}
+                            activeOpacity={0.8}
+                          >
+                            <Star size={11} color={Colors.heavenlyGold} />
+                            <Text style={styles.altPromoteBtnText}>Make Primary</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={styles.altDeleteBtn}
+                            onPress={() => handleRemoveAlternate(altPhone)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Trash2 size={12} color="#EF4444" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                ) : !isAddingAltInView ? (
+                  <Text style={styles.noAltPhonesNotice}>
+                    Primary line only. Tap "+ Add Alt #" if this educator has a secondary classroom or mobile number.
+                  </Text>
+                ) : null}
               </View>
 
               {/* DNC Status Banner if opted-out */}
@@ -1574,7 +1821,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                     <View style={styles.callbackActionsRow}>
                       <TouchableOpacity
                         style={styles.callbackCallNowBtn}
-                        onPress={handleCall}
+                        onPress={() => handleCall()}
                         activeOpacity={0.8}
                       >
                         <PhoneCall size={14} color="#FFFFFF" />
@@ -1935,13 +2182,73 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                 </TouchableOpacity>
               </View>
 
-              <Text style={[styles.fieldLabel, { marginTop: 10 }]}>Phone Number</Text>
+              <Text style={[styles.fieldLabel, { marginTop: 10 }]}>Primary Phone Number (Dialed First)</Text>
               <TextInput
                 style={styles.input}
                 value={phone}
                 onChangeText={setPhone}
                 keyboardType="phone-pad"
               />
+
+              <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Alternate Phone Numbers</Text>
+              {editAlternatePhones.length > 0 ? (
+                <View style={{ gap: 6, marginTop: 4, marginBottom: 6 }}>
+                  {editAlternatePhones.map((altP, index) => (
+                    <View key={`${altP}_${index}`} style={styles.editAltPhoneRow}>
+                      <Text style={styles.editAltPhoneText}>📞 {altP}</Text>
+                      <TouchableOpacity
+                        onPress={() => {
+                          HapticsService.tick();
+                          setEditAlternatePhones((prev) => prev.filter((_, i) => i !== index));
+                        }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Trash2 size={15} color="#EF4444" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <Text style={{ fontSize: 11, color: Colors.textMuted, fontStyle: 'italic', marginTop: 2, marginBottom: 4 }}>
+                  No alternate phone numbers added.
+                </Text>
+              )}
+
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={newAltPhoneInput}
+                  onChangeText={setNewAltPhoneInput}
+                  placeholder="Add alternate phone (e.g. cell / school)"
+                  placeholderTextColor={Colors.textMuted}
+                  keyboardType="phone-pad"
+                />
+                <TouchableOpacity
+                  style={[styles.addAltPhoneBtn, !newAltPhoneInput.trim() && { opacity: 0.5 }]}
+                  disabled={!newAltPhoneInput.trim()}
+                  onPress={() => {
+                    const cleanDigits = DeduplicationService.normalizePhoneDigits(newAltPhoneInput);
+                    if (cleanDigits.length < 10) {
+                      Alert.alert('Invalid Number', 'Please enter a valid 10-digit phone number.');
+                      return;
+                    }
+                    if (cleanDigits === DeduplicationService.normalizePhoneDigits(phone)) {
+                      Alert.alert('Already Primary', 'This phone number is already set as the primary line.');
+                      return;
+                    }
+                    if (editAlternatePhones.some((p) => DeduplicationService.normalizePhoneDigits(p) === cleanDigits)) {
+                      Alert.alert('Already Exists', 'This alternate phone number has already been added.');
+                      return;
+                    }
+                    HapticsService.tick();
+                    setEditAlternatePhones((prev) => [...prev, newAltPhoneInput.trim()]);
+                    setNewAltPhoneInput('');
+                  }}
+                >
+                  <Plus size={14} color="#FFFFFF" />
+                  <Text style={styles.addAltPhoneBtnText}>Add</Text>
+                </TouchableOpacity>
+              </View>
 
               <Text style={[styles.fieldLabel, { marginTop: 10 }]}>Email Address (School / Personal)</Text>
               <TextInput
@@ -2098,7 +2405,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         <View style={styles.stickyBottomDock}>
           <TouchableOpacity
             style={styles.stickyCallButton}
-            onPress={handleCall}
+            onPress={() => handleCall()}
             activeOpacity={0.8}
           >
             <PhoneCall size={18} color="#FFFFFF" />
@@ -2228,6 +2535,72 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                 >
                   <X size={18} color={Colors.textPrimary} />
                 </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Target Phone Line Selector for SMS */}
+            <View style={{ marginBottom: 10, backgroundColor: 'rgba(15, 23, 42, 0.7)', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: Colors.borderSubtle }}>
+              <Text style={{ color: '#94A3B8', fontSize: 10, fontWeight: '800', marginBottom: 4, letterSpacing: 0.5 }}>
+                SENDING TEXT TO:
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    backgroundColor: (!smsTargetPhone || smsTargetPhone === lead?.phone) ? 'rgba(56, 189, 248, 0.2)' : Colors.surfaceSubtle,
+                    borderColor: (!smsTargetPhone || smsTargetPhone === lead?.phone) ? '#38BDF8' : Colors.borderSubtle,
+                  }}
+                  onPress={() => {
+                    HapticsService.tick();
+                    setSmsTargetPhone(lead?.phone || null);
+                  }}
+                >
+                  <Text style={{
+                    fontSize: 11,
+                    color: (!smsTargetPhone || smsTargetPhone === lead?.phone) ? '#38BDF8' : Colors.textSecondary,
+                    fontWeight: (!smsTargetPhone || smsTargetPhone === lead?.phone) ? '800' : '600',
+                  }}>
+                    Primary: {lead?.phone}
+                  </Text>
+                </TouchableOpacity>
+
+                {lead?.alternate_phones?.map((altP, idx) => {
+                  const isSelected = smsTargetPhone === altP;
+                  return (
+                    <TouchableOpacity
+                      key={`sms_alt_${altP}_${idx}`}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4,
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        borderRadius: 6,
+                        borderWidth: 1,
+                        backgroundColor: isSelected ? 'rgba(56, 189, 248, 0.2)' : Colors.surfaceSubtle,
+                        borderColor: isSelected ? '#38BDF8' : Colors.borderSubtle,
+                      }}
+                      onPress={() => {
+                        HapticsService.tick();
+                        setSmsTargetPhone(altP);
+                      }}
+                    >
+                      <Text style={{
+                        fontSize: 11,
+                        color: isSelected ? '#38BDF8' : Colors.textSecondary,
+                        fontWeight: isSelected ? '800' : '600',
+                      }}>
+                        Alt #{idx + 1}: {altP}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
 
@@ -3776,6 +4149,226 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   otherSaveBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  primaryPhoneBadge: {
+    backgroundColor: 'rgba(56, 189, 248, 0.16)',
+    borderColor: '#38BDF8',
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  primaryPhoneBadgeText: {
+    color: '#38BDF8',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  altCountBadge: {
+    backgroundColor: 'rgba(212, 160, 23, 0.16)',
+    borderColor: Colors.borderGold,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  altCountBadgeText: {
+    color: Colors.heavenlyGold,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  altPhonesContainer: {
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    borderColor: Colors.borderSubtle,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  altPhonesHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  altPhonesHeaderText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#94A3B8',
+    letterSpacing: 0.5,
+  },
+  addAltToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    borderColor: '#38BDF8',
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  addAltToggleBtnText: {
+    color: '#38BDF8',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  addAltInputRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+    marginTop: 2,
+  },
+  addAltInput: {
+    flex: 1,
+    backgroundColor: Colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: '#38BDF8',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    color: Colors.textPrimary,
+    fontSize: 13,
+  },
+  addAltSubmitBtn: {
+    backgroundColor: Colors.brandAccent,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addAltSubmitBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  altPhoneCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    borderRadius: 10,
+    padding: 10,
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  altPhoneText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  altIndexBadge: {
+    backgroundColor: 'rgba(148, 163, 184, 0.15)',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  altIndexBadgeText: {
+    fontSize: 9,
+    color: '#94A3B8',
+    fontWeight: '700',
+  },
+  altPhoneSubtext: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  altPhoneActionCluster: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  altCallBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.badgeSuccessText,
+    borderRadius: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  altCallBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  altSmsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(56, 189, 248, 0.14)',
+    borderColor: '#38BDF8',
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  altSmsBtnText: {
+    color: '#38BDF8',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  altPromoteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(212, 160, 23, 0.14)',
+    borderColor: Colors.borderGold,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  altPromoteBtnText: {
+    color: Colors.heavenlyGold,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  altDeleteBtn: {
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+  },
+  noAltPhonesNotice: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    fontStyle: 'italic',
+    paddingVertical: 4,
+  },
+  editAltPhoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  editAltPhoneText: {
+    fontSize: 14,
+    color: Colors.textPrimary,
+    fontWeight: '600',
+  },
+  addAltPhoneBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.brandAccent,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+  },
+  addAltPhoneBtnText: {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',

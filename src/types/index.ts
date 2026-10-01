@@ -35,6 +35,7 @@ export interface Lead {
   list_id: string;
   name: string;
   phone: string;
+  alternate_phones?: string[] | null; // Secondary / alternate numbers to try (desk, alternate mobile, previous intake)
   email?: string | null;
   school?: string | null; // School name or district (e.g. VOL, Volusia County)
   age?: string | null; // Age or DOB
@@ -131,6 +132,7 @@ export interface ExtractedLeadItem {
   id?: string;
   name: string;
   phone: string;
+  alternate_phones?: string[];
   email?: string;
   school?: string;
   age?: string;

@@ -617,6 +617,10 @@ export default function ScanSheetScreen({ navigation }: any) {
               const { match: matchingExisting, verdict: matchVerdict } =
                 DeduplicationService.findDuplicateInList(item, existingLeads);
 
+              const itemPhoneDigits = DeduplicationService.normalizePhoneDigits(item.phone || '');
+              const existingPhoneDigits = matchingExisting ? DeduplicationService.normalizePhoneDigits(matchingExisting.phone || '') : '';
+              const phoneDiffers = matchingExisting && itemPhoneDigits.length >= 10 && existingPhoneDigits.length >= 10 && itemPhoneDigits !== existingPhoneDigits;
+
               return (
                 <View
                   key={item.id || index}
@@ -629,7 +633,14 @@ export default function ScanSheetScreen({ navigation }: any) {
                     <View style={styles.matchNoticeBox}>
                       <Sparkles size={13} color={Colors.brandAccent} />
                       <Text style={styles.matchNoticeText}>
-                        Existing Educator in Pipeline ({matchingExisting.name} • {matchingExisting.school || 'VOL'}). {matchVerdict?.reason || 'Record match detected'}. Saving automatically merges new notes & card details without duplicating.
+                        Existing Educator in Pipeline ({matchingExisting.name} • {matchingExisting.school || 'VOL'}). {matchVerdict?.reason || 'Record match detected'}.
+                        {phoneDiffers ? (
+                          <Text style={{ color: Colors.heavenlyGold, fontWeight: '600' }}>
+                            {'\n'}📞 Differing Phone Detected: New number ({item.phone}) will be preserved as an alternate dialable line, protecting verified contact history on {matchingExisting.phone}.
+                          </Text>
+                        ) : (
+                          ' Saving automatically merges new notes & card details without duplicating.'
+                        )}
                       </Text>
                     </View>
                   ) : !isPhoneValid ? (

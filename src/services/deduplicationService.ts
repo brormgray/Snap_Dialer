@@ -470,6 +470,122 @@ export class DeduplicationService {
   }
 
   /**
+   * Intelligently arbitrates primary vs alternate phone numbers between master and duplicate records.
+   *
+   * 1. Confirmed Working Phone (spoke, connected, appointment_set, is_client):
+   *    -> Original phone MUST be preserved as primary.
+   *    -> Differing duplicate phone is added to alternate_phones.
+   *    -> Appends clear audit trail note.
+   * 2. Confirmed Bad/Dead Number (last_disposition === 'bad_number'):
+   *    -> Original phone was dead. Promote incoming valid 10-digit number to primary!
+   *    -> Old bad number is moved to alternate_phones with [Bad Number] tag.
+   *    -> Sets revivedFromBadNumber = true (allowing reset of disposition to pending).
+   * 3. Called but Unreached (attempts > 0, no_answer, voicemail, busy):
+   *    -> Original phone preserved as primary.
+   *    -> Differing duplicate phone is added to alternate_phones for in-call fallback.
+   * 4. Untried / Pending (attempts === 0):
+   *    -> If master digits < 10 and dup digits >= 10, promote dup.
+   *    -> Otherwise keep master and add dup to alternate_phones.
+   */
+  static arbitratePhoneNumbers(
+    master: {
+      phone: string;
+      alternate_phones?: string[] | null;
+      last_disposition?: string | null;
+      attempts_count?: number;
+      is_client?: boolean;
+      appointment_scheduled_at?: string | null;
+    },
+    dup: {
+      phone?: string | null;
+      alternate_phones?: string[] | null;
+    }
+  ): {
+    primaryPhone: string;
+    alternatePhones: string[];
+    auditNotes: string[];
+    revivedFromBadNumber: boolean;
+  } {
+    const auditNotes: string[] = [];
+    const masterDigits = this.normalizePhoneDigits(master.phone);
+    const dupDigits = this.normalizePhoneDigits(dup.phone);
+
+    const alternatesSet = new Set<string>();
+    if (master.alternate_phones && Array.isArray(master.alternate_phones)) {
+      master.alternate_phones.forEach((p) => {
+        if (p && p.trim()) alternatesSet.add(p.trim());
+      });
+    }
+    if (dup.alternate_phones && Array.isArray(dup.alternate_phones)) {
+      dup.alternate_phones.forEach((p) => {
+        if (p && p.trim()) alternatesSet.add(p.trim());
+      });
+    }
+
+    let primaryPhone = master.phone;
+    let revivedFromBadNumber = false;
+
+    const hasDifferentPhone = Boolean(dup.phone && dupDigits.length >= 7 && dupDigits !== masterDigits);
+
+    if (hasDifferentPhone && dup.phone) {
+      const isDeadNumber = master.last_disposition === 'bad_number';
+      const isVerifiedContact =
+        ['spoke', 'connected', 'appointment_set'].includes(master.last_disposition || '') ||
+        Boolean(master.is_client) ||
+        Boolean(master.appointment_scheduled_at);
+      const wasCalledUnreached = (Number(master.attempts_count) || 0) > 0;
+
+      if (isDeadNumber && dupDigits.length >= 10) {
+        // Dead line revival: promote incoming valid phone to primary!
+        primaryPhone = dup.phone.trim();
+        alternatesSet.add(master.phone);
+        auditNotes.push(
+          `[Lead Revived via Re-import] Former number ${master.phone} was marked bad. Replaced with new card number ${dup.phone.trim()}.`
+        );
+        revivedFromBadNumber = true;
+      } else if (isVerifiedContact) {
+        // Verified working phone: strictly preserve original as primary!
+        primaryPhone = master.phone;
+        alternatesSet.add(dup.phone.trim());
+        auditNotes.push(
+          `[Alternate Phone from Duplicate Card Added: ${dup.phone.trim()}] Verified primary contact number (${master.phone}) strictly retained.`
+        );
+      } else if (wasCalledUnreached) {
+        // Called but unreached: keep original as primary, queue alternate for fallback
+        primaryPhone = master.phone;
+        alternatesSet.add(dup.phone.trim());
+        auditNotes.push(
+          `[Alternate Phone from Duplicate Card Added: ${dup.phone.trim()}] Primary ${master.phone} called ${master.attempts_count}x without live contact.`
+        );
+      } else {
+        // Untried: if master is invalid digits (< 10) and dup is valid, promote dup
+        if (masterDigits.length < 10 && dupDigits.length >= 10) {
+          primaryPhone = dup.phone.trim();
+          alternatesSet.add(master.phone);
+        } else {
+          primaryPhone = master.phone;
+          alternatesSet.add(dup.phone.trim());
+          auditNotes.push(`[Alternate Phone from Duplicate Card Added: ${dup.phone.trim()}]`);
+        }
+      }
+    }
+
+    // Clean up alternates: remove primary phone digits and duplicates
+    const finalPrimaryDigits = this.normalizePhoneDigits(primaryPhone);
+    const cleanedAlternates = Array.from(alternatesSet).filter((p) => {
+      const pDigits = this.normalizePhoneDigits(p);
+      return pDigits.length >= 7 && pDigits !== finalPrimaryDigits;
+    });
+
+    return {
+      primaryPhone,
+      alternatePhones: cleanedAlternates,
+      auditNotes,
+      revivedFromBadNumber,
+    };
+  }
+
+  /**
    * Non-destructive deep merge protocol:
    * Merges all information from duplicate record into master record without
    * losing any historical notes, call dispositions, appointment bookings,
@@ -483,12 +599,13 @@ export class DeduplicationService {
     const merged: Lead = { ...master };
     const d = dup as any;
 
-    // 1. Phone & Contact preservation
-    // Keep master's phone if valid 10 digits; otherwise update if duplicate has 10 digits
-    const masterPhoneDigits = this.normalizePhoneDigits(master.phone);
-    const dupPhoneDigits = this.normalizePhoneDigits(d.phone);
-    if (masterPhoneDigits.length < 10 && dupPhoneDigits.length >= 10 && d.phone) {
-      merged.phone = d.phone.trim();
+    // 1. Phone & Contact Arbitration
+    const phoneArb = this.arbitratePhoneNumbers(master, d);
+    merged.phone = phoneArb.primaryPhone;
+    merged.alternate_phones = phoneArb.alternatePhones;
+
+    if (phoneArb.revivedFromBadNumber) {
+      merged.last_disposition = 'pending';
     }
 
     // 2. School: prefer specific school over generic VOL
@@ -539,11 +656,10 @@ export class DeduplicationService {
         combinedNotes = combinedNotes ? `${combinedNotes}\n\n${dupTrimmed}` : dupTrimmed;
       }
     }
-    // If duplicate had a different phone number, record it in notes so it's not lost
-    if (dupPhoneDigits.length >= 7 && dupPhoneDigits !== masterPhoneDigits) {
-      const altNote = `[Alternate Phone from Duplicate Card] ${d.phone}`;
-      if (!combinedNotes.includes(altNote)) {
-        combinedNotes = combinedNotes ? `${combinedNotes}\n\n${altNote}` : altNote;
+    // Append phone arbitration audit notes
+    for (const audit of phoneArb.auditNotes) {
+      if (!combinedNotes.includes(audit)) {
+        combinedNotes = combinedNotes ? `${combinedNotes}\n\n${audit}` : audit;
       }
     }
     merged.notes = combinedNotes || null;

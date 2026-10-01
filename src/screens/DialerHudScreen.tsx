@@ -154,6 +154,10 @@ export default function DialerHudScreen({ route, navigation }: any) {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  // Multi-number active dial target & fallback prompt
+  const [selectedPhoneOverride, setSelectedPhoneOverride] = useState<string | null>(null);
+  const [tryAlternatePrompt, setTryAlternatePrompt] = useState<string | null>(null);
+
   // Session stats
   const [sessionDials, setSessionDials] = useState<number>(0);
   const [sessionAppointments, setSessionAppointments] = useState<number>(0);
@@ -422,9 +426,17 @@ export default function DialerHudScreen({ route, navigation }: any) {
   };
 
   const currentLead: Lead | undefined = queue[currentIndex];
+  const activeDialPhone = (selectedPhoneOverride && (selectedPhoneOverride === currentLead?.phone || currentLead?.alternate_phones?.includes(selectedPhoneOverride)))
+    ? selectedPhoneOverride
+    : (currentLead?.phone || '');
   const timeInfo: ProspectTimeInfo | null = currentLead
-    ? TimeZoneService.getProspectTimeInfo(currentLead.phone)
+    ? TimeZoneService.getProspectTimeInfo(activeDialPhone || currentLead.phone)
     : null;
+
+  useEffect(() => {
+    setSelectedPhoneOverride(null);
+    setTryAlternatePrompt(null);
+  }, [currentIndex]);
 
   // PanResponder Swipe Controller (Two-way thumb navigation)
   const panResponder = useRef(
@@ -522,7 +534,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
       }
     }, 1000);
 
-    await TelephonyService.makeCall(currentLead.phone);
+    await TelephonyService.makeCall(activeDialPhone || currentLead.phone);
   };
 
   // Disposition Handlers
@@ -549,6 +561,23 @@ export default function DialerHudScreen({ route, navigation }: any) {
         await HapticsService.heavy();
       } else {
         await HapticsService.tick();
+      }
+
+      // If an alternate phone was dialed and yielded a positive contact, promote it to primary!
+      if (['appointment_set', 'connected', 'spoke'].includes(disposition)) {
+        if (activeDialPhone && currentLead && activeDialPhone !== currentLead.phone) {
+          try {
+            const promoted = await LeadsRepository.promoteAlternateToPrimary(currentLead.id, activeDialPhone);
+            currentLead.phone = promoted.phone;
+            currentLead.alternate_phones = promoted.alternate_phones;
+            showToast(`✓ Promoted ${activeDialPhone} to Primary Mobile!`);
+          } catch {}
+        }
+      } else if (['no_answer', 'voicemail', 'bad_number'].includes(disposition)) {
+        // If primary phone failed and lead has alternate phones, surface quick-retry prompt
+        if (currentLead?.alternate_phones && currentLead.alternate_phones.length > 0 && activeDialPhone === currentLead.phone) {
+          setTryAlternatePrompt(currentLead.alternate_phones[0]);
+        }
       }
 
       if (callTimerRef.current) clearInterval(callTimerRef.current);
@@ -1007,7 +1036,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
 
     // CRITICAL: Call TelephonyService.sendSMS synchronously on user click
     // without awaiting any microtasks before it to preserve iOS Safari touch gesture token!
-    TelephonyService.sendSMS(currentLead.phone, messageToSend);
+    TelephonyService.sendSMS(activeDialPhone || currentLead.phone, messageToSend);
     HapticsService.medium().catch(() => {});
 
     if (pending && pending.lead) {
@@ -1334,7 +1363,16 @@ export default function DialerHudScreen({ route, navigation }: any) {
                   <Edit3 size={13} color={Colors.brandAccent} />
                 </TouchableOpacity>
               </View>
-              <Text style={styles.contactPhone}>{currentLead.phone}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <Text style={styles.contactPhone}>{currentLead.phone}</Text>
+                {currentLead.alternate_phones && currentLead.alternate_phones.length > 0 && (
+                  <View style={{ backgroundColor: 'rgba(59, 130, 246, 0.15)', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6, borderWidth: 1, borderColor: '#3B82F6' }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#60A5FA' }}>
+                      +{currentLead.alternate_phones.length} Alt
+                    </Text>
+                  </View>
+                )}
+              </View>
               {currentLead.email ? (
                 <Text style={styles.contactEmail}>{currentLead.email}</Text>
               ) : null}
@@ -1592,6 +1630,57 @@ export default function DialerHudScreen({ route, navigation }: any) {
           </View>
         )}
 
+        {/* Multi-Number Selector Bar (if lead has alternate phones) */}
+        {currentLead.alternate_phones && currentLead.alternate_phones.length > 0 && (
+          <View style={styles.phoneSelectorContainer}>
+            <TouchableOpacity
+              style={[
+                styles.phonePill,
+                activeDialPhone === currentLead.phone && styles.phonePillActive,
+              ]}
+              onPress={async () => {
+                await HapticsService.tick();
+                setSelectedPhoneOverride(currentLead.phone);
+                setTryAlternatePrompt(null);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.phonePillText,
+                  activeDialPhone === currentLead.phone && styles.phonePillTextActive,
+                ]}
+              >
+                ● Primary: {currentLead.phone}
+              </Text>
+            </TouchableOpacity>
+            {currentLead.alternate_phones.map((altPhone, aIdx) => (
+              <TouchableOpacity
+                key={aIdx}
+                style={[
+                  styles.phonePill,
+                  activeDialPhone === altPhone && styles.phonePillActive,
+                ]}
+                onPress={async () => {
+                  await HapticsService.tick();
+                  setSelectedPhoneOverride(altPhone);
+                  setTryAlternatePrompt(null);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.phonePillText,
+                    activeDialPhone === altPhone && styles.phonePillTextActive,
+                  ]}
+                >
+                  Alt {aIdx + 1}: {altPhone}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
         {/* Big Dial Trigger Button */}
         <TouchableOpacity
           style={[
@@ -1603,9 +1692,32 @@ export default function DialerHudScreen({ route, navigation }: any) {
         >
           <PhoneCall size={20} color="#FFFFFF" />
           <Text style={styles.mainDialButtonText}>
-            {isOnCall ? `Active Call: ${currentLead.phone}` : `Dial ${currentLead.phone}`}
+            {isOnCall ? `Active Call: ${activeDialPhone}` : `Dial ${activeDialPhone}`}
           </Text>
         </TouchableOpacity>
+
+        {/* In-Call Recovery Banner: Try Alternate Phone */}
+        {tryAlternatePrompt && (
+          <View style={styles.tryAltBanner}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.tryAltTitle}>Didn't reach educator on primary?</Text>
+              <Text style={styles.tryAltSubtitle}>Try Alternate: {tryAlternatePrompt}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.tryAltBtn}
+              onPress={async () => {
+                const alt = tryAlternatePrompt;
+                setTryAlternatePrompt(null);
+                setSelectedPhoneOverride(alt);
+                await HapticsService.medium();
+                await TelephonyService.makeCall(alt);
+              }}
+            >
+              <PhoneCall size={12} color="#FFFFFF" />
+              <Text style={styles.tryAltBtnText}>Call Now</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* 1-Tap Disposition Controls Dock */}
         <View style={styles.dispositionContainer}>
@@ -2635,6 +2747,69 @@ export default function DialerHudScreen({ route, navigation }: any) {
 }
 
 const styles = StyleSheet.create<any>({
+  phoneSelectorContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 8,
+  },
+  phonePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  phonePillActive: {
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    borderColor: Colors.badgeSuccessText,
+  },
+  phonePillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textMuted,
+  },
+  phonePillTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  tryAltBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+    borderWidth: 1,
+    borderColor: '#3B82F6',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 8,
+    marginBottom: 4,
+    gap: 8,
+  },
+  tryAltTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#93C5FD',
+  },
+  tryAltSubtitle: {
+    fontSize: 11,
+    color: '#E2E8F0',
+  },
+  tryAltBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2563EB',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    gap: 4,
+  },
+  tryAltBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   container: {
     flex: 1,
     backgroundColor: Colors.bgApp,

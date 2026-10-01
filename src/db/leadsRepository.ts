@@ -223,17 +223,24 @@ export class LeadsRepository {
         ]
       );
 
-      // If school was refined from generic VOL to a specific campus, update school
-      if (merged.school && merged.school !== existing.school && existing.school === 'VOL') {
-        try {
-          await this.updateLeadDetails({
-            id: existing.id,
-            name: merged.name,
-            phone: merged.phone,
-            school: merged.school,
-          });
-        } catch {}
-      }
+      // Ensure phone and alternate_phones are synced to existing lead
+      existing.phone = merged.phone;
+      existing.alternate_phones = merged.alternate_phones;
+      try {
+        const { dexieDb } = await import('./dexieDb');
+        await dexieDb.leads.put(existing);
+      } catch {}
+
+      // If school, phone, or alternate_phones were updated, persist via updateLeadDetails
+      try {
+        await this.updateLeadDetails({
+          id: existing.id,
+          name: merged.name,
+          phone: merged.phone,
+          school: merged.school,
+          alternate_phones: merged.alternate_phones,
+        });
+      } catch {}
 
       if (imageUri && imageUri.length > 50) {
         try {
@@ -641,10 +648,122 @@ export class LeadsRepository {
     );
   }
 
+  /**
+   * Adds an alternate / secondary phone number to an educator lead
+   */
+  static async addAlternatePhone(leadId: string, rawPhone: string): Promise<Lead> {
+    const cleanDigits = DeduplicationService.normalizePhoneDigits(rawPhone);
+    if (cleanDigits.length < 7) {
+      throw new Error('A valid phone number (at least 7 digits) is required.');
+    }
+    const lead = await this.getLeadById(leadId);
+    if (!lead) throw new Error('Educator lead not found.');
+
+    const primaryDigits = DeduplicationService.normalizePhoneDigits(lead.phone);
+    if (cleanDigits === primaryDigits) {
+      throw new Error('This number is already the primary phone for this educator.');
+    }
+
+    const currentAlts = (lead.alternate_phones || []).filter((p) => {
+      return DeduplicationService.normalizePhoneDigits(p) !== cleanDigits;
+    });
+
+    currentAlts.push(rawPhone.trim());
+    lead.alternate_phones = currentAlts;
+
+    const auditNote = `[Added Alternate Phone: ${rawPhone.trim()}]`;
+    let updatedNotes = (lead.notes || '').trim();
+    if (!updatedNotes.includes(auditNote)) {
+      updatedNotes = updatedNotes ? `${updatedNotes}\n\n${auditNote}` : auditNote;
+      lead.notes = updatedNotes;
+    }
+
+    await this.updateLeadDetails({
+      id: lead.id,
+      name: lead.name,
+      phone: lead.phone,
+      school: lead.school,
+      notes: lead.notes,
+      alternate_phones: currentAlts,
+    });
+
+    return (await this.getLeadById(leadId)) || lead;
+  }
+
+  /**
+   * Removes an alternate phone number from an educator lead
+   */
+  static async removeAlternatePhone(leadId: string, phoneToRemove: string): Promise<Lead> {
+    const removeDigits = DeduplicationService.normalizePhoneDigits(phoneToRemove);
+    const lead = await this.getLeadById(leadId);
+    if (!lead) throw new Error('Educator lead not found.');
+
+    const updatedAlts = (lead.alternate_phones || []).filter((p) => {
+      return DeduplicationService.normalizePhoneDigits(p) !== removeDigits;
+    });
+
+    lead.alternate_phones = updatedAlts;
+
+    await this.updateLeadDetails({
+      id: lead.id,
+      name: lead.name,
+      phone: lead.phone,
+      school: lead.school,
+      alternate_phones: updatedAlts,
+    });
+
+    return (await this.getLeadById(leadId)) || lead;
+  }
+
+  /**
+   * Promotes an alternate phone number to be the primary callable line,
+   * demoting the old primary line into the alternate phones list.
+   */
+  static async promoteAlternateToPrimary(leadId: string, newPrimaryPhone: string): Promise<Lead> {
+    const newDigits = DeduplicationService.normalizePhoneDigits(newPrimaryPhone);
+    if (newDigits.length < 10) {
+      throw new Error('A valid 10-digit phone number is required for primary cellular dialing.');
+    }
+    const lead = await this.getLeadById(leadId);
+    if (!lead) throw new Error('Educator lead not found.');
+
+    const oldPrimary = lead.phone;
+    const oldDigits = DeduplicationService.normalizePhoneDigits(oldPrimary);
+
+    const updatedAlts = (lead.alternate_phones || []).filter((p) => {
+      return DeduplicationService.normalizePhoneDigits(p) !== newDigits;
+    });
+    if (oldDigits.length >= 7 && oldDigits !== newDigits) {
+      updatedAlts.push(oldPrimary);
+    }
+
+    lead.phone = newPrimaryPhone.trim();
+    lead.alternate_phones = updatedAlts;
+
+    const auditNote = `[Phone Promoted to Primary: ${newPrimaryPhone.trim()}] Former primary (${oldPrimary}) saved as alternate.`;
+    let updatedNotes = (lead.notes || '').trim();
+    if (!updatedNotes.includes(auditNote)) {
+      updatedNotes = updatedNotes ? `${updatedNotes}\n\n${auditNote}` : auditNote;
+      lead.notes = updatedNotes;
+    }
+
+    await this.updateLeadDetails({
+      id: lead.id,
+      name: lead.name,
+      phone: lead.phone,
+      school: lead.school,
+      notes: lead.notes,
+      alternate_phones: updatedAlts,
+    });
+
+    return (await this.getLeadById(leadId)) || lead;
+  }
+
   static async updateLeadDetails(leadData: {
     id: string;
     name: string;
     phone: string;
+    alternate_phones?: string[] | null;
     school?: string | null;
     email?: string | null;
     room_number?: string | null;
@@ -718,6 +837,14 @@ export class LeadsRepository {
       if (finalDispo === 'appointment_set') {
         finalDispo = 'connected';
       }
+    }
+
+    if (leadData.alternate_phones !== undefined && current) {
+      current.alternate_phones = leadData.alternate_phones;
+      try {
+        const { dexieDb } = await import('./dexieDb');
+        await dexieDb.leads.put(current);
+      } catch {}
     }
 
     await db.runAsync(
@@ -1171,6 +1298,29 @@ export class LeadsRepository {
             dup.meeting_preferences.forEach((item) => prefSet.add(item));
           }
 
+          // Arbitrate phone numbers between master and duplicate
+          const phoneArb = DeduplicationService.arbitratePhoneNumbers(
+            {
+              phone: master.phone,
+              alternate_phones: master.alternate_phones,
+              last_disposition: bestDisposition,
+              attempts_count: highestAttempts,
+              is_client: isClient,
+              appointment_scheduled_at: appointmentScheduledAt,
+            },
+            dup
+          );
+          master.phone = phoneArb.primaryPhone;
+          master.alternate_phones = phoneArb.alternatePhones;
+          if (phoneArb.revivedFromBadNumber) {
+            bestDisposition = 'pending';
+          }
+          for (const audit of phoneArb.auditNotes) {
+            if (!mergedNotes.includes(audit)) {
+              mergedNotes = mergedNotes ? `${mergedNotes}\n\n${audit}` : audit;
+            }
+          }
+
           // Re-link call logs belonging to duplicate to the master lead
           await db.runAsync('UPDATE call_logs SET lead_id = ? WHERE lead_id = ?', [master.id, dup.id]);
           // Delete duplicate
@@ -1182,16 +1332,19 @@ export class LeadsRepository {
           const betterSchool = duplicates.find((d) => d.school && d.school !== 'VOL')?.school;
           if (betterSchool) {
             master.school = betterSchool;
-            try {
-              await this.updateLeadDetails({
-                id: master.id,
-                name: master.name,
-                phone: master.phone,
-                school: betterSchool,
-              });
-            } catch {}
           }
         }
+
+        // Sync master phone, school, and alternate_phones
+        try {
+          await this.updateLeadDetails({
+            id: master.id,
+            name: master.name,
+            phone: master.phone,
+            school: master.school,
+            alternate_phones: master.alternate_phones,
+          });
+        } catch {}
 
         // Update master lead with all consolidated attributes
         await db.runAsync(
