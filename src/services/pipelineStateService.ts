@@ -373,6 +373,27 @@ export class PipelineStateService {
       return false;
     }
 
+    // Protection against conflating in-person appointments with phone callbacks:
+    // If follow_up_at matches the in-person appointment date and disposition is not explicitly callback_requested,
+    // this was an appointment booking artifact, NOT a scheduled phone callback.
+    if (
+      lead.follow_up_at &&
+      lead.appointment_scheduled_at &&
+      lead.follow_up_at.trim() === lead.appointment_scheduled_at.trim() &&
+      dispo !== 'callback_requested'
+    ) {
+      return false;
+    }
+
+    // If appointment outcome was no_show or declined, it is a resolved in-person appointment,
+    // NOT a scheduled phone callback (unless explicitly re-dispositioned as callback_requested).
+    if (
+      (lead.appointment_outcome === 'no_show' || lead.appointment_outcome === 'declined') &&
+      dispo !== 'callback_requested'
+    ) {
+      return false;
+    }
+
     const hasValidFollowUp = Boolean(
       lead.follow_up_at &&
       lead.follow_up_at.trim() &&

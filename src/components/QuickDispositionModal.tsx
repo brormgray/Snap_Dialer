@@ -251,7 +251,7 @@ function QuickDispositionModalContent({
         ...lead,
         last_disposition: 'appointment_set',
         appointment_scheduled_at: payload.scheduledISO,
-        follow_up_at: payload.scheduledISO,
+        follow_up_at: null,
         notes: updatedNotes,
         attempts_count: (lead.attempts_count || 0) + 1,
       };

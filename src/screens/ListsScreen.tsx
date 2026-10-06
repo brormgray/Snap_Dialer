@@ -444,10 +444,26 @@ export default function ListsScreen({ navigation }: any) {
     if (lead.appointment_outcome === 'nurture_drip') {
       return { label: '💬 Prospect Drip', bg: 'rgba(2, 132, 199, 0.18)', color: '#0284C7' };
     }
+    if (lead.appointment_outcome === 'no_show') {
+      return { label: '⚠️ Sit-Down No-Show', bg: 'rgba(239, 68, 68, 0.15)', color: '#EF4444' };
+    }
+    if (lead.appointment_outcome === 'declined') {
+      return { label: 'Sit-Down Declined', bg: Colors.badgeNeutralBg, color: Colors.badgeNeutralText };
+    }
     if (disp === 'connected' || disp === 'spoke') {
       return { label: '💬 Spoke / Connected', bg: Colors.badgeSuccessBg, color: Colors.badgeSuccessText };
     }
-    const hasValidFollowUp = lead.follow_up_at && !isNaN(new Date(lead.follow_up_at).getTime());
+    const isConflatedFollowUp = Boolean(
+      lead.follow_up_at &&
+      lead.appointment_scheduled_at &&
+      lead.follow_up_at.trim() === lead.appointment_scheduled_at.trim() &&
+      disp !== 'callback_requested'
+    );
+    const hasValidFollowUp = Boolean(
+      lead.follow_up_at &&
+      !isNaN(new Date(lead.follow_up_at).getTime()) &&
+      !isConflatedFollowUp
+    );
     if (disp === 'callback_requested' || hasValidFollowUp) {
       return { label: 'Callback Scheduled', bg: Colors.badgeWarningBg, color: Colors.badgeWarningText };
     }

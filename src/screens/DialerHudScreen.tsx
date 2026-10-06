@@ -672,7 +672,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
           currentLead.last_disposition = 'appointment_set';
           currentLead.appointment_outcome = null;
           currentLead.appointment_completed_at = null;
-          currentLead.follow_up_at = scheduledISO;
+          currentLead.follow_up_at = null;
 
           setQueue((prev) => {
             const next = [...prev];
@@ -684,7 +684,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
                 appointment_scheduled_at: scheduledISO,
                 appointment_outcome: null,
                 appointment_completed_at: null,
-                follow_up_at: scheduledISO,
+                follow_up_at: null,
               };
             }
             return next;
@@ -697,7 +697,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
             noteToRecord || undefined
           );
         }
-        if (disposition !== 'callback_requested' && disposition !== 'appointment_set') {
+        if (disposition !== 'callback_requested') {
           currentLead.follow_up_at = null;
         }
         currentLead.last_disposition = disposition;
@@ -709,7 +709,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
               notes: updatedNotes,
               last_disposition: disposition,
               follow_up_at:
-                disposition === 'callback_requested' || disposition === 'appointment_set'
+                disposition === 'callback_requested'
                   ? currentLead.follow_up_at || next[currentIndex].follow_up_at
                   : null,
               appointment_scheduled_at:

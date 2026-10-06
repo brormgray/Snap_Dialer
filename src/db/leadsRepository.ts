@@ -901,7 +901,7 @@ export class LeadsRepository {
     await db.runAsync(
       `UPDATE leads 
        SET appointment_scheduled_at = ?,
-           follow_up_at = ?,
+           follow_up_at = NULL,
            appointment_outcome = NULL,
            appointment_completed_at = NULL,
            last_disposition = 'appointment_set',
@@ -909,7 +909,7 @@ export class LeadsRepository {
            appointment_notes = COALESCE(?, appointment_notes),
            updated_at = ?
        WHERE id = ?`,
-      [scheduledDateISO, scheduledDateISO, note || null, appointmentNotes || null, now, leadId]
+      [scheduledDateISO, note || null, appointmentNotes || null, now, leadId]
     );
   }
 
@@ -984,6 +984,7 @@ export class LeadsRepository {
          SET appointment_outcome = 'no_show', 
              appointment_completed_at = ?, 
              last_disposition = 'no_answer', 
+             follow_up_at = NULL,
              notes = CASE WHEN ? IS NOT NULL THEN COALESCE(notes || '\n\n', '') || ? ELSE notes END,
              updated_at = ? 
          WHERE id = ?`,
@@ -995,6 +996,7 @@ export class LeadsRepository {
          SET appointment_outcome = 'declined', 
              appointment_completed_at = ?, 
              last_disposition = 'spoke', 
+             follow_up_at = NULL,
              notes = CASE WHEN ? IS NOT NULL THEN COALESCE(notes || '\n\n', '') || ? ELSE notes END,
              updated_at = ? 
          WHERE id = ?`,

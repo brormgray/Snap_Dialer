@@ -158,6 +158,36 @@ export class DexieDatabaseAdapter implements IDatabase {
           await this.saveToStorage();
         }
       }
+
+      // 6. Appointment vs. Callback decoupling self-healing:
+      // If a lead's follow_up_at was conflated with their appointment_scheduled_at, or if their appointment was marked no_show/declined,
+      // clear the phantom callback timestamp while strictly preserving all notes, logs, and appointment records.
+      if (this.leads.length > 0) {
+        let callbackHealed = false;
+        for (const lead of this.leads) {
+          if (!lead || !lead.id) continue;
+          if (
+            lead.follow_up_at &&
+            lead.appointment_scheduled_at &&
+            String(lead.follow_up_at).trim() === String(lead.appointment_scheduled_at).trim() &&
+            lead.last_disposition !== 'callback_requested'
+          ) {
+            lead.follow_up_at = null;
+            callbackHealed = true;
+          }
+          if (
+            lead.follow_up_at &&
+            (lead.appointment_outcome === 'no_show' || lead.appointment_outcome === 'declined') &&
+            lead.last_disposition !== 'callback_requested'
+          ) {
+            lead.follow_up_at = null;
+            callbackHealed = true;
+          }
+        }
+        if (callbackHealed) {
+          await this.saveToStorage();
+        }
+      }
       this.isInitialized = true;
     } catch (e) {
       console.warn('WebDatabase init fallback:', e);
@@ -930,6 +960,7 @@ export class DexieDatabaseAdapter implements IDatabase {
             lead.appointment_outcome = s.includes('no_show') ? 'no_show' : 'declined';
             lead.appointment_completed_at = params[0] || new Date().toISOString();
             lead.last_disposition = s.includes('no_show') ? 'no_answer' : 'spoke';
+            lead.follow_up_at = null;
             if (params[1]) lead.notes = lead.notes ? `${lead.notes}\n\n${params[1]}` : params[1];
             lead.updated_at = params[params.length - 2] || new Date().toISOString();
           } else if (s.includes('appointment_outcome = ?')) {
@@ -944,7 +975,13 @@ export class DexieDatabaseAdapter implements IDatabase {
             lead.appointment_outcome = null;
             lead.appointment_completed_at = null;
             lead.last_disposition = 'appointment_set';
-            if (s.includes('follow_up_at = ?')) {
+            if (s.includes('follow_up_at = null') || s.includes('follow_up_at = NULL')) {
+              lead.follow_up_at = null;
+              if (params[1]) lead.notes = params[1];
+              if (s.includes('appointment_notes') && params[2]) {
+                lead.appointment_notes = params[2];
+              }
+            } else if (s.includes('follow_up_at = ?')) {
               lead.follow_up_at = params[1];
               if (params[2]) lead.notes = params[2];
               if (s.includes('appointment_notes') && params[3]) {

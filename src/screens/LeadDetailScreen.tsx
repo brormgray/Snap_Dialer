@@ -1730,7 +1730,26 @@ export default function LeadDetailScreen({ route, navigation }: any) {
               )}
 
               {/* Scheduled Callback Reminder Card */}
-              {(lead.last_disposition === 'callback_requested' || !!lead.follow_up_at) && lead.last_disposition !== 'appointment_set' && (() => {
+              {(() => {
+                const isConflatedWithAppt = Boolean(
+                  lead.follow_up_at &&
+                  lead.appointment_scheduled_at &&
+                  lead.follow_up_at.trim() === lead.appointment_scheduled_at.trim() &&
+                  lead.last_disposition !== 'callback_requested'
+                );
+                const isNoShowOrDeclinedAppt = Boolean(
+                  (lead.appointment_outcome === 'no_show' || lead.appointment_outcome === 'declined') &&
+                  lead.last_disposition !== 'callback_requested'
+                );
+                const hasValidCallback = (lead.last_disposition === 'callback_requested' || !!lead.follow_up_at) &&
+                  lead.last_disposition !== 'appointment_set' &&
+                  !isConflatedWithAppt &&
+                  !isNoShowOrDeclinedAppt;
+
+                if (!hasValidCallback) {
+                  return null;
+                }
+
                 const followUpDate = lead.follow_up_at && !isNaN(new Date(lead.follow_up_at).getTime())
                   ? new Date(lead.follow_up_at)
                   : null;
@@ -2464,22 +2483,38 @@ export default function LeadDetailScreen({ route, navigation }: any) {
           </TouchableOpacity>
 
           {/* Standalone Callback Scheduling Button */}
-          <TouchableOpacity
-            style={[
-              styles.stickyCallbackButton,
-              lead.follow_up_at ? styles.stickyCallbackButtonActive : null,
-            ]}
-            onPress={() => {
-              HapticsService.medium();
-              setCallbackModalVisible(true);
-            }}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel={lead.follow_up_at ? 'Edit scheduled callback' : 'Schedule callback'}
-          >
-            <Clock size={17} color={lead.follow_up_at ? '#FFFFFF' : Colors.badgeWarningText} />
-            {lead.follow_up_at ? <View style={styles.callbackActiveDot} /> : null}
-          </TouchableOpacity>
+          {(() => {
+            const isConflated = Boolean(
+              lead.follow_up_at &&
+              lead.appointment_scheduled_at &&
+              lead.follow_up_at.trim() === lead.appointment_scheduled_at.trim() &&
+              lead.last_disposition !== 'callback_requested'
+            );
+            const isNoShowOrDeclined = Boolean(
+              (lead.appointment_outcome === 'no_show' || lead.appointment_outcome === 'declined') &&
+              lead.last_disposition !== 'callback_requested'
+            );
+            const hasActiveCallback = Boolean(lead.follow_up_at && !isConflated && !isNoShowOrDeclined);
+
+            return (
+              <TouchableOpacity
+                style={[
+                  styles.stickyCallbackButton,
+                  hasActiveCallback ? styles.stickyCallbackButtonActive : null,
+                ]}
+                onPress={() => {
+                  HapticsService.medium();
+                  setCallbackModalVisible(true);
+                }}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={hasActiveCallback ? 'Edit scheduled callback' : 'Schedule callback'}
+              >
+                <Clock size={17} color={hasActiveCallback ? '#FFFFFF' : Colors.badgeWarningText} />
+                {hasActiveCallback ? <View style={styles.callbackActiveDot} /> : null}
+              </TouchableOpacity>
+            );
+          })()}
 
           <TouchableOpacity
             style={[styles.stickyDncButton, isDNC && styles.stickyDncButtonRevert]}
