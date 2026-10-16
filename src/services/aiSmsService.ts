@@ -177,6 +177,13 @@ You are writing a personalized SMS text message to a private client or prospect 
         ? FrsKnowledgeBank.recommendWisdomSeed(lead, frsTopicKey)
         : null;
 
+      const cleanYears = lead.years_in_frs
+        ? String(lead.years_in_frs).trim().replace(/\s*years?(?:\s+of\s+service)?$/i, '')
+        : '';
+      const cleanRoom = lead.room_number
+        ? String(lead.room_number).trim().replace(/^room\s+/i, '')
+        : '';
+
       const frsWisdomSection = wisdomSeed
         ? `
 FRS WISDOM & VALUE SEED (CRITICAL DIRECTIVE):
@@ -184,7 +191,7 @@ FRS WISDOM & VALUE SEED (CRITICAL DIRECTIVE):
 - FRS Law / Formula Fact: "${wisdomSeed.factualInsight}"
 - Key Phrasing Guide: "${wisdomSeed.samplePhrasing}"
 - Value Seeding Directive: Subtly weave in this high-value FRS insight. Frame it consultatively as a helpful tip or insight tailored to their ${
-            lead.years_in_frs ? `${lead.years_in_frs} years of service` : 'retirement timeline'
+            cleanYears ? `${cleanYears} years of service` : 'retirement timeline'
           }. Plant seeds of trust, authority, and confidence.
 `
         : '';
@@ -193,12 +200,12 @@ FRS WISDOM & VALUE SEED (CRITICAL DIRECTIVE):
         ? `EDUCATOR DETAILS (FROM SCANNED REPORT CARD):
 - Educator Name: ${lead.name}
 - School / Campus: ${lead.school || 'your school'}
-- Classroom / Room #: ${lead.room_number ? `Room ${lead.room_number}` : 'Classroom'}
+- Classroom / Room #: ${cleanRoom ? `Room ${cleanRoom}` : 'Classroom'}
 - Planning Period / Time: ${lead.planning_period || 'planning period'}
-- Years in Florida Retirement System (FRS): ${lead.years_in_frs ? `${lead.years_in_frs} years` : 'Not specified'}
+- Years in Florida Retirement System (FRS): ${cleanYears ? `${cleanYears} years` : 'Not specified'}
 - FRS Knowledge Level: "${lead.frs_knowledge || 'Moderate'}"
-- Current Annual Salary: ${lead.annual_salary ? `$${lead.annual_salary}` : 'Not listed'}
-- Present 403(b) Contribution: ${lead.present_403b_contribution ? `$${lead.present_403b_contribution}` : 'None listed'}
+- Current Annual Salary: ${lead.annual_salary ? `$${lead.annual_salary.replace(/^\$/, '')}` : 'Not listed'}
+- Present 403(b) Contribution: ${lead.present_403b_contribution ? `$${lead.present_403b_contribution.replace(/^\$/, '')}` : 'None listed'}
 - Specific Needs / Topics Checked: ${interests || 'FRS Pension calculations, DROP, and 403(b) review'}
 - Handwritten Question / Note on Card: ${handwrittenQuestion ? `"${handwrittenQuestion}"` : 'None'}
 - Special File Notes: ${agentNotes ? `"${agentNotes}"` : 'None'}
@@ -210,7 +217,7 @@ FRS WISDOM & VALUE SEED (CRITICAL DIRECTIVE):
 - Requested Availability: ${preferredTimes || 'Flexible'}`;
 
       const frsConstraint = isFrs
-        ? `4. Seamlessly incorporate relevant details: Mention their years in FRS (${lead.years_in_frs || 'service'}), DROP calculation, 5% bonus, or 403(b) clarity naturally without sounding like a robotic form letter.`
+        ? `4. Seamlessly incorporate relevant details: Mention their years in FRS (${cleanYears || 'service'}), DROP calculation, 5% bonus, or 403(b) clarity naturally without sounding like a robotic form letter.`
         : `4. CRITICAL NON-FRS RULE: The recipient is a Non-FRS individual. Do NOT mention Florida Retirement System (FRS), state pension multiplier, DROP, classroom room numbers, or school districts. Focus on general retirement analysis, 401(k)/IRA reviews, rollovers, 0% downside floor annuities, or tax advantages.`;
 
       const prompt = `
@@ -221,7 +228,7 @@ ${recipientDetails}
 - Contact History:
 ${historySummary || 'First outreach.'}
 - Representative Name: ${repLabel}
-${toneFocus ? `- Tone / Focus Preference: ${toneFocus.replace('_', ' ')}` : ''}
+${toneFocus ? `- Tone / Focus Preference: ${toneFocus.replace(/_/g, ' ')}` : ''}
 ${temporalPromptSection}
 ${threadContinuitySection}
 ${frsWisdomSection}
@@ -244,12 +251,15 @@ ${frsConstraint}
       const candidateModels = await GeminiModelService.getActiveModels(key);
 
       for (const model of candidateModels) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
         try {
           const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
           const response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
             body: JSON.stringify({
               contents: [{ parts: [{ text: prompt }] }],
               generationConfig: {
@@ -263,6 +273,7 @@ ${frsConstraint}
             const data = await response.json();
             const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
             if (text && text.length > 20) {
+              clearTimeout(timeoutId);
               return text
                 .replace(/^["']|["']$/g, '')
                 .replace(/[ \t]{2,}/g, ' ')
@@ -272,6 +283,8 @@ ${frsConstraint}
           }
         } catch {
           // Attempt next model
+        } finally {
+          clearTimeout(timeoutId);
         }
       }
     } catch (e) {
@@ -297,7 +310,11 @@ ${frsConstraint}
     const firstName = lead.name ? lead.name.split(' ')[0] : 'there';
     const school = lead.school || 'your school';
     const planning = lead.planning_period ? ` during ${lead.planning_period}` : ' during your planning period';
-    const room = lead.room_number ? ` in Room ${lead.room_number}` : '';
+    const cleanRoomStr = lead.room_number ? String(lead.room_number).trim().replace(/^room\s+/i, '') : '';
+    const room = cleanRoomStr ? ` in Room ${cleanRoomStr}` : '';
+    const cleanYearsStr = lead.years_in_frs
+      ? String(lead.years_in_frs).trim().replace(/\s*years?(?:\s+of\s+service)?$/i, '')
+      : '';
     const hasQuestion = lead.custom_questions && lead.custom_questions.trim().length > 0;
     const hasNotes = lead.notes && lead.notes.trim().length > 0;
     const questionText = hasQuestion ? lead.custom_questions!.trim() : hasNotes ? lead.notes!.trim() : '';
@@ -412,10 +429,13 @@ ${frsConstraint}
         : `Hi ${firstName}, this is ${agentName}${withCompany}. Your policy anniversary is approaching—it's time for our annual review to examine your gains and ensure your plan matches your retirement goals. When is a good time for a quick review?`;
     }
 
-    const prefSlot =
-      lead.meeting_preferences && lead.meeting_preferences.length > 0
-        ? lead.meeting_preferences[0].replace(/^[0-9]\.\s*/, '')
-        : `during ${lead.planning_period || 'planning'}`;
+    const hasExplicitMeetingPref = Boolean(lead.meeting_preferences && lead.meeting_preferences.length > 0);
+    const prefSlot = hasExplicitMeetingPref
+      ? lead.meeting_preferences![0].replace(/^[0-9]\.\s*/, '')
+      : `during ${lead.planning_period || 'planning'}`;
+    const sitDownSuffix = hasExplicitMeetingPref && !prefSlot.toLowerCase().includes('period') && !prefSlot.toLowerCase().includes('planning')
+      ? `${planning}${room}`
+      : `${room}`;
 
     const outreachPhrase = suggestedOutreach.timeframePhrase; // e.g. "this week", "early next week"
 
@@ -435,12 +455,12 @@ ${frsConstraint}
 
     // Case 1: Teacher wrote a specific handwritten note or question
     if (questionText) {
-      return `Hi ${firstName}, this is ${agentName}${withCompany}. I have your FRS Report Card from ${school} and saw your note regarding "${questionText}". I'll be on campus ${outreachPhrase} and would love to review your exact numbers—does ${prefSlot} work for a quick sit-down${planning}${room}?`;
+      return `Hi ${firstName}, this is ${agentName}${withCompany}. I have your FRS Report Card from ${school} and saw your note regarding "${questionText}". I'll be on campus ${outreachPhrase} and would love to review your exact numbers—does ${prefSlot} work for a quick sit-down${sitDownSuffix}?`;
     }
 
     // Case 2: High years of service / DROP focus
-    if (lead.years_in_frs && parseInt(lead.years_in_frs, 10) >= 15) {
-      return `Hi ${firstName}, this is ${agentName}${withCompany}. I have your FRS Report Card from ${school} regarding your ${lead.years_in_frs} years of service and DROP options. I'll be visiting campus ${outreachPhrase}—does ${prefSlot} work for a quick sit-down${planning}${room}?`;
+    if (cleanYearsStr && parseInt(cleanYearsStr, 10) >= 15) {
+      return `Hi ${firstName}, this is ${agentName}${withCompany}. I have your FRS Report Card from ${school} regarding your ${cleanYearsStr} years of service and DROP options. I'll be visiting campus ${outreachPhrase}—does ${prefSlot} work for a quick sit-down${sitDownSuffix}?`;
     }
 
     // Case 3: 5% Bonus or 403(b) focus
@@ -448,10 +468,10 @@ ${frsConstraint}
       toneFocus === 'drop_bonus_focus' ||
       (lead.frs_interests && lead.frs_interests.some((i) => i.includes('Bonus') || i.includes('403')))
     ) {
-      return `Hi ${firstName}, this is ${agentName}${withCompany}. Following up on your FRS Report Card from ${school} regarding your 403(b) options and the 5% bonus. I'll be at the school ${outreachPhrase}—does ${prefSlot} work for a quick classroom sit-down${planning}${room}?`;
+      return `Hi ${firstName}, this is ${agentName}${withCompany}. Following up on your FRS Report Card from ${school} regarding your 403(b) options and the 5% bonus. I'll be at the school ${outreachPhrase}—does ${prefSlot} work for a quick classroom sit-down${sitDownSuffix}?`;
     }
 
     // Default friendly & professional sit-down invitation
-    return `Hi ${firstName}, this is ${agentName}${withCompany}. I have your handwritten FRS Report Card from ${school} and wanted to help review your state pension and retirement options. I'll be on campus ${outreachPhrase}—does ${prefSlot} work for a quick sit-down${planning}${room}?`;
+    return `Hi ${firstName}, this is ${agentName}${withCompany}. I have your handwritten FRS Report Card from ${school} and wanted to help review your state pension and retirement options. I'll be on campus ${outreachPhrase}—does ${prefSlot} work for a quick sit-down${sitDownSuffix}?`;
   }
 }

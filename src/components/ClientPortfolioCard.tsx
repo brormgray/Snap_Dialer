@@ -78,11 +78,12 @@ export function ClientPortfolioCard({ lead, onSave, onScheduleReview }: ClientPo
     if (value) {
       setDripTrack('client_annual_review');
       if (!effectiveDate) {
-        const today = new Date().toISOString().slice(0, 10);
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         setEffectiveDate(today);
-        const nextYear = new Date();
-        nextYear.setFullYear(nextYear.getFullYear() + 1);
-        setNextReviewDate(nextYear.toISOString().slice(0, 10));
+        const nextYear = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
+        const nextYearStr = `${nextYear.getFullYear()}-${String(nextYear.getMonth() + 1).padStart(2, '0')}-${String(nextYear.getDate()).padStart(2, '0')}`;
+        setNextReviewDate(nextYearStr);
       }
     } else {
       setDripTrack('prospect_nurture');
@@ -90,6 +91,7 @@ export function ClientPortfolioCard({ lead, onSave, onScheduleReview }: ClientPo
   };
 
   const handleSave = async () => {
+    if (isSaving) return;
     await HapticsService.success();
     setIsSaving(true);
     try {
@@ -275,7 +277,7 @@ export function ClientPortfolioCard({ lead, onSave, onScheduleReview }: ClientPo
           }}
           activeOpacity={0.8}
         >
-          <Sparkles size={14} color="#38BDF8" />
+          <Sparkles size={14} color="#0369A1" />
           <Text style={styles.scheduleEnhancementBtnText}>🚀 Product Enhancement</Text>
         </TouchableOpacity>
       </View>
@@ -539,15 +541,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: 'rgba(56, 189, 248, 0.12)',
-    borderColor: '#38BDF8',
+    backgroundColor: 'rgba(2, 132, 199, 0.10)',
+    borderColor: '#0284C7',
     borderWidth: 1.5,
     paddingVertical: 9,
     paddingHorizontal: 10,
     borderRadius: 10,
   },
   scheduleEnhancementBtnText: {
-    color: '#38BDF8',
+    color: '#0369A1',
     fontSize: 12,
     fontWeight: '800',
   },

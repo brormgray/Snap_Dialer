@@ -32,7 +32,7 @@ export function ProductionKpiSection({ leads }: ProductionKpiSectionProps) {
         break;
       }
       case 'this_week': {
-        const dayOfWeek = (now.getDay() + 6) % 7; // Monday = 0
+        const dayOfWeek = now.getDay(); // Sunday = 0
         cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek, 0, 0, 0);
         break;
       }
@@ -49,8 +49,8 @@ export function ProductionKpiSection({ leads }: ProductionKpiSectionProps) {
     const cutoffMs = cutoff.getTime();
 
     return clients.filter((c) => {
-      // Prioritize client_since, then policy_effective_date, then created_at
-      const dateStr = c.client_since || c.policy_effective_date || c.created_at;
+      // Prioritize policy_effective_date, then client_since, then created_at so imported policies reflect true effective date
+      const dateStr = c.policy_effective_date || c.client_since || c.created_at;
       if (!dateStr) return false;
       const normalizedStr = dateStr.length === 10 ? `${dateStr}T12:00:00` : dateStr;
       const parsedMs = new Date(normalizedStr).getTime();
@@ -61,18 +61,22 @@ export function ProductionKpiSection({ leads }: ProductionKpiSectionProps) {
   const stats = useMemo(() => {
     let totalAP = 0;
     let totalTransfer = 0;
+    let apClientCount = 0;
     const clientCount = filteredClients.length;
 
     for (const client of filteredClients) {
-      if (client.annualized_premium && !isNaN(client.annualized_premium)) {
-        totalAP += Number(client.annualized_premium);
+      const ap = Number(client.annualized_premium);
+      if (!isNaN(ap) && ap > 0) {
+        totalAP += ap;
+        apClientCount++;
       }
-      if (client.transfer_assets_volume && !isNaN(client.transfer_assets_volume)) {
-        totalTransfer += Number(client.transfer_assets_volume);
+      const transfer = Number(client.transfer_assets_volume);
+      if (!isNaN(transfer) && transfer > 0) {
+        totalTransfer += transfer;
       }
     }
 
-    const avgAP = clientCount > 0 ? Math.round(totalAP / clientCount) : 0;
+    const avgAP = apClientCount > 0 ? Math.round(totalAP / apClientCount) : 0;
 
     return {
       totalAP,
@@ -213,7 +217,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   sectionTitle: {
-    color: Colors.heavenlyGold,
+    color: '#FBBF24',
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.8,
@@ -251,10 +255,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   horizonBtnActive: {
-    backgroundColor: Colors.heavenlyGold,
+    backgroundColor: '#F59E0B',
   },
   horizonText: {
-    color: Colors.textMuted,
+    color: '#CBD5E1',
     fontSize: 11,
     fontWeight: '600',
   },
@@ -298,7 +302,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   metricLabel: {
-    color: Colors.textMuted,
+    color: '#CBD5E1',
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -309,7 +313,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   metricSub: {
-    color: Colors.textMuted,
+    color: '#94A3B8',
     fontSize: 10,
   },
 });

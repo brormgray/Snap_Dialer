@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Platform,
   Alert,
+  KeyboardAvoidingView,
 } from 'react-native';
 import {
   PhoneCall,
@@ -100,7 +101,7 @@ function QuickDispositionModalContent({
         setElapsedSeconds(0);
       }
     }
-  }, [visible, initialStartTime, isCallActive]);
+  }, [visible, lead.id, initialStartTime, isCallActive]);
 
   // Running timer interval
   useEffect(() => {
@@ -237,6 +238,15 @@ function QuickDispositionModalContent({
       }${payload.notes ? `. Notes: ${payload.notes}` : ''}.`;
 
       const updatedNotes = NotesService.addNote(lead.notes, note);
+      if (payload.roomNumber && payload.roomNumber.trim() !== (lead.room_number || '')) {
+        await LeadsRepository.updateLeadDetails({
+          id: lead.id,
+          name: lead.name,
+          phone: lead.phone,
+          school: lead.school,
+          room_number: payload.roomNumber.trim(),
+        });
+      }
       await LeadsRepository.scheduleAppointment(lead.id, payload.scheduledISO, updatedNotes);
 
       await CallLogsRepository.logCall({
@@ -251,6 +261,7 @@ function QuickDispositionModalContent({
         ...lead,
         last_disposition: 'appointment_set',
         appointment_scheduled_at: payload.scheduledISO,
+        room_number: payload.roomNumber?.trim() || lead.room_number,
         follow_up_at: null,
         notes: updatedNotes,
         attempts_count: (lead.attempts_count || 0) + 1,
@@ -345,7 +356,10 @@ function QuickDispositionModalContent({
   return (
     <>
       <Modal visible={visible && !isApptModalVisible && !isCallbackModalVisible} animationType="slide" transparent onRequestClose={onClose}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
           <TouchableOpacity
             style={StyleSheet.absoluteFill}
             activeOpacity={1}
@@ -566,7 +580,7 @@ function QuickDispositionModalContent({
               </ScrollView>
             )}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Chained Appointment Scheduler Modal */}
@@ -718,6 +732,7 @@ const styles = StyleSheet.create({
   dispoGridContainer: {
     marginTop: 14,
     maxHeight: 440,
+    flexShrink: 1,
   },
   sectionTitle: {
     fontSize: 11,
@@ -778,7 +793,7 @@ const styles = StyleSheet.create({
   },
   dispoCardSub: {
     fontSize: 11,
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     marginTop: 2,
     textAlign: 'center',
   },
@@ -816,6 +831,7 @@ const styles = StyleSheet.create({
   otherContainer: {
     marginTop: 14,
     maxHeight: 460,
+    flexShrink: 1,
   },
   otherHeaderRow: {
     flexDirection: 'row',

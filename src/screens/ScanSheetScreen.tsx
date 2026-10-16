@@ -360,7 +360,11 @@ export default function ScanSheetScreen({ navigation }: any) {
         navigation.replace('DialerHUD', { listId: targetListId, listTitle });
       } else {
         setSavingStatusText('Opening Lead Pipeline...');
-        navigation.navigate('Lists');
+        if (navigation.canGoBack && navigation.canGoBack()) {
+          navigation.goBack();
+        } else {
+          navigation.navigate('MainTabs', { screen: 'Lists' });
+        }
       }
     } catch (e) {
       console.error(e);
@@ -379,7 +383,7 @@ export default function ScanSheetScreen({ navigation }: any) {
         <TouchableOpacity
           style={[styles.backButton, isSaving && { opacity: 0.5 }]}
           disabled={isSaving}
-          onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Lists'))}
+          onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MainTabs', { screen: 'Lists' }))}
         >
           <ArrowLeft size={22} color="#FFFFFF" />
         </TouchableOpacity>

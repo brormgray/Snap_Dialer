@@ -88,23 +88,41 @@ export class DexieDatabaseAdapter implements IDatabase {
       // 4. Data integrity self-healing: ensure any leads with call logs reflect proper attempts & last_disposition
       if (this.leads.length > 0 && this.call_logs.length > 0) {
         let healed = false;
+        const logsByLeadId = new Map<string, any[]>();
+        for (const log of this.call_logs) {
+          if (!log || !log.lead_id) continue;
+          const logLeadId = String(log.lead_id).trim();
+          if (!logLeadId || logLeadId === 'undefined' || logLeadId === 'null') continue;
+          const bucket = logsByLeadId.get(logLeadId);
+          if (bucket) {
+            bucket.push(log);
+          } else {
+            logsByLeadId.set(logLeadId, [log]);
+          }
+        }
+
         for (const lead of this.leads) {
           if (!lead || !lead.id) continue;
           const leadId = String(lead.id).trim();
           if (!leadId || leadId === 'undefined' || leadId === 'null') continue;
 
-          const leadLogs = this.call_logs.filter((log) => {
-            if (!log || !log.lead_id) return false;
-            const logLeadId = String(log.lead_id).trim();
-            return logLeadId && logLeadId !== 'undefined' && logLeadId !== 'null' && logLeadId === leadId;
-          });
+          const allLeadLogs = logsByLeadId.get(leadId);
+          if (!allLeadLogs || allLeadLogs.length === 0) continue;
 
-          if (leadLogs.length > 0) {
-            if (!lead.attempts_count || lead.attempts_count < leadLogs.length) {
-              lead.attempts_count = leadLogs.length;
+          const voiceLogs = allLeadLogs.filter(
+            (l) =>
+              l.disposition &&
+              l.disposition !== 'sms_sent' &&
+              l.disposition !== 'drip_sent' &&
+              !String(l.disposition).startsWith('appt_')
+          );
+
+          if (voiceLogs.length > 0) {
+            if (!lead.attempts_count || lead.attempts_count < voiceLogs.length) {
+              lead.attempts_count = voiceLogs.length;
               healed = true;
             }
-            const sortedLogs = [...leadLogs].sort((a, b) => {
+            const sortedLogs = [...voiceLogs].sort((a, b) => {
               const timeA = String(a.timestamp || (a as any).created_at || '');
               const timeB = String(b.timestamp || (b as any).created_at || '');
               return timeB.localeCompare(timeA);
@@ -134,11 +152,21 @@ export class DexieDatabaseAdapter implements IDatabase {
       if (this.leads.length > 0) {
         let dripHealed = false;
         const today = new Date();
-        const todayStr = today.toISOString().slice(0, 10);
+        let todayStr: string;
+        try {
+          todayStr = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'America/New_York',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+          }).format(today);
+        } catch {
+          todayStr = today.toISOString().slice(0, 10);
+        }
         for (const lead of this.leads) {
           if (!lead || !lead.id) continue;
           if (lead.last_disposition === 'do_not_call' || lead.last_disposition === 'bad_number') continue;
-          if (lead.text_ok === false) continue;
+          if (lead.text_ok === false || lead.text_ok === 0) continue;
 
           // Non-closed sit-down outcome without active track
           if (lead.appointment_outcome === 'nurture_drip' && (!lead.drip_track || lead.drip_track === 'none')) {
@@ -351,10 +379,18 @@ export class DexieDatabaseAdapter implements IDatabase {
       return logs as any;
     }
     if (s.includes('from cadence_rules')) {
-      return [...this.cadence_rules] as any;
+      const rules = [...this.cadence_rules];
+      if (s.includes('order by step_number asc')) {
+        rules.sort((a, b) => (Number(a.step_number) || 0) - (Number(b.step_number) || 0));
+      }
+      return rules as any;
     }
     if (s.includes('from sms_templates')) {
-      return [...this.sms_templates] as any;
+      const templates = [...this.sms_templates];
+      if (s.includes('order by id asc')) {
+        templates.sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')));
+      }
+      return templates as any;
     }
     return [];
   }
@@ -384,7 +420,7 @@ export class DexieDatabaseAdapter implements IDatabase {
     }
     if (s.includes('from call_logs')) {
       if (s.includes('count(*)') || s.includes('sum(')) {
-        let totalDials = this.call_logs.length;
+        let totalDials = 0;
         let appointmentCount = 0;
         let connectedCount = 0;
         let noAnswerCount = 0;
@@ -394,22 +430,30 @@ export class DexieDatabaseAdapter implements IDatabase {
 
         for (const log of this.call_logs) {
           const disp = log.disposition;
-          if (disp === 'appointment_set') {
-            appointmentCount++;
+          const isStandaloneSms =
+            disp === 'sms_sent' ||
+            disp === 'drip_sent' ||
+            ((log.sms_sent === 1 || log.sms_sent === true) && !disp);
+          const isWrapUp = typeof disp === 'string' && disp.startsWith('appt_');
+          if (!isStandaloneSms && !isWrapUp && Boolean(disp)) {
+            totalDials++;
+            if (disp === 'appointment_set') {
+              appointmentCount++;
+            }
+            if (disp === 'connected' || disp === 'spoke') {
+              connectedCount++;
+            }
+            if (disp === 'no_answer') {
+              noAnswerCount++;
+            }
+            if (disp === 'voicemail') {
+              voicemailCount++;
+            }
+            if (disp === 'bad_number') {
+              badNumberCount++;
+            }
           }
-          if (disp === 'connected' || disp === 'spoke') {
-            connectedCount++;
-          }
-          if (disp === 'no_answer') {
-            noAnswerCount++;
-          }
-          if (disp === 'voicemail') {
-            voicemailCount++;
-          }
-          if (disp === 'bad_number') {
-            badNumberCount++;
-          }
-          if (log.sms_sent === 1 || log.sms_sent === true) {
+          if (log.sms_sent === 1 || log.sms_sent === true || disp === 'sms_sent' || disp === 'drip_sent') {
             smsSentCount++;
           }
         }
@@ -435,7 +479,7 @@ export class DexieDatabaseAdapter implements IDatabase {
         const listLeads = this.leads.filter((l) => l.list_id === params[0]);
         const total = listLeads.length;
         const completed = listLeads.filter((l) =>
-          ['connected', 'spoke', 'appointment_set', 'bad_number', 'do_not_call'].includes(l.last_disposition || '')
+          ['connected', 'spoke', 'appointment_set', 'bad_number', 'do_not_call', 'other'].includes(l.last_disposition || '')
         ).length;
         const connected = listLeads.filter((l) =>
           ['connected', 'spoke', 'appointment_set'].includes(l.last_disposition || '')
@@ -802,7 +846,9 @@ export class DexieDatabaseAdapter implements IDatabase {
           lead.updated_at = params[5] || new Date().toISOString();
         } else if (
           (s.includes('follow_up_at = null') || s.includes('follow_up_at=null')) &&
-          !s.includes('last_disposition = ?')
+          !s.includes('last_disposition = ?') &&
+          !s.includes('appointment_scheduled_at') &&
+          !s.includes('appointment_outcome')
         ) {
           lead.follow_up_at = null;
           if (lead.last_disposition === 'callback_requested') {
@@ -812,7 +858,7 @@ export class DexieDatabaseAdapter implements IDatabase {
           lead.updated_at = params[1] || new Date().toISOString();
         } else if (
           (!s.includes('case when') && s.includes("last_disposition = 'callback_requested'")) ||
-          (s.includes('follow_up_at = ?') && !s.includes('appointment_scheduled_at'))
+          (s.includes('follow_up_at = ?') && !s.includes('appointment_scheduled_at') && !s.includes('is_client = ?'))
         ) {
           lead.follow_up_at = params[0];
           lead.last_disposition = 'callback_requested';
@@ -837,7 +883,7 @@ export class DexieDatabaseAdapter implements IDatabase {
                 lead.is_frs = params[pIdx] === 1 || params[pIdx] === true;
                 pIdx++;
               }
-              lead.client_since = params[pIdx] || lead.client_since || null;
+              lead.client_since = params[pIdx] !== undefined ? (params[pIdx] || null) : (lead.client_since || null);
               pIdx++;
               try {
                 lead.products = typeof params[pIdx] === 'string' ? JSON.parse(params[pIdx]) : (params[pIdx] || []);
@@ -876,7 +922,7 @@ export class DexieDatabaseAdapter implements IDatabase {
               } else {
                 lead.updated_at = params[pIdx] || new Date().toISOString();
               }
-              const hasActiveAppt = (lead.last_disposition === 'appointment_set' || Boolean(lead.appointment_scheduled_at)) && !lead.appointment_completed_at;
+              const hasActiveAppt = lead.last_disposition === 'appointment_set' && Boolean(lead.appointment_scheduled_at) && !lead.appointment_completed_at;
               if (lead.is_client && !hasActiveAppt) {
                 if (!lead.appointment_outcome) lead.appointment_outcome = 'converted';
                 if (!lead.appointment_completed_at) lead.appointment_completed_at = new Date().toISOString();
@@ -914,14 +960,42 @@ export class DexieDatabaseAdapter implements IDatabase {
             }
             lead.updated_at = params[plIdx] || new Date().toISOString();
           }
+        } else if (s.includes('is_client = ?') && s.includes('last_drip_sent_at = ?') && s.includes('follow_up_at = ?')) {
+          // Full backup restore secondary UPDATE
+          lead.is_client = params[0] === 1 || params[0] === true;
+          lead.client_since = params[1] || null;
+          try {
+            lead.products = typeof params[2] === 'string' ? JSON.parse(params[2]) : (params[2] || []);
+          } catch { lead.products = []; }
+          lead.annualized_premium = params[3] !== undefined && params[3] !== null ? Number(params[3]) : null;
+          lead.transfer_assets_volume = params[4] !== undefined && params[4] !== null ? Number(params[4]) : null;
+          lead.policy_effective_date = params[5] || null;
+          lead.annual_review_due_date = params[6] || null;
+          lead.drip_track = params[7] || 'none';
+          lead.drip_step = params[8] !== undefined ? Number(params[8]) : 0;
+          lead.last_drip_sent_at = params[9] || null;
+          lead.next_drip_scheduled_at = params[10] || null;
+          lead.appointment_scheduled_at = params[11] || null;
+          lead.appointment_outcome = params[12] || null;
+          lead.appointment_completed_at = params[13] || null;
+          lead.appointment_notes = params[14] || null;
+          lead.follow_up_at = params[15] || null;
+          if (s.includes('last_attempt_at = ?') && params.length >= 19) {
+            lead.last_attempt_at = params[16] || null;
+            try {
+              lead.alternate_phones = typeof params[17] === 'string' ? JSON.parse(params[17]) : (params[17] || []);
+            } catch { lead.alternate_phones = []; }
+          }
         } else if (s.includes('is_client = 1') || s.includes('is_client = ?') || s.includes('is_client=')) {
           const isDirectConvert = s.includes('is_client = 1');
           const offset = isDirectConvert ? 0 : 1;
-          lead.is_client = true;
-          lead.client_since = params[offset] || lead.client_since || new Date().toISOString();
+          lead.is_client = isDirectConvert ? true : (params[0] === 1 || params[0] === true);
+          lead.client_since = isDirectConvert
+            ? (lead.client_since || params[offset] || new Date().toISOString())
+            : (params[offset] || lead.client_since || null);
           if (isDirectConvert) {
             lead.appointment_outcome = 'converted';
-            lead.appointment_completed_at = params[9] || lead.appointment_completed_at || new Date().toISOString();
+            lead.appointment_completed_at = lead.appointment_completed_at || params[9] || new Date().toISOString();
             if (lead.last_disposition === 'appointment_set') lead.last_disposition = 'connected';
           }
           try {
@@ -938,7 +1012,7 @@ export class DexieDatabaseAdapter implements IDatabase {
             if (params[10]) {
               lead.notes = lead.notes ? `${lead.notes}\n\n${params[10]}` : params[10];
             }
-          } else if (params[offset + 9] && s.includes('notes = ?')) {
+          } else if (params[offset + 9] && s.includes('notes = ?') && !s.includes('appointment_notes = ?')) {
             lead.notes = params[offset + 9];
           }
           lead.updated_at = params[params.length - 2] || new Date().toISOString();
@@ -956,7 +1030,11 @@ export class DexieDatabaseAdapter implements IDatabase {
             lead.next_drip_scheduled_at = params[1] || null;
             if (params[2]) lead.notes = lead.notes ? `${lead.notes}\n\n${params[2]}` : params[2];
             lead.updated_at = params[4] || new Date().toISOString();
-          } else if (s.includes("appointment_outcome = 'no_show'") || s.includes("outcome = 'declined'")) {
+          } else if (
+            s.includes("appointment_outcome = 'no_show'") ||
+            s.includes("appointment_outcome = 'declined'") ||
+            s.includes("outcome = 'declined'")
+          ) {
             lead.appointment_outcome = s.includes('no_show') ? 'no_show' : 'declined';
             lead.appointment_completed_at = params[0] || new Date().toISOString();
             lead.last_disposition = s.includes('no_show') ? 'no_answer' : 'spoke';
@@ -1011,6 +1089,13 @@ export class DexieDatabaseAdapter implements IDatabase {
           lead.updated_at = params[2] || new Date().toISOString();
         } else if (s.includes('priority_tier = ?')) {
           lead.priority_tier = Number(params[0]);
+          lead.updated_at = params[1] || new Date().toISOString();
+        } else if (s.includes('alternate_phones = ?')) {
+          try {
+            lead.alternate_phones = typeof params[0] === 'string' ? JSON.parse(params[0]) : (params[0] || []);
+          } catch {
+            lead.alternate_phones = [];
+          }
           lead.updated_at = params[1] || new Date().toISOString();
         } else if (s.includes('notes = ?') && s.includes('updated_at = ?') && params.length === 3) {
           lead.notes = params[0] || null;
@@ -1138,7 +1223,10 @@ export async function getDatabase(): Promise<IDatabase> {
     await initNativeDatabase(nativeDb);
     dbInstance = nativeDb as unknown as IDatabase;
     return dbInstance;
-  })();
+  })().catch((err) => {
+    dbInitPromise = null;
+    throw err;
+  });
 
   return dbInitPromise;
 }
@@ -1164,7 +1252,7 @@ async function initWebDefaults(db: DexieDatabaseAdapter) {
     await db.runAsync('INSERT INTO sms_templates', [
       'tpl_frs_drop',
       'D.R.O.P. & Pension Sit-Down',
-      'Hi {{name}}, this is {{my_name}} with {{company}}. Regarding your {{years_in_frs}} years in FRS and your report card request, when this week can we do a sit-down during your planning period to review your DROP timeline and bonus options?',
+      'Hi {{name}}, this is {{my_name}} with {{company}}. Regarding your {{years_in_frs}} in FRS and your report card request, when this week can we do a sit-down during your planning period to review your DROP timeline and bonus options?',
     ]);
 
     await db.runAsync('INSERT INTO cadence_rules', ['cad_1', 1, 'no_answer', 'call_and_sms', 'tpl_just_called', 2]);
@@ -1221,6 +1309,7 @@ async function initNativeDatabase(db: any): Promise<void> {
       list_id TEXT NOT NULL,
       name TEXT NOT NULL,
       phone TEXT NOT NULL,
+      alternate_phones TEXT,
       school TEXT,
       email TEXT,
       age TEXT,
@@ -1310,6 +1399,7 @@ async function initNativeDatabase(db: any): Promise<void> {
   `);
 
   const columnsToAdd = [
+    'alternate_phones TEXT',
     'priority_tier INTEGER DEFAULT 1',
     'room_number TEXT',
     'email TEXT',
@@ -1364,7 +1454,7 @@ async function initNativeDatabase(db: any): Promise<void> {
        ('tpl_just_called', 'No Answer - Just Called Follow-up', 'Hi {{name}}, this is {{my_name}} with {{company}}! I just tried giving you a quick call regarding your FRS Report Card from {{school}}. Feel free to call me back, or text me a good time during your planning period to connect!'),
        ('tpl_frs_meeting', 'Planning Period Sit-Down Confirmation', 'Hi {{name}}, this is {{my_name}} with {{company}}. I have your FRS Report Card from {{school}} and will be on campus this week. Does {{meeting_pref}} still work for a sit-down during your planning period in your room to review your FRS & 403(b) options?'),
        ('tpl_frs_planning', 'Planning Period Follow-up', 'Hi {{name}}, {{my_name}} with {{company}}! Tried catching you regarding your FRS analysis. I will be visiting {{school}} this week—would doing a sit-down during your planning period work for you?'),
-       ('tpl_frs_drop', 'D.R.O.P. & Pension Sit-Down', 'Hi {{name}}, this is {{my_name}} with {{company}}. Regarding your {{years_in_frs}} years in FRS and your report card request, when this week can we do a sit-down during your planning period to review your DROP timeline and bonus options?')`
+       ('tpl_frs_drop', 'D.R.O.P. & Pension Sit-Down', 'Hi {{name}}, this is {{my_name}} with {{company}}. Regarding your {{years_in_frs}} in FRS and your report card request, when this week can we do a sit-down during your planning period to review your DROP timeline and bonus options?')`
     );
 
     await db.runAsync(

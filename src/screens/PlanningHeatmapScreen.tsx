@@ -27,6 +27,7 @@ import { LeadsRepository } from '../db/leadsRepository';
 import { CalendarService } from '../services/calendarService';
 import { HapticsService } from '../services/hapticsService';
 import { TelephonyService } from '../services/telephonyService';
+import { PipelineStateService } from '../services/pipelineStateService';
 import { getScheduleForSchool, matchPeriodId, getCurrentlyActivePeriodId } from '../data/bellSchedules';
 import { Lead } from '../types';
 import { Colors } from '../theme/colors';
@@ -45,7 +46,13 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
 
   useEffect(() => {
     loadPlanningData();
-  }, []);
+    const unsubscribe = navigation?.addListener?.('focus', () => {
+      loadPlanningData();
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [navigation]);
 
   const loadPlanningData = async () => {
     try {
@@ -60,13 +67,13 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
 
   const handleHeatmapCall = async (lead: Lead) => {
     if (!lead.phone) return;
-    await HapticsService.medium();
     const startTime = Date.now();
     setCallStartTime(startTime);
     setQuickDispoLead(lead);
     setIsCallActive(true);
     setIsQuickDispoVisible(true);
-    await TelephonyService.makeCall(lead.phone);
+    TelephonyService.makeCall(lead.phone).catch(() => {});
+    HapticsService.medium().catch(() => {});
   };
 
   const handleHeatmapDispo = async (lead: Lead) => {
@@ -92,9 +99,7 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
   };
 
   const scopedLeads = selectedSchool === 'All' ? leads : leads.filter((l) => (l.school || 'VOL') === selectedSchool);
-  const apptLeads = scopedLeads.filter(
-    (l) => (l.last_disposition === 'appointment_set' || Boolean(l.appointment_scheduled_at)) && !l.appointment_completed_at
-  );
+  const apptLeads = scopedLeads.filter((l) => PipelineStateService.isActiveAppointment(l));
   const totalSlotsCount = scopedLeads.filter((l) => Boolean(l.planning_period)).length;
 
   return (
@@ -175,9 +180,7 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
 
           {periods.map((period) => {
             const periodLeads = getLeadsForPeriod(period.id);
-            const confirmedInPeriod = periodLeads.filter(
-              (l) => (l.last_disposition === 'appointment_set' || Boolean(l.appointment_scheduled_at)) && !l.appointment_completed_at
-            );
+            const confirmedInPeriod = periodLeads.filter((l) => PipelineStateService.isActiveAppointment(l));
 
             return (
               <View key={period.id} style={styles.periodCard}>
@@ -204,9 +207,7 @@ export default function PlanningHeatmapScreen({ navigation }: any) {
                 ) : (
                   <View style={styles.leadsGrid}>
                     {periodLeads.map((lead) => {
-                      const isConfirmed =
-                        (lead.last_disposition === 'appointment_set' || Boolean(lead.appointment_scheduled_at)) &&
-                        !lead.appointment_completed_at;
+                      const isConfirmed = PipelineStateService.isActiveAppointment(lead);
 
                       return (
                         <TouchableOpacity

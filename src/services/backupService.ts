@@ -166,7 +166,14 @@ export class BackupService {
       const cadenceRulesToImport = Array.isArray(backupData.cadenceRules || backupData.cadence_rules)
         ? backupData.cadenceRules || backupData.cadence_rules
         : [];
-      const settingsToImport = Array.isArray(backupData.settings) ? backupData.settings : [];
+      const settingsToImport: { key: string; value: string }[] = Array.isArray(backupData.settings)
+        ? backupData.settings
+        : backupData.settings && typeof backupData.settings === 'object'
+        ? Object.entries(backupData.settings).map(([key, val]) => ({
+            key,
+            value: typeof val === 'boolean' ? (val ? 'true' : 'false') : String(val ?? ''),
+          }))
+        : [];
 
       if (leadsToImport.length === 0 && listsToImport.length === 0) {
         return {
@@ -307,7 +314,15 @@ export class BackupService {
             ]
           );
 
-          if (lead.is_client || lead.appointment_scheduled_at || lead.appointment_notes) {
+          if (
+            lead.is_client ||
+            lead.appointment_scheduled_at ||
+            lead.appointment_outcome ||
+            lead.appointment_notes ||
+            lead.follow_up_at ||
+            (lead.drip_track && lead.drip_track !== 'none') ||
+            lead.last_attempt_at
+          ) {
             await db.runAsync(
               `UPDATE leads SET 
                 is_client = ?, client_since = ?, products = ?, annualized_premium = ?, transfer_assets_volume = ?,
@@ -336,6 +351,17 @@ export class BackupService {
               ]
             );
           }
+
+          if (lead.alternate_phones && (Array.isArray(lead.alternate_phones) ? lead.alternate_phones.length > 0 : Boolean(lead.alternate_phones))) {
+            await db.runAsync(
+              'UPDATE leads SET alternate_phones = ?, updated_at = ? WHERE id = ?',
+              [
+                typeof lead.alternate_phones === 'string' ? lead.alternate_phones : JSON.stringify(lead.alternate_phones),
+                lead.updated_at || new Date().toISOString(),
+                leadId,
+              ]
+            );
+          }
         }
 
         // Restore Call Logs
@@ -355,6 +381,46 @@ export class BackupService {
               log.sms_body || null,
             ]
           );
+        }
+
+        // Restore SMS Templates
+        for (const tpl of smsTemplatesToImport) {
+          if (tpl.id && tpl.title && tpl.body) {
+            await db.runAsync(
+              `INSERT OR REPLACE INTO sms_templates (id, title, body, is_default) VALUES (?, ?, ?, ?)`,
+              [tpl.id, tpl.title, tpl.body, tpl.is_default ? 1 : 0]
+            );
+          }
+        }
+
+        // Restore Cadence Rules
+        for (const rule of cadenceRulesToImport) {
+          if (rule.id && rule.step_number !== undefined) {
+            await db.runAsync(
+              `INSERT OR REPLACE INTO cadence_rules (id, step_number, name, delay_days, action_type, sms_template_id, condition_disposition, is_active)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                rule.id,
+                rule.step_number,
+                rule.name || `Step ${rule.step_number}`,
+                rule.delay_days || 0,
+                rule.action_type || 'call',
+                rule.sms_template_id || null,
+                rule.condition_disposition || 'any',
+                rule.is_active !== false ? 1 : 0,
+              ]
+            );
+          }
+        }
+
+        // Restore Settings
+        for (const s of settingsToImport) {
+          if (s.key) {
+            await db.runAsync(
+              `INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`,
+              [s.key, String(s.value ?? '')]
+            );
+          }
         }
       });
 

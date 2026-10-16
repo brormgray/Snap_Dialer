@@ -7,7 +7,10 @@ export class CsvService {
    */
   private static escapeCell(value: any): string {
     if (value === null || value === undefined) return '""';
-    const stringVal = String(value).replace(/"/g, '""');
+    let stringVal = String(value).replace(/"/g, '""');
+    if (/^[\s]*[=+\-@\t\r]/.test(stringVal)) {
+      stringVal = `'${stringVal}`;
+    }
     return `"${stringVal}"`;
   }
 
@@ -46,7 +49,13 @@ export class CsvService {
       this.escapeCell(l.room_number || ''),
       this.escapeCell(l.planning_period || ''),
       this.escapeCell(l.years_in_frs || ''),
-      this.escapeCell(l.priority_tier === 3 ? 'Legacy Archive (Tier 3)' : 'Fresh Priority (Tier 1)'),
+      this.escapeCell(
+        l.priority_tier === 3
+          ? 'Legacy Archive (Tier 3)'
+          : l.priority_tier === 2
+          ? 'Standard (Tier 2)'
+          : 'Fresh Priority (Tier 1)'
+      ),
       this.escapeCell(l.last_disposition || 'pending'),
       this.escapeCell(l.attempts_count || 0),
       this.escapeCell(formatDateSafe(l.follow_up_at)),
@@ -109,7 +118,9 @@ export class CsvService {
     const phoneIdx = headers.findIndex((h) => h.includes('phone') || h.includes('cell') || h.includes('mobile') || h.includes('tel'));
     const schoolIdx = headers.findIndex((h) => h.includes('school') || h.includes('campus') || h.includes('district'));
     const roomIdx = headers.findIndex((h) => h.includes('room') || h.includes('class'));
-    const planningIdx = headers.findIndex((h) => h.includes('planning') || h.includes('period') || h.includes('time'));
+    const planningIdx = headers.findIndex(
+      (h) => h.includes('planning') || h.includes('period') || (h.includes('prep') && !h.includes('report'))
+    );
     const yearsIdx = headers.findIndex((h) => h.includes('year') || h.includes('frs') || h.includes('tenure') || h.includes('service'));
     const emailIdx = headers.findIndex((h) => h.includes('email') || h.includes('mail'));
     const notesIdx = headers.findIndex((h) => h.includes('note') || h.includes('comment'));

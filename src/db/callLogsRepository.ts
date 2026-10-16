@@ -86,12 +86,16 @@ export class CallLogsRepository {
     let smsSentCount = 0;
 
     for (const r of rows) {
-      if (r.sms_sent === 1 || r.sms_sent === true) {
+      if (r.sms_sent === 1 || r.sms_sent === true || r.disposition === 'sms_sent' || r.disposition === 'drip_sent') {
         smsSentCount++;
       }
-      // Only count as an outbound call dial if it was a voice attempt, not a standalone SMS log
-      const isStandaloneSms = (r.sms_sent === 1 || r.sms_sent === true) && (r.disposition === 'sms_sent' || r.disposition === 'drip_sent' || !r.disposition);
-      const isVoiceDial = !isStandaloneSms && Boolean(r.disposition);
+      // Only count as an outbound call dial if it was a voice attempt, not a standalone SMS/drip/wrap-up log
+      const isStandaloneSms =
+        r.disposition === 'sms_sent' ||
+        r.disposition === 'drip_sent' ||
+        ((r.sms_sent === 1 || r.sms_sent === true) && !r.disposition);
+      const isWrapUp = typeof r.disposition === 'string' && r.disposition.startsWith('appt_');
+      const isVoiceDial = !isStandaloneSms && !isWrapUp && Boolean(r.disposition);
       if (isVoiceDial) {
         totalDials++;
         if (r.disposition === 'appointment_set') {
@@ -112,9 +116,13 @@ export class CallLogsRepository {
     if (totalDials === 0) {
       const leads = await db.getAllAsync<any>('SELECT * FROM leads');
       for (const l of leads) {
+        const isNonVoiceDisp =
+          l.last_disposition === 'sms_sent' ||
+          l.last_disposition === 'drip_sent' ||
+          (typeof l.last_disposition === 'string' && l.last_disposition.startsWith('appt_'));
         if (l.attempts_count && l.attempts_count > 0) {
           totalDials += Number(l.attempts_count);
-        } else if (l.last_disposition && l.last_disposition !== 'pending') {
+        } else if (l.last_disposition && l.last_disposition !== 'pending' && !isNonVoiceDisp) {
           totalDials += 1;
         }
 
@@ -188,9 +196,9 @@ export class CallLogsRepository {
     let badNumberCount = 0;
     let smsSentCount = 0;
 
-    // Time boundaries for weekly cohorts
+    // Time boundaries for weekly cohorts (aligned to Sunday 00:00:00 to match PipelineStateService & LeadsRepository)
     const now = new Date();
-    const dayOfWeek = (now.getDay() + 6) % 7; // Monday = 0
+    const dayOfWeek = now.getDay(); // Sunday = 0
     const startOfThisWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek, 0, 0, 0);
     const startOfLastWeek = new Date(startOfThisWeek.getTime() - 7 * 24 * 60 * 60 * 1000);
 
@@ -206,11 +214,15 @@ export class CallLogsRepository {
     }
 
     for (const r of rows) {
-      if (r.sms_sent === 1 || r.sms_sent === true) {
+      if (r.sms_sent === 1 || r.sms_sent === true || r.disposition === 'sms_sent' || r.disposition === 'drip_sent') {
         smsSentCount++;
       }
-      const isStandaloneSms = (r.sms_sent === 1 || r.sms_sent === true) && (r.disposition === 'sms_sent' || r.disposition === 'drip_sent' || !r.disposition);
-      const isVoiceDial = !isStandaloneSms && Boolean(r.disposition);
+      const isStandaloneSms =
+        r.disposition === 'sms_sent' ||
+        r.disposition === 'drip_sent' ||
+        ((r.sms_sent === 1 || r.sms_sent === true) && !r.disposition);
+      const isWrapUp = typeof r.disposition === 'string' && r.disposition.startsWith('appt_');
+      const isVoiceDial = !isStandaloneSms && !isWrapUp && Boolean(r.disposition);
       if (isVoiceDial) {
         totalDials++;
         const isAppt = r.disposition === 'appointment_set';
@@ -247,8 +259,9 @@ export class CallLogsRepository {
             }
           } catch {}
 
-          if (hourlyMap.has(hour)) {
-            const hStats = hourlyMap.get(hour)!;
+          const clampedHour = Math.max(8, Math.min(19, hour));
+          if (hourlyMap.has(clampedHour)) {
+            const hStats = hourlyMap.get(clampedHour)!;
             hStats.dials++;
             if (isAppt || isSpoke) hStats.connected++;
           }
@@ -259,9 +272,13 @@ export class CallLogsRepository {
     // Fallback: If no call_logs records yet, aggregate directly from leads
     if (totalDials === 0) {
       for (const l of leads) {
+        const isNonVoiceDisp =
+          l.last_disposition === 'sms_sent' ||
+          l.last_disposition === 'drip_sent' ||
+          (typeof l.last_disposition === 'string' && l.last_disposition.startsWith('appt_'));
         if (l.attempts_count && l.attempts_count > 0) {
           totalDials += Number(l.attempts_count);
-        } else if (l.last_disposition && l.last_disposition !== 'pending') {
+        } else if (l.last_disposition && l.last_disposition !== 'pending' && !isNonVoiceDisp) {
           totalDials += 1;
         }
 
@@ -284,7 +301,15 @@ export class CallLogsRepository {
     // Count pension / DROP inquiries among leads
     let dropInquiriesCount = 0;
     for (const l of leads) {
-      const interests = Array.isArray(l.frs_interests) ? l.frs_interests : [];
+      let interests: string[] = [];
+      if (Array.isArray(l.frs_interests)) {
+        interests = l.frs_interests;
+      } else if (typeof l.frs_interests === 'string') {
+        try {
+          const parsed = JSON.parse(l.frs_interests);
+          if (Array.isArray(parsed)) interests = parsed;
+        } catch {}
+      }
       const hasDropInterest = interests.some((i: string) => /drop|pension|retirement|estimate/i.test(i));
       const hasDropQuestion = l.custom_questions && /drop|pension|retire|estimate/i.test(l.custom_questions);
       if (hasDropInterest || hasDropQuestion || (l.years_in_frs && Number(l.years_in_frs) >= 20)) {

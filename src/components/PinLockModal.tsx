@@ -7,6 +7,7 @@ import {
   StyleSheet,
   SafeAreaView,
   StatusBar,
+  ScrollView,
 } from 'react-native';
 import { Lock, Delete, ShieldCheck } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
@@ -22,7 +23,11 @@ export default function PinLockModal({ visible, onUnlocked }: PinLockModalProps)
   const [pin, setPin] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [failedAttempts, setFailedAttempts] = useState<number>(0);
-  const [lockoutRemaining, setLockoutRemaining] = useState<number>(0);
+  const [lockoutRemaining, setLockoutRemaining] = useState<number>(() => {
+    const lockoutUntil = SecurityService.getLockoutUntil();
+    const diff = Math.ceil((lockoutUntil - Date.now()) / 1000);
+    return diff > 0 ? diff : 0;
+  });
 
   useEffect(() => {
     if (visible) {
@@ -33,6 +38,7 @@ export default function PinLockModal({ visible, onUnlocked }: PinLockModalProps)
         setLockoutRemaining(diff);
         setErrorMsg(`Too many attempts. Locked for ${diff}s.`);
       } else {
+        setLockoutRemaining(0);
         setErrorMsg(null);
       }
     }
@@ -40,7 +46,6 @@ export default function PinLockModal({ visible, onUnlocked }: PinLockModalProps)
 
   useEffect(() => {
     if (lockoutRemaining <= 0) {
-      SecurityService.clearLockout();
       return;
     }
     const timer = setInterval(() => {
@@ -58,10 +63,10 @@ export default function PinLockModal({ visible, onUnlocked }: PinLockModalProps)
     return () => clearInterval(timer);
   }, [lockoutRemaining]);
 
-  const handleDigitPress = async (digit: string) => {
+  const handleDigitPress = (digit: string) => {
     if (lockoutRemaining > 0) return;
     if (pin.length >= 4) return;
-    await HapticsService.tick();
+    HapticsService.tick().catch(() => {});
     const newPin = pin + digit;
     setPin(newPin);
     setErrorMsg(null);
@@ -69,14 +74,14 @@ export default function PinLockModal({ visible, onUnlocked }: PinLockModalProps)
     if (newPin.length === 4) {
       const isValid = SecurityService.verifyPin(newPin);
       if (isValid) {
-        await HapticsService.success();
+        HapticsService.success().catch(() => {});
         SecurityService.clearLockout();
         setPin('');
         setFailedAttempts(0);
         setLockoutRemaining(0);
         onUnlocked();
       } else {
-        await HapticsService.error();
+        HapticsService.error().catch(() => {});
         const nextFailed = failedAttempts + 1;
         setFailedAttempts(nextFailed);
         if (nextFailed >= 5) {
@@ -92,16 +97,16 @@ export default function PinLockModal({ visible, onUnlocked }: PinLockModalProps)
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (pin.length > 0) {
-      await HapticsService.tick();
+      HapticsService.tick().catch(() => {});
       setPin((prev) => prev.slice(0, -1));
       setErrorMsg(null);
     }
   };
 
-  const handleClear = async () => {
-    await HapticsService.tick();
+  const handleClear = () => {
+    HapticsService.tick().catch(() => {});
     setPin('');
     setErrorMsg(null);
   };
@@ -112,79 +117,85 @@ export default function PinLockModal({ visible, onUnlocked }: PinLockModalProps)
     <Modal visible={visible} animationType="fade" transparent={false} onRequestClose={() => {}}>
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor={Colors.brandPrimary} />
-
-        <View style={styles.headerArea}>
-          <View style={styles.iconCircle}>
-            <Lock size={32} color={Colors.brandPrimary} />
-          </View>
-          <Text style={styles.title}>SnapDialer Protected</Text>
-          <Text style={styles.subtitle}>Enter your 4-digit PIN to access educator pipeline</Text>
-        </View>
-
-        {/* 4 PIN Dots */}
-        <View style={styles.dotsRow}>
-          {[0, 1, 2, 3].map((index) => {
-            const isFilled = pin.length > index;
-            return (
-              <View
-                key={index}
-                style={[
-                  styles.dot,
-                  isFilled && styles.dotFilled,
-                  errorMsg ? styles.dotError : null,
-                ]}
-              />
-            );
-          })}
-        </View>
-
-        {errorMsg ? <Text style={styles.errorText}>{errorMsg}</Text> : <View style={{ height: 20 }} />}
-
-        {/* Keypad */}
-        <View style={styles.keypad}>
-          {[
-            ['1', '2', '3'],
-            ['4', '5', '6'],
-            ['7', '8', '9'],
-          ].map((row, rIdx) => (
-            <View key={rIdx} style={styles.keypadRow}>
-              {row.map((num) => (
-                <TouchableOpacity
-                  key={num}
-                  style={styles.keyButton}
-                  onPress={() => handleDigitPress(num)}
-                  activeOpacity={0.65}
-                >
-                  <Text style={styles.keyText}>{num}</Text>
-                </TouchableOpacity>
-              ))}
+        <ScrollView
+          style={{ width: '100%' }}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          <View style={styles.headerArea}>
+            <View style={styles.iconCircle}>
+              <Lock size={32} color={Colors.brandPrimary} />
             </View>
-          ))}
-
-          {/* Bottom row: Clear, 0, Backspace */}
-          <View style={styles.keypadRow}>
-            <TouchableOpacity style={styles.actionButton} onPress={handleClear} activeOpacity={0.65}>
-              <Text style={styles.actionText}>Clear</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.keyButton}
-              onPress={() => handleDigitPress('0')}
-              activeOpacity={0.65}
-            >
-              <Text style={styles.keyText}>0</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionButton} onPress={handleDelete} activeOpacity={0.65}>
-              <Delete size={24} color={Colors.textSecondary} />
-            </TouchableOpacity>
+            <Text style={styles.title}>SnapDialer Protected</Text>
+            <Text style={styles.subtitle}>Enter your 4-digit PIN to access educator pipeline</Text>
           </View>
-        </View>
 
-        <View style={styles.footerNote}>
-          <ShieldCheck size={16} color={Colors.brandPrimary} />
-          <Text style={styles.footerNoteText}>FERPA & Educator Data Shield Active</Text>
-        </View>
+          {/* 4 PIN Dots */}
+          <View style={styles.dotsRow}>
+            {[0, 1, 2, 3].map((index) => {
+              const isFilled = pin.length > index;
+              return (
+                <View
+                  key={index}
+                  style={[
+                    styles.dot,
+                    isFilled && styles.dotFilled,
+                    errorMsg ? styles.dotError : null,
+                  ]}
+                />
+              );
+            })}
+          </View>
+
+          {errorMsg ? <Text style={styles.errorText}>{errorMsg}</Text> : <View style={{ height: 20 }} />}
+
+          {/* Keypad */}
+          <View style={styles.keypad}>
+            {[
+              ['1', '2', '3'],
+              ['4', '5', '6'],
+              ['7', '8', '9'],
+            ].map((row, rIdx) => (
+              <View key={rIdx} style={styles.keypadRow}>
+                {row.map((num) => (
+                  <TouchableOpacity
+                    key={num}
+                    style={styles.keyButton}
+                    onPress={() => handleDigitPress(num)}
+                    activeOpacity={0.65}
+                  >
+                    <Text style={styles.keyText}>{num}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ))}
+
+            {/* Bottom row: Clear, 0, Backspace */}
+            <View style={styles.keypadRow}>
+              <TouchableOpacity style={styles.actionButton} onPress={handleClear} activeOpacity={0.65}>
+                <Text style={styles.actionText}>Clear</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.keyButton}
+                onPress={() => handleDigitPress('0')}
+                activeOpacity={0.65}
+              >
+                <Text style={styles.keyText}>0</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.actionButton} onPress={handleDelete} activeOpacity={0.65}>
+                <Delete size={24} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.footerNote}>
+            <ShieldCheck size={16} color={Colors.brandPrimary} />
+            <Text style={styles.footerNoteText}>FERPA & Educator Data Shield Active</Text>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     </Modal>
   );
@@ -194,9 +205,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.bgApp,
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 36,
+    paddingVertical: 28,
   },
   headerArea: {
     alignItems: 'center',

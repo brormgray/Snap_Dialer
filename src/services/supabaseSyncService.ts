@@ -146,6 +146,7 @@ function mapLeadToSnapSchema(lead: any): object {
     last_disposition: lead.last_disposition || 'pending',
     last_attempt_at: lead.last_attempt_at || null,
     follow_up_at: lead.follow_up_at || null,
+    appointment_notes: lead.appointment_notes || null,
     created_at: lead.created_at || new Date().toISOString(),
     updated_at: lead.updated_at || new Date().toISOString(),
   };
@@ -220,9 +221,9 @@ async function saveToNativeSqlite(db: IDatabase, lists: any[], leads: any[], log
             lead.years_in_frs || null,
             lead.text_ok ? 1 : 0,
             lead.frs_knowledge || null,
-            lead.frs_interests || null,
+            typeof lead.frs_interests === 'string' ? lead.frs_interests : JSON.stringify(lead.frs_interests || []),
             lead.custom_questions || null,
-            lead.meeting_preferences || null,
+            typeof lead.meeting_preferences === 'string' ? lead.meeting_preferences : JSON.stringify(lead.meeting_preferences || []),
             lead.annual_salary || null,
             lead.present_403b_contribution || null,
             lead.source_image_uri || null,
@@ -264,7 +265,7 @@ async function saveToNativeSqlite(db: IDatabase, lists: any[], leads: any[], log
             log.list_id || '',
             log.timestamp || new Date().toISOString(),
             log.duration_seconds || 0,
-            log.disposition || 'unanswered',
+            log.disposition || 'no_answer',
             log.note || null,
             log.sms_sent ? 1 : 0,
             log.sms_body || null,
@@ -407,20 +408,22 @@ export class SupabaseSyncService {
       if (leadErr) throw new Error(`Leads restore failed: ${leadErr.message}`);
       if (logErr) throw new Error(`Call logs restore failed: ${logErr.message}`);
 
+      const db = await getDatabase();
+      const existingSettings = await db.getAllAsync<any>('SELECT * FROM settings');
+
       const restoredState: DatabaseState = {
         lists: lists || [],
         leads: leads || [],
         call_logs: logs || [],
         cadence_rules: rules || [],
         sms_templates: templates || [],
-        settings: [],
+        settings: existingSettings || [],
       };
 
       await IndexedDbStorage.saveState(restoredState);
 
       // Persist to native SQLite if running on iOS/Android
       if (Platform.OS !== 'web') {
-        const db = await getDatabase();
         await saveToNativeSqlite(db, lists || [], leads || [], logs || []);
       }
 
@@ -547,6 +550,10 @@ export class SupabaseSyncService {
 
           if (cTime > lTime) {
             const localPreserved = {
+              id: lLead.id,
+              age: lLead.age || cLead.age || null,
+              alternate_phones: lLead.alternate_phones || cLead.alternate_phones || [],
+              is_frs: lLead.is_frs !== undefined ? lLead.is_frs : (cLead.is_frs !== undefined ? cLead.is_frs : true),
               source_image_uri: lLead.source_image_uri || cLead.source_image_uri || null,
               text_ok: lLead.text_ok !== undefined ? lLead.text_ok : (cLead.text_ok !== undefined ? cLead.text_ok : true),
               frs_interests: lLead.frs_interests || cLead.frs_interests || null,
@@ -571,6 +578,7 @@ export class SupabaseSyncService {
               appointment_scheduled_at: lLead.appointment_scheduled_at || cLead.appointment_scheduled_at || null,
               appointment_outcome: lLead.appointment_outcome || cLead.appointment_outcome || null,
               appointment_completed_at: lLead.appointment_completed_at || cLead.appointment_completed_at || null,
+              appointment_notes: cLead.appointment_notes || lLead.appointment_notes || null,
             };
             Object.assign(lLead, cLead, localPreserved);
             localUpdated++;
@@ -645,18 +653,21 @@ export class SupabaseSyncService {
 
       // 4. APPLY PUSHES TO CLOUD
       if (listsToPush.length > 0) {
-        await client.from(`${TABLE_PREFIX}lists`).upsert(listsToPush, { onConflict: 'id' });
+        const { error } = await client.from(`${TABLE_PREFIX}lists`).upsert(listsToPush, { onConflict: 'id' });
+        if (error) throw new Error(`Lists push failed: ${error.message}`);
       }
       if (leadsToPush.length > 0) {
         const CHUNK = 100;
         for (let i = 0; i < leadsToPush.length; i += CHUNK) {
-          await client.from(`${TABLE_PREFIX}leads`).upsert(leadsToPush.slice(i, i + CHUNK), { onConflict: 'id' });
+          const { error } = await client.from(`${TABLE_PREFIX}leads`).upsert(leadsToPush.slice(i, i + CHUNK), { onConflict: 'id' });
+          if (error) throw new Error(`Leads push failed: ${error.message}`);
         }
       }
       if (logsToPush.length > 0) {
         const CHUNK = 100;
         for (let i = 0; i < logsToPush.length; i += CHUNK) {
-          await client.from(`${TABLE_PREFIX}call_logs`).upsert(logsToPush.slice(i, i + CHUNK), { onConflict: 'id' });
+          const { error } = await client.from(`${TABLE_PREFIX}call_logs`).upsert(logsToPush.slice(i, i + CHUNK), { onConflict: 'id' });
+          if (error) throw new Error(`Call logs push failed: ${error.message}`);
         }
       }
 

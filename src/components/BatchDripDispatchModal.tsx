@@ -52,18 +52,45 @@ export function BatchDripDispatchModal({
   const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false);
   const [selectedFrsTopic, setSelectedFrsTopic] = useState<FrsTopicKey | undefined>(undefined);
 
+  const wasVisibleRef = React.useRef<boolean>(false);
+  const advanceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
-    if (visible && dueDrips.length > 0) {
-      setLocalQueue([...dueDrips]);
-      setCurrentIndex(0);
-      setSelectedFrsTopic(undefined);
-      setCustomMessage(dueDrips[0]?.formattedMessage || '');
+    if (visible && !wasVisibleRef.current) {
+      wasVisibleRef.current = true;
+      if (dueDrips.length > 0) {
+        setLocalQueue([...dueDrips]);
+        setCurrentIndex(0);
+        setSelectedFrsTopic(undefined);
+        setCustomMessage(dueDrips[0]?.formattedMessage || '');
+      } else {
+        setLocalQueue([]);
+      }
+    } else if (!visible) {
+      wasVisibleRef.current = false;
+      if (advanceTimerRef.current) {
+        clearTimeout(advanceTimerRef.current);
+        advanceTimerRef.current = null;
+      }
     }
   }, [visible, dueDrips]);
+
+  useEffect(() => {
+    return () => {
+      if (advanceTimerRef.current) {
+        clearTimeout(advanceTimerRef.current);
+      }
+    };
+  }, []);
 
   const currentItem: DueDripItem | undefined = localQueue[currentIndex];
 
   const handleClose = () => {
+    if (advanceTimerRef.current) {
+      clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = null;
+    }
+    setIsSending(false);
     setCurrentIndex(0);
     setSelectedFrsTopic(undefined);
     onClose();
@@ -139,7 +166,7 @@ export function BatchDripDispatchModal({
       onDripSent();
 
       // 4. Advance to next educator after short cooldown
-      setTimeout(() => {
+      advanceTimerRef.current = setTimeout(() => {
         setIsSending(false);
         handleNext();
       }, 800);
@@ -626,7 +653,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   educatorPhone: {
-    color: Colors.textMuted,
+    color: '#94A3B8',
     fontSize: 13,
     marginTop: 2,
   },
@@ -646,7 +673,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(16, 185, 129, 0.3)',
   },
   trackBadgeText: {
-    color: Colors.heavenlyGold,
+    color: '#FBBF24',
     fontSize: 10,
     fontWeight: '800',
   },
@@ -693,7 +720,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(212, 160, 23, 0.2)',
   },
   nextTouchText: {
-    color: Colors.heavenlyGold,
+    color: '#FBBF24',
     fontSize: 11,
     fontWeight: '700',
   },
@@ -704,7 +731,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   metaText: {
-    color: Colors.textSecondary,
+    color: '#CBD5E1',
     fontSize: 12,
   },
   planningStatusBox: {
@@ -724,7 +751,7 @@ const styles = StyleSheet.create({
     borderColor: '#22C55E',
   },
   planningStatusText: {
-    color: Colors.heavenlyGold,
+    color: '#FBBF24',
     fontSize: 11,
     fontWeight: '700',
   },
@@ -737,7 +764,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   templateStageTitle: {
-    color: Colors.textMuted,
+    color: '#94A3B8',
     fontSize: 11,
     fontWeight: '700',
     flex: 1,
@@ -770,10 +797,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: Colors.borderSubtle,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
   },
   focusChipText: {
-    color: Colors.textSecondary,
+    color: '#E2E8F0',
     fontSize: 11,
     fontWeight: '600',
   },
@@ -803,7 +830,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(212, 160, 23, 0.4)',
   },
   wisdomBadgeText: {
-    color: Colors.heavenlyGold,
+    color: '#FBBF24',
     fontSize: 9,
     fontWeight: '800',
     letterSpacing: 0.5,
@@ -815,7 +842,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   wisdomFact: {
-    color: Colors.textSecondary,
+    color: '#CBD5E1',
     fontSize: 11,
     lineHeight: 15,
     marginBottom: 8,
@@ -838,15 +865,15 @@ const styles = StyleSheet.create({
   },
   wisdomChipActive: {
     backgroundColor: 'rgba(212, 160, 23, 0.22)',
-    borderColor: Colors.heavenlyGold,
+    borderColor: '#F59E0B',
   },
   wisdomChipText: {
-    color: Colors.textMuted,
+    color: '#CBD5E1',
     fontSize: 10,
     fontWeight: '600',
   },
   wisdomChipTextActive: {
-    color: Colors.heavenlyGold,
+    color: '#FBBF24',
     fontWeight: '800',
   },
   messageBox: {
@@ -872,7 +899,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   charCountText: {
-    color: Colors.textMuted,
+    color: '#94A3B8',
     fontSize: 11,
     flex: 1,
   },
@@ -882,12 +909,12 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   resetBtnText: {
-    color: Colors.brandAccent,
+    color: '#38BDF8',
     fontSize: 11,
     fontWeight: '700',
   },
   complianceDisclaimer: {
-    color: Colors.textMuted,
+    color: '#94A3B8',
     fontSize: 11,
     lineHeight: 15,
     textAlign: 'center',
@@ -908,10 +935,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 6,
     borderWidth: 1,
-    borderColor: Colors.borderSubtle,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
   },
   skipBtnText: {
-    color: Colors.textMuted,
+    color: '#CBD5E1',
     fontSize: 14,
     fontWeight: '700',
   },
@@ -920,7 +947,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.heavenlyGold,
+    backgroundColor: '#F59E0B',
     paddingVertical: 14,
     borderRadius: 12,
     gap: 8,
@@ -952,7 +979,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   emptySub: {
-    color: Colors.textMuted,
+    color: '#CBD5E1',
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,

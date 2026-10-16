@@ -8,6 +8,7 @@ import {
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
 import { TelephonyService } from './telephonyService';
+import { DateTimeAwareService } from './dateTimeAwareService';
 import { FrsKnowledgeBank, FrsWisdomSeed } from '../data/frsKnowledgeBank';
 
 export interface DueDripItem {
@@ -110,18 +111,18 @@ export class DripDispatcherService {
       };
       const delayDays = delaysByNextStep[nextStep] ?? 30; // Step 7+ is 30 days indefinitely
       const nextDate = new Date(refDate.getTime() + delayDays * 86400000);
-      return nextDate.toISOString().slice(0, 10);
+      return DateTimeAwareService.formatDateKey(nextDate);
     }
 
     if (track === 'client_annual_review') {
       // Step 0 -> Day 30, Step 1 -> Day 90 (+60d), Step 2 -> Day 180 (+90d)
       if (nextStep === 1) {
         const nextDate = new Date(refDate.getTime() + 60 * 86400000);
-        return nextDate.toISOString().slice(0, 10);
+        return DateTimeAwareService.formatDateKey(nextDate);
       }
       if (nextStep === 2) {
         const nextDate = new Date(refDate.getTime() + 90 * 86400000);
-        return nextDate.toISOString().slice(0, 10);
+        return DateTimeAwareService.formatDateKey(nextDate);
       }
       // Step 3 -> Anniversary -90d
       if (nextStep === 3 && anniversaryStr) {
@@ -129,11 +130,11 @@ export class DripDispatcherService {
         if (!isNaN(annivDate.getTime())) {
           const minus90 = new Date(annivDate.getTime() - 90 * 86400000);
           if (minus90.getTime() > refDate.getTime()) {
-            return minus90.toISOString().slice(0, 10);
+            return DateTimeAwareService.formatDateKey(minus90);
           }
         }
         const fallback = new Date(refDate.getTime() + 90 * 86400000);
-        return fallback.toISOString().slice(0, 10);
+        return DateTimeAwareService.formatDateKey(fallback);
       }
       // Step 4 -> Anniversary -30d
       if (nextStep === 4 && anniversaryStr) {
@@ -141,11 +142,11 @@ export class DripDispatcherService {
         if (!isNaN(annivDate.getTime())) {
           const minus30 = new Date(annivDate.getTime() - 30 * 86400000);
           if (minus30.getTime() > refDate.getTime()) {
-            return minus30.toISOString().slice(0, 10);
+            return DateTimeAwareService.formatDateKey(minus30);
           }
         }
         const fallback = new Date(refDate.getTime() + 60 * 86400000);
-        return fallback.toISOString().slice(0, 10);
+        return DateTimeAwareService.formatDateKey(fallback);
       }
       // Step 5 -> Anniversary -7d
       if (nextStep === 5 && anniversaryStr) {
@@ -153,15 +154,15 @@ export class DripDispatcherService {
         if (!isNaN(annivDate.getTime())) {
           const minus7 = new Date(annivDate.getTime() - 7 * 86400000);
           if (minus7.getTime() > refDate.getTime()) {
-            return minus7.toISOString().slice(0, 10);
+            return DateTimeAwareService.formatDateKey(minus7);
           }
         }
         const fallback = new Date(refDate.getTime() + 23 * 86400000);
-        return fallback.toISOString().slice(0, 10);
+        return DateTimeAwareService.formatDateKey(fallback);
       }
       // After cycle completes, schedule for next year's 30-day onboarding/check-in
       const nextYear = new Date(refDate.getTime() + 90 * 86400000);
-      return nextYear.toISOString().slice(0, 10);
+      return DateTimeAwareService.formatDateKey(nextYear);
     }
 
     return null;
@@ -171,8 +172,8 @@ export class DripDispatcherService {
    * Filters and returns all leads with drips due today or overdue.
    * Auto-resolves track for leads marked nurture_drip or clients with missing drip_track.
    */
-  static getDueDrips(leads: Lead[], advisorName: string = 'Alex'): DueDripItem[] {
-    const todayStr = new Date().toISOString().slice(0, 10);
+  static getDueDrips(leads: Lead[], advisorName: string = 'Alex', agencyName?: string): DueDripItem[] {
+    const todayStr = DateTimeAwareService.formatDateKey(new Date());
     const dueItems: DueDripItem[] = [];
 
     for (const lead of leads) {
@@ -188,7 +189,8 @@ export class DripDispatcherService {
 
       if (effectiveTrack === 'none') continue;
       if (lead.last_disposition === 'do_not_call' || lead.last_disposition === 'bad_number') continue;
-      if (lead.text_ok === false) continue;
+      if (lead.appointment_outcome === 'declined' && !lead.is_client) continue;
+      if (lead.text_ok === false || (lead.text_ok as any) === 0 || (lead.text_ok as any) === 'false') continue;
       if (!lead.phone || lead.phone.replace(/\D/g, '').length < 7) continue;
 
       let isDue = false;
@@ -196,7 +198,7 @@ export class DripDispatcherService {
       const currentStep = Number(lead.drip_step) || 0;
 
       if (scheduledStr) {
-        const scheduledDatePart = scheduledStr.slice(0, 10);
+        const scheduledDatePart = scheduledStr.length > 10 ? DateTimeAwareService.formatDateKey(new Date(scheduledStr)) : scheduledStr.slice(0, 10);
         if (scheduledDatePart <= todayStr) {
           isDue = true;
         }
@@ -228,7 +230,13 @@ export class DripDispatcherService {
         };
         const template = this.getTemplateForLead(syntheticLead);
         if (template) {
-          const formattedMessage = TelephonyService.interpolateTemplate(template, syntheticLead, advisorName);
+          const formattedMessage = TelephonyService.interpolateTemplate(
+            template,
+            syntheticLead,
+            advisorName,
+            new Date(),
+            agencyName
+          );
           const stageInfo = this.getStageForStep(effectiveTrack, currentStep);
           const suggestedNextDate = this.calculateNextDripDate(
             effectiveTrack,
@@ -266,12 +274,13 @@ export class DripDispatcherService {
    */
   static async assessAndBackfillLeads(leads: Lead[]): Promise<{ updatedCount: number }> {
     const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
+    const todayStr = DateTimeAwareService.formatDateKey(today);
     let updatedCount = 0;
 
     for (const lead of leads) {
       if (lead.last_disposition === 'do_not_call' || lead.last_disposition === 'bad_number') continue;
-      if (lead.text_ok === false) continue;
+      if (lead.appointment_outcome === 'declined' && !lead.is_client) continue;
+      if (lead.text_ok === false || (lead.text_ok as any) === 0 || (lead.text_ok as any) === 'false') continue;
 
       let shouldUpdate = false;
       let targetTrack = lead.drip_track;
@@ -298,7 +307,7 @@ export class DripDispatcherService {
           if (targetTrack === 'prospect_nurture') {
             if (daysElapsed <= 2) {
               targetStep = 0;
-              targetNextScheduled = new Date(baseDate.getTime() + 1 * 86400000).toISOString().slice(0, 10);
+              targetNextScheduled = DateTimeAwareService.formatDateKey(new Date(baseDate.getTime() + 1 * 86400000));
             } else if (daysElapsed <= 5) {
               targetStep = 1;
               targetNextScheduled = todayStr;
@@ -321,7 +330,7 @@ export class DripDispatcherService {
           } else if (targetTrack === 'client_annual_review') {
             if (daysElapsed < 30) {
               targetStep = 0;
-              targetNextScheduled = new Date(baseDate.getTime() + 30 * 86400000).toISOString().slice(0, 10);
+              targetNextScheduled = DateTimeAwareService.formatDateKey(new Date(baseDate.getTime() + 30 * 86400000));
             } else if (daysElapsed < 90) {
               targetStep = 1;
               targetNextScheduled = todayStr;
@@ -361,14 +370,22 @@ export class DripDispatcherService {
     lead: Lead,
     template: SMSTemplate,
     customBody?: string,
-    advisorName: string = 'Alex'
+    advisorName: string = 'Alex',
+    agencyName?: string
   ): Promise<void> {
     const currentStep = lead.drip_step || 0;
     const nextStep = currentStep + 1;
     const todayISO = new Date().toISOString();
 
+    const effectiveTrack =
+      lead.drip_track && lead.drip_track !== 'none'
+        ? lead.drip_track
+        : lead.is_client
+        ? 'client_annual_review'
+        : 'prospect_nurture';
+
     const nextScheduled = this.calculateNextDripDate(
-      lead.drip_track || 'none',
+      effectiveTrack,
       nextStep,
       lead.policy_effective_date || lead.created_at,
       lead.annual_review_due_date
@@ -377,12 +394,19 @@ export class DripDispatcherService {
     // Update lead in DB
     await LeadsRepository.updateLeadDetails({
       ...lead,
+      drip_track: effectiveTrack,
       drip_step: nextStep,
       last_drip_sent_at: todayISO,
       next_drip_scheduled_at: nextScheduled,
     });
 
-    const formattedDefault = TelephonyService.interpolateTemplate(template, lead, advisorName);
+    const formattedDefault = TelephonyService.interpolateTemplate(
+      template,
+      lead,
+      advisorName,
+      new Date(),
+      agencyName
+    );
     const finalSmsBody = customBody && customBody.trim().length > 0
       ? customBody.trim()
       : formattedDefault;

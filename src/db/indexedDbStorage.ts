@@ -160,14 +160,37 @@ export class IndexedDbStorage {
     const leads = (Array.isArray(raw?.leads) ? raw.leads : []).map((l: any) => {
       let products: string[] = [];
       if (Array.isArray(l.products)) {
-        products = l.products;
+        products = l.products.filter(Boolean);
       } else if (typeof l.products === 'string' && l.products.trim().startsWith('[')) {
         try { products = JSON.parse(l.products); } catch { products = []; }
       } else if (typeof l.products === 'string' && l.products.trim().length > 0) {
-        products = [l.products.trim()];
+        products = l.products.split(',').map((p: string) => p.trim()).filter(Boolean);
+      }
+
+      let interests: string[] = [];
+      if (Array.isArray(l.frs_interests)) {
+        interests = l.frs_interests;
+      } else if (typeof l.frs_interests === 'string') {
+        try { interests = JSON.parse(l.frs_interests); } catch { interests = []; }
+      }
+
+      let preferences: string[] = [];
+      if (Array.isArray(l.meeting_preferences)) {
+        preferences = l.meeting_preferences;
+      } else if (typeof l.meeting_preferences === 'string') {
+        try { preferences = JSON.parse(l.meeting_preferences); } catch { preferences = []; }
+      }
+
+      let alternatePhones: string[] = [];
+      if (Array.isArray(l.alternate_phones)) {
+        alternatePhones = l.alternate_phones.filter(Boolean);
+      } else if (typeof l.alternate_phones === 'string' && l.alternate_phones.trim().startsWith('[')) {
+        try { alternatePhones = JSON.parse(l.alternate_phones).filter(Boolean); } catch { alternatePhones = []; }
       }
 
       const isClient = l.is_client === 1 || l.is_client === true || l.is_client === 'true';
+      const isFrs = l.is_frs === undefined || l.is_frs === null || l.is_frs === 1 || l.is_frs === true || l.is_frs === 'true';
+      const textOk = l.text_ok === undefined || l.text_ok === null ? true : (l.text_ok === 1 || l.text_ok === true || l.text_ok === 'true');
       let apptOutcome = l.appointment_outcome || null;
       let apptCompletedAt = l.appointment_completed_at || null;
       let lastDispo = l.last_disposition || 'pending';
@@ -178,6 +201,7 @@ export class IndexedDbStorage {
       if (isClient && !hasActiveAppointment) {
         if (!apptOutcome) apptOutcome = 'converted';
         if (!apptCompletedAt && l.client_since) apptCompletedAt = l.client_since;
+        if (lastDispo === 'appointment_set') lastDispo = 'connected';
       } else if (
         !isClient && (
           apptOutcome === 'nurture_drip' ||
@@ -196,11 +220,32 @@ export class IndexedDbStorage {
         apptScheduledAt = healed.toISOString();
       }
 
+      let followUpAt = l.follow_up_at || null;
+      if (followUpAt) {
+        const parsed = new Date(followUpAt);
+        const isInvalid = isNaN(parsed.getTime());
+        const isCompletionString = typeof followUpAt === 'string' && (
+          followUpAt.includes('[Callback Completed]') ||
+          followUpAt.includes('Follow-up marked complete')
+        );
+        if (isInvalid || isCompletionString) {
+          followUpAt = null;
+          if (lastDispo === 'callback_requested') {
+            lastDispo = 'pending';
+          }
+        }
+      }
+
       return {
         ...l,
+        alternate_phones: alternatePhones,
+        frs_interests: interests,
+        meeting_preferences: preferences,
+        text_ok: textOk,
+        is_frs: isFrs,
         priority_tier: l.priority_tier !== undefined && l.priority_tier !== null ? Number(l.priority_tier) : 1,
         list_id: l.list_id || 'master_queue',
-        follow_up_at: l.follow_up_at || null,
+        follow_up_at: followUpAt,
         attempts_count: l.attempts_count || 0,
         cadence_step: l.cadence_step || 1,
 
@@ -232,6 +277,7 @@ export class IndexedDbStorage {
         appointment_scheduled_at: apptScheduledAt,
         appointment_outcome: apptOutcome,
         appointment_completed_at: apptCompletedAt,
+        appointment_notes: l.appointment_notes || null,
         last_disposition: lastDispo,
       };
     });

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { ArrowLeft, Save, Zap, Info, Sparkles } from 'lucide-react-native';
 import { CadenceRepository } from '../db/cadenceRepository';
+import { SettingsRepository } from '../db/settingsRepository';
 import { TelephonyService } from '../services/telephonyService';
 import { CadenceRule, SMSTemplate, Lead } from '../types';
 import { Colors } from '../theme/colors';
@@ -23,17 +24,32 @@ export default function CadenceSettingsScreen({ navigation }: any) {
   const [templates, setTemplates] = useState<SMSTemplate[]>([]);
   const [category, setCategory] = useState<TemplateCategory>('all');
   const [activeTemplate, setActiveTemplate] = useState<SMSTemplate | null>(null);
+  const [userName, setUserName] = useState<string>('Alex');
+  const [agencyName, setAgencyName] = useState<string>('ValuTeachers');
 
   useEffect(() => {
     loadData();
-  }, []);
+    const unsubscribe = navigation?.addListener?.('focus', () => {
+      loadData();
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [navigation]);
 
   const loadData = async (preserveId?: string) => {
     await CadenceRepository.seedDripTemplatesIfMissing();
-    const loadedRules = await CadenceRepository.getAllRules();
-    const loadedTemplates = await CadenceRepository.getAllTemplates();
+    const [loadedRules, loadedTemplates, settings] = await Promise.all([
+      CadenceRepository.getAllRules(),
+      CadenceRepository.getAllTemplates(),
+      SettingsRepository.getSettings(),
+    ]);
     setRules(loadedRules);
     setTemplates(loadedTemplates);
+    if (settings) {
+      setUserName(settings.user_name || 'Alex');
+      setAgencyName(settings.agency_name !== undefined ? settings.agency_name : 'ValuTeachers');
+    }
     if (loadedTemplates.length > 0) {
       const match = loadedTemplates.find((t) => t.id === (preserveId || activeTemplate?.id));
       setActiveTemplate(match || loadedTemplates[0]);
@@ -105,7 +121,7 @@ export default function CadenceSettingsScreen({ navigation }: any) {
   };
 
   const previewText = activeTemplate
-    ? TelephonyService.interpolateTemplate(activeTemplate, sampleLead, 'Alex')
+    ? TelephonyService.interpolateTemplate(activeTemplate, sampleLead, userName, new Date(), agencyName)
     : '';
 
   return (
@@ -274,7 +290,8 @@ export default function CadenceSettingsScreen({ navigation }: any) {
                 <Text style={styles.tokenTag}>{'{{room_number}}'}</Text>,{' '}
                 <Text style={styles.tokenTag}>{'{{product}}'}</Text>,{' '}
                 <Text style={styles.tokenTag}>{'{{anniversary_date}}'}</Text>,{' '}
-                <Text style={styles.tokenTag}>{'{{my_name}}'}</Text>
+                <Text style={styles.tokenTag}>{'{{my_name}}'}</Text>,{' '}
+                <Text style={styles.tokenTag}>{'{{company}}'}</Text>
               </Text>
             </View>
 
@@ -394,7 +411,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.heavenlyGold,
   },
   catBtnText: {
-    color: Colors.textMuted,
+    color: '#CBD5E1',
     fontSize: 11,
     fontWeight: '600',
   },

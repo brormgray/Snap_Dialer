@@ -49,6 +49,15 @@ export class NotesService {
 
     if (matches.length > 0) {
       const entries: NoteEntry[] = [];
+      const leadingText = clean.substring(0, matches[0].index!).trim();
+      if (leadingText.length > 0) {
+        entries.push({
+          id: 'note_legacy_prefix',
+          timestamp: 'Note',
+          text: leadingText,
+          raw: leadingText,
+        });
+      }
       for (let i = 0; i < matches.length; i++) {
         const match = matches[i];
         const timestamp = match[1];

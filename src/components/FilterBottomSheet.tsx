@@ -171,12 +171,12 @@ export function FilterBottomSheet({
                   >
                     <Landmark
                       size={14}
-                      color={frsFilter === 'frs' ? '#C084FC' : '#C084FC'}
+                      color={frsFilter === 'frs' ? '#FFFFFF' : '#7C3AED'}
                     />
                     <Text
                       style={[
                         styles.pillText,
-                        frsFilter === 'frs' && { color: '#C084FC', fontWeight: '800' },
+                        frsFilter === 'frs' && { color: '#FFFFFF', fontWeight: '800' },
                       ]}
                     >
                       🏛️ FRS Members
@@ -198,12 +198,12 @@ export function FilterBottomSheet({
                   >
                     <Briefcase
                       size={14}
-                      color={frsFilter === 'non_frs' ? '#60A5FA' : '#60A5FA'}
+                      color={frsFilter === 'non_frs' ? '#FFFFFF' : '#2563EB'}
                     />
                     <Text
                       style={[
                         styles.pillText,
-                        frsFilter === 'non_frs' && { color: '#60A5FA', fontWeight: '800' },
+                        frsFilter === 'non_frs' && { color: '#FFFFFF', fontWeight: '800' },
                       ]}
                     >
                       💼 Non-FRS
@@ -515,6 +515,7 @@ const styles = StyleSheet.create({
   },
   scrollArea: {
     flexGrow: 0,
+    flexShrink: 1,
   },
   scrollContent: {
     paddingHorizontal: 18,
@@ -552,12 +553,12 @@ const styles = StyleSheet.create({
     borderColor: Colors.brandPrimary,
   },
   pillActiveFrs: {
-    backgroundColor: 'rgba(139, 92, 246, 0.22)',
-    borderColor: '#8B5CF6',
+    backgroundColor: '#6D28D9',
+    borderColor: '#6D28D9',
   },
   pillActiveNonFrs: {
-    backgroundColor: 'rgba(59, 130, 246, 0.22)',
-    borderColor: '#3B82F6',
+    backgroundColor: '#1D4ED8',
+    borderColor: '#1D4ED8',
   },
   pillActiveFresh: {
     backgroundColor: '#B45309',

@@ -94,8 +94,13 @@ export class DocumentScannerService {
           let width = img.width;
           let height = img.height;
 
+          if (!width || !height || width <= 0 || height <= 0) {
+            resolve(dataUri);
+            return;
+          }
+
           if (width > maxWidth) {
-            height = Math.round((height * maxWidth) / width);
+            height = Math.max(1, Math.round((height * maxWidth) / width));
             width = maxWidth;
           }
 

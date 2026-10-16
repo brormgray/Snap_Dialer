@@ -119,6 +119,7 @@ export default function App() {
     }
 
     // Register PWA Service Worker on Web for 100% Offline Resilience & Auto-Updates
+    let swLoadHandler: (() => void) | null = null;
     if (Platform.OS === 'web' && typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       const registerSW = () => {
         navigator.serviceWorker
@@ -144,6 +145,7 @@ export default function App() {
       if (typeof document !== 'undefined' && document.readyState === 'complete') {
         registerSW();
       } else {
+        swLoadHandler = registerSW;
         window.addEventListener('load', registerSW);
       }
     }
@@ -158,6 +160,9 @@ export default function App() {
         window.removeEventListener('touchstart', handleUserActivity);
         window.removeEventListener('mousedown', handleUserActivity);
         window.removeEventListener('keydown', handleUserActivity);
+        if (swLoadHandler) {
+          window.removeEventListener('load', swLoadHandler);
+        }
       }
     };
   }, []);

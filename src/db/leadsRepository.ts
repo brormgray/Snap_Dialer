@@ -470,30 +470,42 @@ export class LeadsRepository {
   }
 
   static async importLeadsBatch(leads: Partial<ExtractedLeadItem>[], targetListId: string = 'master_queue'): Promise<number> {
+    const db = await getDatabase();
     let count = 0;
-    for (const item of leads) {
-      if (item.name && item.phone && isValidDialablePhone(item.phone)) {
-        try {
-          await this.addSingleLead({
-            name: item.name,
-            phone: item.phone,
-            school: item.school || 'VOL',
-            email: item.email,
-            room_number: item.room_number,
-            planning_period: item.planning_period,
-            years_in_frs: item.years_in_frs,
-            notes: item.notes,
-            priority_tier: 1,
-            list_id: targetListId,
-            text_ok: true,
-            isValid: true,
-          });
-          count++;
-        } catch (err) {
-          console.warn(`[importLeadsBatch] Skipped ${item.name}:`, err);
+    await db.withTransactionAsync(async () => {
+      for (const item of leads) {
+        if (item.name && item.phone && isValidDialablePhone(item.phone)) {
+          try {
+            await this.addSingleLead({
+              name: item.name,
+              phone: item.phone,
+              school: item.school || 'VOL',
+              email: item.email,
+              age: item.age,
+              room_number: item.room_number,
+              planning_period: item.planning_period,
+              years_in_frs: item.years_in_frs,
+              frs_knowledge: item.frs_knowledge,
+              frs_interests: item.frs_interests,
+              custom_questions: item.custom_questions,
+              meeting_preferences: item.meeting_preferences,
+              annual_salary: item.annual_salary,
+              present_403b_contribution: item.present_403b_contribution,
+              company: item.company,
+              notes: item.notes,
+              priority_tier: item.priority_tier || 1,
+              list_id: item.list_id || targetListId,
+              text_ok: item.text_ok !== undefined ? item.text_ok : true,
+              is_frs: item.is_frs !== undefined ? item.is_frs : true,
+              isValid: true,
+            });
+            count++;
+          } catch (err) {
+            console.warn(`[importLeadsBatch] Skipped ${item.name}:`, err);
+          }
         }
       }
-    }
+    });
     return count;
   }
 
@@ -565,9 +577,9 @@ export class LeadsRepository {
     const db = await getDatabase();
     const now = new Date().toISOString();
 
+    const currentLead = await this.getLeadById(leadId);
     let mergedNotes: string | null = null;
     if (note && note.trim().length > 0) {
-      const currentLead = await this.getLeadById(leadId);
       mergedNotes = NotesService.addNote(currentLead?.notes, note.trim());
     }
 
@@ -580,6 +592,25 @@ export class LeadsRepository {
        WHERE id = ?`,
       [followUpDateISO, mergedNotes, now, leadId]
     );
+
+    if (currentLead?.list_id) {
+      const stats = await db.getFirstAsync<{ total: number; completed: number; connected: number }>(
+        `SELECT 
+           COUNT(*) as total,
+           SUM(CASE WHEN last_disposition IN ('connected', 'spoke', 'appointment_set', 'bad_number', 'do_not_call', 'other') THEN 1 ELSE 0 END) as completed,
+           SUM(CASE WHEN last_disposition IN ('connected', 'spoke', 'appointment_set') THEN 1 ELSE 0 END) as connected
+         FROM leads WHERE list_id = ?`,
+        [currentLead.list_id]
+      );
+      if (stats) {
+        await db.runAsync(
+          `UPDATE lists 
+           SET completed_leads = ?, connected_leads = ?, updated_at = ? 
+           WHERE id = ?`,
+          [stats.completed || 0, stats.connected || 0, now, currentLead.list_id]
+        );
+      }
+    }
   }
 
   static async clearFollowUp(leadId: string, completionNote?: string): Promise<void> {
@@ -839,14 +870,6 @@ export class LeadsRepository {
       }
     }
 
-    if (leadData.alternate_phones !== undefined && current) {
-      current.alternate_phones = leadData.alternate_phones;
-      try {
-        const { dexieDb } = await import('./dexieDb');
-        await dexieDb.leads.put(current);
-      } catch {}
-    }
-
     await db.runAsync(
       `UPDATE leads 
        SET name = ?, phone = ?, school = ?, email = ?, room_number = ?, planning_period = ?, years_in_frs = ?, notes = ?, priority_tier = ?, list_id = ?,
@@ -885,6 +908,13 @@ export class LeadsRepository {
         leadData.id,
       ]
     );
+
+    if (leadData.alternate_phones !== undefined) {
+      await db.runAsync(
+        'UPDATE leads SET alternate_phones = ?, updated_at = ? WHERE id = ?',
+        [JSON.stringify(leadData.alternate_phones || []), now, leadData.id]
+      );
+    }
   }
 
   /**
@@ -898,6 +928,7 @@ export class LeadsRepository {
   ): Promise<void> {
     const db = await getDatabase();
     const now = new Date().toISOString();
+    const currentLead = await this.getLeadById(leadId);
     await db.runAsync(
       `UPDATE leads 
        SET appointment_scheduled_at = ?,
@@ -911,6 +942,25 @@ export class LeadsRepository {
        WHERE id = ?`,
       [scheduledDateISO, note || null, appointmentNotes || null, now, leadId]
     );
+
+    if (currentLead?.list_id) {
+      const stats = await db.getFirstAsync<{ total: number; completed: number; connected: number }>(
+        `SELECT 
+           COUNT(*) as total,
+           SUM(CASE WHEN last_disposition IN ('connected', 'spoke', 'appointment_set', 'bad_number', 'do_not_call', 'other') THEN 1 ELSE 0 END) as completed,
+           SUM(CASE WHEN last_disposition IN ('connected', 'spoke', 'appointment_set') THEN 1 ELSE 0 END) as connected
+         FROM leads WHERE list_id = ?`,
+        [currentLead.list_id]
+      );
+      if (stats) {
+        await db.runAsync(
+          `UPDATE lists 
+           SET completed_leads = ?, connected_leads = ?, updated_at = ? 
+           WHERE id = ?`,
+          [stats.completed || 0, stats.connected || 0, now, currentLead.list_id]
+        );
+      }
+    }
   }
 
   /**
@@ -1323,6 +1373,19 @@ export class LeadsRepository {
             }
           }
 
+          // Migrate lead card photo if master has none
+          try {
+            const { dexieDb } = await import('./dexieDb');
+            const dupPhoto = await dexieDb.getLeadPhoto(dup.id);
+            if (dupPhoto) {
+              const masterPhoto = await dexieDb.getLeadPhoto(master.id);
+              if (!masterPhoto) {
+                await dexieDb.saveLeadPhoto(master.id, dupPhoto);
+              }
+              await dexieDb.lead_photos.delete(dup.id);
+            }
+          } catch {}
+
           // Re-link call logs belonging to duplicate to the master lead
           await db.runAsync('UPDATE call_logs SET lead_id = ? WHERE lead_id = ?', [master.id, dup.id]);
           // Delete duplicate
@@ -1437,6 +1500,16 @@ export class LeadsRepository {
     let interests: string[] = [];
     let preferences: string[] = [];
     let products: ClientProduct[] = [];
+    let alternatePhones: string[] = [];
+
+    if (typeof raw.alternate_phones === 'string') {
+      try {
+        const parsed = JSON.parse(raw.alternate_phones);
+        if (Array.isArray(parsed)) alternatePhones = parsed.filter(Boolean);
+      } catch {}
+    } else if (Array.isArray(raw.alternate_phones)) {
+      alternatePhones = raw.alternate_phones.filter(Boolean);
+    }
 
     if (typeof raw.frs_interests === 'string') {
       try {
@@ -1554,6 +1627,7 @@ export class LeadsRepository {
 
     return {
       ...raw,
+      alternate_phones: alternatePhones,
       follow_up_at: followUpAt,
       priority_tier: raw.priority_tier !== undefined && raw.priority_tier !== null ? Number(raw.priority_tier) : 1,
       cadence_step: raw.cadence_step !== undefined && raw.cadence_step !== null ? Number(raw.cadence_step) : 1,

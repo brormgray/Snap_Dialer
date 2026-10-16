@@ -1,4 +1,4 @@
-import { SMSTemplate } from '../types';
+import type { SMSTemplate } from '../types';
 
 /**
  * Track A: Non-Closed Prospect Nurture Cadence (FRS / Educator Track)
@@ -42,7 +42,7 @@ export const NURTURE_DRIP_TEMPLATES: SMSTemplate[] = [
     stage: 'bridge',
     phase_label: 'Bridge (Week 3)',
     suggested_delay_days: 7,
-    body: "Hi {{first_name}}, {{my_name}} here with a quick note. Missing a district payroll deduction cutoff often delays compound growth more than people realize. Let's make sure your 403(b) allocation is locked in before this month's payroll cutoff—can we touch base in Room {{room_number}} this week?",
+    body: "Hi {{first_name}}, {{my_name}} here with a quick note. Missing a district payroll deduction cutoff often delays compound growth more than people realize. Let's make sure your 403(b) allocation is locked in before this month's payroll cutoff—can we touch base in {{room_number}} this week?",
   },
   // Step 4: Bridge Phase (Week 4 / +7d)
   {

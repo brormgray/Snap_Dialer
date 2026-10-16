@@ -44,7 +44,13 @@ export default function AnalyticsScreen({ navigation }: any) {
 
   useEffect(() => {
     loadStats();
-  }, []);
+    const unsubscribe = navigation?.addListener?.('focus', () => {
+      loadStats();
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [navigation]);
 
   const loadStats = async () => {
     try {

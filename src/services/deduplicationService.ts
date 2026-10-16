@@ -24,8 +24,8 @@ export class DeduplicationService {
   static normalizePhoneDigits(phone?: string | null): string {
     if (!phone) return '';
     const cleanStr = String(phone).trim();
-    // Split off common extension indicators before stripping
-    const parts = cleanStr.split(/(?:ext\.?|x|#|;|,)/i);
+    // Split off common extension indicators before stripping (avoid splitting on 'x' in labels like "Max: 386-555-1234")
+    const parts = cleanStr.split(/(?:\bext\.?\s*\d+|\bx\s*\d+|#|;|,|\/)/i);
     const primaryPart = parts[0] || '';
     const digits = primaryPart.replace(/\D/g, '');
 
@@ -198,13 +198,15 @@ export class DeduplicationService {
       tokensA.length === tokensB.length &&
       tokensA.every((t, idx) => t === tokensB[idx]);
 
-    // Check First + Last Token Match (ignoring middle initials)
+    // Check First + Last Token Match (ignoring middle names/initials in natural word order)
     const firstLastMatch = (() => {
-      if (tokensA.length < 2 || tokensB.length < 2) return false;
-      const firstA = tokensA[0];
-      const lastA = tokensA[tokensA.length - 1];
-      const firstB = tokensB[0];
-      const lastB = tokensB[tokensB.length - 1];
+      const orderedA = normNameA.split(/\s+/).filter((t) => t.length > 1);
+      const orderedB = normNameB.split(/\s+/).filter((t) => t.length > 1);
+      if (orderedA.length < 2 || orderedB.length < 2) return false;
+      const firstA = orderedA[0];
+      const lastA = orderedA[orderedA.length - 1];
+      const firstB = orderedB[0];
+      const lastB = orderedB[orderedB.length - 1];
       return firstA === firstB && lastA === lastB;
     })();
 
@@ -390,14 +392,14 @@ export class DeduplicationService {
         phone10Index.get(p10)!.push(i);
       }
 
-      const cleanName = this.normalizeName(lead.name);
-      if (cleanName.length > 0) {
-        if (!nameIndex.has(cleanName)) nameIndex.set(cleanName, []);
-        nameIndex.get(cleanName)!.push(i);
+      const canonicalName = this.getNameTokens(lead.name).join(' ') || this.normalizeName(lead.name);
+      if (canonicalName.length > 0) {
+        if (!nameIndex.has(canonicalName)) nameIndex.set(canonicalName, []);
+        nameIndex.get(canonicalName)!.push(i);
 
         const cleanSchool = this.normalizeSchool(lead.school);
         if (cleanSchool.length >= 3) {
-          const nsKey = `${cleanName}:::${cleanSchool}`;
+          const nsKey = `${canonicalName}:::${cleanSchool}`;
           if (!nameSchoolIndex.has(nsKey)) nameSchoolIndex.set(nsKey, []);
           nameSchoolIndex.get(nsKey)!.push(i);
         }
@@ -707,8 +709,9 @@ export class DeduplicationService {
       merged.appointment_notes = d.appointment_notes;
     }
 
-    // 9. Disposition Hierarchy (Highest Value Wins)
+    // 9. Disposition Hierarchy (Highest Value / TCPA Compliance Wins)
     const dispoPriority: Record<string, number> = {
+      do_not_call: 7,
       appointment_set: 6,
       callback_requested: 5,
       connected: 4,

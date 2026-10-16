@@ -16,10 +16,9 @@ export class PipelineStateService {
     // 1. Explicit appointment_scheduled_at
     if (lead.appointment_scheduled_at && lead.appointment_scheduled_at.trim()) {
       const raw = lead.appointment_scheduled_at.trim();
-      const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      const hasExplicitNonMidnightTime = /T(?!00:00:00(\.000)?(Z|[+-]\d{2}:\d{2})?$)\d{2}:\d{2}/.test(raw);
+      const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.000)?)?$/);
 
-      if (dateOnlyMatch && !hasExplicitNonMidnightTime) {
+      if (dateOnlyMatch) {
         const y = parseInt(dateOnlyMatch[1], 10);
         const m = parseInt(dateOnlyMatch[2], 10) - 1;
         const d = parseInt(dateOnlyMatch[3], 10);
@@ -88,7 +87,7 @@ export class PipelineStateService {
           const target = new Date(now);
           const currentDay = target.getDay();
           let diff = targetDay - currentDay;
-          if (diff <= 0) diff += 7; // Forward to next occurrence
+          if (diff < 0) diff += 7; // Forward to next occurrence (preserve 0 if same weekday)
           target.setDate(target.getDate() + diff);
 
           const schedule = getScheduleForSchool(lead.school);
@@ -123,13 +122,22 @@ export class PipelineStateService {
     const matchedPeriod = periodId ? schedule.find((p) => p.id === periodId) : null;
 
     const end = new Date(start);
-    if (matchedPeriod && matchedPeriod.endTime) {
+    if (matchedPeriod && matchedPeriod.endTime && matchedPeriod.startTime) {
+      const [startH, startM] = matchedPeriod.startTime.split(':').map(Number);
       const [endH, endM] = matchedPeriod.endTime.split(':').map(Number);
-      // Explicitly lock end to the exact same calendar day as start in local time
-      end.setFullYear(start.getFullYear(), start.getMonth(), start.getDate());
-      end.setHours(endH, endM, 0, 0);
-      if (end.getTime() <= start.getTime()) {
-        end.setTime(start.getTime() + 30 * 60000); // 30-minute fallback buffer
+      const periodStartOnDay = new Date(start);
+      periodStartOnDay.setFullYear(start.getFullYear(), start.getMonth(), start.getDate());
+      periodStartOnDay.setHours(startH, startM, 0, 0);
+
+      // Only bind end time to the planning period's endTime if the scheduled start is within 60 mins of that period
+      if (Math.abs(start.getTime() - periodStartOnDay.getTime()) <= 60 * 60000) {
+        end.setFullYear(start.getFullYear(), start.getMonth(), start.getDate());
+        end.setHours(endH, endM, 0, 0);
+        if (end.getTime() <= start.getTime()) {
+          end.setTime(start.getTime() + 30 * 60000);
+        }
+      } else {
+        end.setTime(start.getTime() + 30 * 60000);
       }
     } else {
       end.setTime(start.getTime() + 30 * 60000); // 30-minute default duration
@@ -475,17 +483,25 @@ export class PipelineStateService {
    */
   static getCallbackTimeBadge(
     lead: Lead,
-    now: Date = new Date()
+    now: Date = new Date(),
+    timeZone: string = 'America/New_York'
   ): { label: string; isOverdue: boolean; isToday: boolean } {
     if (lead.follow_up_at && !isNaN(new Date(lead.follow_up_at).getTime())) {
-      const followUp = new Date(lead.follow_up_at);
+      const raw = lead.follow_up_at.trim();
+      const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      const followUp = dateOnlyMatch
+        ? new Date(parseInt(dateOnlyMatch[1], 10), parseInt(dateOnlyMatch[2], 10) - 1, parseInt(dateOnlyMatch[3], 10), 9, 0, 0)
+        : new Date(raw);
       const isOverdue = followUp.getTime() < now.getTime();
-      const isToday = followUp.toDateString() === now.toDateString();
+      const isToday = this.formatDateKey(followUp, timeZone) === this.formatDateKey(now, timeZone);
       const timeStr = followUp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
       if (isOverdue) {
+        const prefix = isToday
+          ? timeStr
+          : `${followUp.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${timeStr}`;
         return {
-          label: `⏰ ${timeStr} (Overdue)`,
+          label: `⏰ ${prefix} (Overdue)`,
           isOverdue: true,
           isToday,
         };

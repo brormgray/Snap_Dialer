@@ -32,6 +32,12 @@ export default function ZoomableImageModal({
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
+  React.useEffect(() => {
+    if (visible) {
+      setZoomLevel(1);
+    }
+  }, [visible, imageUri]);
+
   const handleZoomIn = async () => {
     await HapticsService.tick();
     setZoomLevel((prev) => Math.min(prev + 0.5, 4));
@@ -54,8 +60,8 @@ export default function ZoomableImageModal({
 
   if (!visible || !imageUri) return null;
 
-  const baseImageWidth = windowWidth - 32;
-  const baseImageHeight = Math.min(windowHeight * 0.65, 520);
+  const baseImageWidth = Math.max(200, windowWidth - 32);
+  const baseImageHeight = Math.max(200, Math.min(windowHeight * 0.65, 520));
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={handleClose}>
@@ -109,32 +115,40 @@ export default function ZoomableImageModal({
           <View style={styles.viewportContainer} pointerEvents="auto">
             <ScrollView
               style={styles.scrollView}
-              contentContainerStyle={[
-                styles.scrollContent,
-                {
-                  width: baseImageWidth * zoomLevel,
-                  height: baseImageHeight * zoomLevel,
-                  minWidth: '100%',
-                  minHeight: '100%',
-                },
-              ]}
+              contentContainerStyle={{
+                minHeight: '100%',
+                justifyContent: 'center',
+              }}
               maximumZoomScale={4.0}
               minimumZoomScale={1.0}
               zoomScale={zoomLevel}
-              showsHorizontalScrollIndicator={true}
               showsVerticalScrollIndicator={true}
               pinchGestureEnabled={true}
               bounces={true}
               centerContent={true}
             >
-              <Image
-                source={{ uri: imageUri }}
-                style={{
-                  width: baseImageWidth * zoomLevel,
-                  height: baseImageHeight * zoomLevel,
-                }}
-                resizeMode="contain"
-              />
+              <ScrollView
+                horizontal
+                contentContainerStyle={[
+                  styles.scrollContent,
+                  {
+                    width: baseImageWidth * zoomLevel,
+                    height: baseImageHeight * zoomLevel,
+                    minWidth: '100%',
+                  },
+                ]}
+                showsHorizontalScrollIndicator={true}
+                bounces={true}
+              >
+                <Image
+                  source={{ uri: imageUri }}
+                  style={{
+                    width: baseImageWidth * zoomLevel,
+                    height: baseImageHeight * zoomLevel,
+                  }}
+                  resizeMode="contain"
+                />
+              </ScrollView>
             </ScrollView>
 
             {/* Helper Hint */}
@@ -175,17 +189,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.borderSubtle,
+    borderBottomColor: 'rgba(255, 255, 255, 0.15)',
     gap: 10,
   },
   title: {
     fontSize: 16,
     fontWeight: '800',
-    color: Colors.brandPrimary,
+    color: '#FFFFFF',
   },
   subtitle: {
     fontSize: 12,
-    color: Colors.textSecondary,
+    color: '#CBD5E1',
     marginTop: 2,
     fontWeight: '600',
   },

@@ -23,19 +23,38 @@ function hashPin(pin: string): string {
   return String(hash);
 }
 
+const memoryStore = new Map<string, string>();
+
+function getStorageItem(key: string): string | null {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    return localStorage.getItem(key);
+  }
+  return memoryStore.get(key) ?? null;
+}
+
+function setStorageItem(key: string, val: string): void {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    localStorage.setItem(key, val);
+  } else {
+    memoryStore.set(key, val);
+  }
+}
+
+function removeStorageItem(key: string): void {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    localStorage.removeItem(key);
+  } else {
+    memoryStore.delete(key);
+  }
+}
+
 export class SecurityService {
   static isPinEnabled(): boolean {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      return localStorage.getItem(PIN_ENABLED_KEY) === 'true';
-    }
-    return false;
+    return getStorageItem(PIN_ENABLED_KEY) === 'true';
   }
 
   static hasPinSet(): boolean {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      return Boolean(localStorage.getItem(PIN_HASH_KEY));
-    }
-    return false;
+    return Boolean(getStorageItem(PIN_HASH_KEY));
   }
 
   static isPinConfigured(): boolean {
@@ -43,94 +62,81 @@ export class SecurityService {
   }
 
   static getLockoutUntil(): number {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const val = localStorage.getItem(LOCKOUT_UNTIL_KEY);
-      return val ? parseInt(val, 10) : 0;
-    }
-    return 0;
+    const val = getStorageItem(LOCKOUT_UNTIL_KEY);
+    return val ? parseInt(val, 10) : 0;
   }
 
   static setLockoutUntil(untilMs: number): void {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      localStorage.setItem(LOCKOUT_UNTIL_KEY, String(untilMs));
-    }
+    setStorageItem(LOCKOUT_UNTIL_KEY, String(untilMs));
   }
 
   static clearLockout(): void {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      localStorage.removeItem(LOCKOUT_UNTIL_KEY);
-    }
+    removeStorageItem(LOCKOUT_UNTIL_KEY);
   }
 
   static setPin(pin: string): boolean {
     if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) {
       return false;
     }
-    if (typeof window !== 'undefined' && window.localStorage) {
-      localStorage.setItem(PIN_HASH_KEY, hashPin(pin));
-      localStorage.setItem(PIN_ENABLED_KEY, 'true');
-      localStorage.setItem(SESSION_LOCKED_KEY, 'false');
-      this.clearLockout();
-      return true;
-    }
-    return false;
+    setStorageItem(PIN_HASH_KEY, hashPin(pin));
+    setStorageItem(PIN_ENABLED_KEY, 'true');
+    setStorageItem(SESSION_LOCKED_KEY, 'false');
+    setStorageItem(LAST_ACTIVE_KEY, String(Date.now()));
+    this.clearLockout();
+    return true;
   }
 
   static disablePin(): void {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      localStorage.setItem(PIN_ENABLED_KEY, 'false');
-      localStorage.removeItem(SESSION_LOCKED_KEY);
-      this.clearLockout();
-    }
+    setStorageItem(PIN_ENABLED_KEY, 'false');
+    removeStorageItem(SESSION_LOCKED_KEY);
+    this.clearLockout();
   }
 
   static verifyPin(pin: string): boolean {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const stored = localStorage.getItem(PIN_HASH_KEY);
-      if (!stored) return false;
-      const matched = stored === hashPin(pin);
-      if (matched) {
-        this.unlockSession();
-      }
-      return matched;
+    if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) return false;
+    const stored = getStorageItem(PIN_HASH_KEY);
+    if (!stored) return false;
+    const candidate = hashPin(pin);
+    const len = Math.max(stored.length, candidate.length);
+    let diff = stored.length ^ candidate.length;
+    for (let i = 0; i < len; i++) {
+      const a = i < stored.length ? stored.charCodeAt(i) : 0;
+      const b = i < candidate.length ? candidate.charCodeAt(i) : 0;
+      diff |= a ^ b;
     }
-    return false;
+    const matched = diff === 0;
+    if (matched) {
+      this.unlockSession();
+    }
+    return matched;
   }
 
   static isSessionLocked(): boolean {
-    if (!this.isPinEnabled()) return false;
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const explicitLocked = localStorage.getItem(SESSION_LOCKED_KEY) === 'true';
-      if (explicitLocked) return true;
+    if (!this.isPinConfigured()) return false;
+    const explicitLocked = getStorageItem(SESSION_LOCKED_KEY) === 'true';
+    if (explicitLocked) return true;
 
-      const lastActive = localStorage.getItem(LAST_ACTIVE_KEY);
-      if (lastActive) {
-        const diff = Date.now() - parseInt(lastActive, 10);
-        if (diff > LOCKOUT_TIMEOUT_MS) {
-          this.lockSession();
-          return true;
-        }
+    const lastActive = getStorageItem(LAST_ACTIVE_KEY);
+    if (lastActive) {
+      const diff = Date.now() - parseInt(lastActive, 10);
+      if (diff > LOCKOUT_TIMEOUT_MS) {
+        this.lockSession();
+        return true;
       }
     }
     return false;
   }
 
   static lockSession(): void {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      localStorage.setItem(SESSION_LOCKED_KEY, 'true');
-    }
+    setStorageItem(SESSION_LOCKED_KEY, 'true');
   }
 
   static unlockSession(): void {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      localStorage.setItem(SESSION_LOCKED_KEY, 'false');
-      localStorage.setItem(LAST_ACTIVE_KEY, String(Date.now()));
-    }
+    setStorageItem(SESSION_LOCKED_KEY, 'false');
+    setStorageItem(LAST_ACTIVE_KEY, String(Date.now()));
   }
 
   static recordActivity(): void {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      localStorage.setItem(LAST_ACTIVE_KEY, String(Date.now()));
-    }
+    setStorageItem(LAST_ACTIVE_KEY, String(Date.now()));
   }
 }

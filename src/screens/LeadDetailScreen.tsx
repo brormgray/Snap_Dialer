@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -71,6 +71,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
   const leadId = route.params?.leadId;
 
   const [lead, setLead] = useState<Lead | null>(null);
+  const [notFound, setNotFound] = useState<boolean>(false);
   const [logs, setLogs] = useState<CallLog[]>([]);
   const [availableLists, setAvailableLists] = useState<LeadList[]>([]);
   const [isEditing, setIsEditing] = useState<boolean>(false);
@@ -142,7 +143,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         setShowDispositionRow(true);
       }
       if (route.params?.startCall && loadedLead) {
-        handleCall();
+        handleCall(undefined, loadedLead);
       }
       if (route.params?.autoOpenScheduler && loadedLead) {
         if (route.params?.initialSchedulerNotes) {
@@ -160,8 +161,14 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         setApptSchedulerVisible(true);
       }
     });
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadLeadData();
+    });
+    return unsubscribe;
   }, [
     leadId,
+    navigation,
+    route.params?.autoOpenSms,
     route.params?.openDispo,
     route.params?.startCall,
     route.params?.autoOpenScheduler,
@@ -175,6 +182,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     ]);
 
     if (l) {
+      setNotFound(false);
       setLead({ ...l });
       if (!isEditing) {
         setName(l.name);
@@ -191,6 +199,8 @@ export default function LeadDetailScreen({ route, navigation }: any) {
         setListIdVal(l.list_id || 'master_queue');
         setIsFrsVal(l.is_frs !== false);
       }
+    } else {
+      setNotFound(true);
     }
     setAvailableLists(lists);
 
@@ -361,14 +371,15 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     }
   };
 
-  const handleCall = async (targetPhone?: string) => {
-    if (!lead) return;
-    await HapticsService.medium();
-    const phoneToDial = targetPhone || lead.phone;
+  const handleCall = async (targetPhone?: string, targetLeadOverride?: Lead) => {
+    const activeLead = targetLeadOverride || lead;
+    if (!activeLead) return;
+    const phoneToDial = targetPhone || activeLead.phone;
     setDialTargetPhone(phoneToDial);
     setCallStartTime(Date.now());
     setShowDispositionRow(true);
-    await TelephonyService.makeCall(phoneToDial);
+    TelephonyService.makeCall(phoneToDial).catch(() => {});
+    HapticsService.medium().catch(() => {});
   };
 
   const handlePromoteAlternate = async (altPhone: string) => {
@@ -696,7 +707,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       leadId: lead.id,
       listId: lead.list_id,
       durationSeconds: 0,
-      disposition: 'connected',
+      disposition: 'appt_converted' as CallDisposition,
       note,
     });
 
@@ -718,7 +729,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       leadId: lead.id,
       listId: lead.list_id,
       durationSeconds: 0,
-      disposition: 'connected',
+      disposition: 'appt_nurture_drip' as CallDisposition,
       note,
     });
 
@@ -742,7 +753,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       leadId: lead.id,
       listId: lead.list_id,
       durationSeconds: 0,
-      disposition: 'appointment_set',
+      disposition: 'appt_rescheduled' as CallDisposition,
       note,
     });
 
@@ -767,7 +778,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
       leadId: lead.id,
       listId: lead.list_id,
       durationSeconds: 0,
-      disposition: outcome === 'no_show' ? 'no_answer' : 'spoke',
+      disposition: (outcome === 'no_show' ? 'appt_no_show' : 'appt_declined') as CallDisposition,
       note,
     });
 
@@ -818,11 +829,12 @@ export default function LeadDetailScreen({ route, navigation }: any) {
 
     const settings = await SettingsRepository.getSettings();
     const agentName = settings?.user_name || 'Alex';
+    const agencyName = settings?.agency_name !== undefined ? settings.agency_name : 'ValuTeachers';
 
     const hasAppt = Boolean(l.appointment_scheduled_at) || l.last_disposition === 'appointment_set';
     const effectiveTone = forcedToneFocus || (hasAppt ? 'meeting_confirmation' : undefined);
 
-    const initialDraft = AiSmsService.getSmartFallbackSMS(l, agentName, effectiveTone);
+    const initialDraft = AiSmsService.getSmartFallbackSMS(l, agentName, effectiveTone, new Date(), agencyName);
     userEditedSmsRef.current = false;
     setSmsBody(initialDraft);
     setSmsModalVisible(true);
@@ -935,6 +947,7 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     ]);
   };
 
+  const parsedNotesList = useMemo(() => NotesService.parseNotes(lead?.notes), [lead?.notes]);
 
   const handleDeleteLead = async () => {
     if (Platform.OS === 'web') {
@@ -965,7 +978,26 @@ export default function LeadDetailScreen({ route, navigation }: any) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centerContainer}>
-          <Text style={{ color: Colors.textMuted }}>Loading contact details...</Text>
+          {notFound ? (
+            <>
+              <Text style={{ color: Colors.textPrimary, fontSize: 16, fontWeight: '700', marginBottom: 8 }}>
+                Educator record not found
+              </Text>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: Colors.brandPrimary,
+                  paddingHorizontal: 18,
+                  paddingVertical: 10,
+                  borderRadius: 10,
+                }}
+                onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MainTabs', { screen: 'Lists' }))}
+              >
+                <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Return to Pipeline</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <Text style={{ color: Colors.textMuted }}>Loading contact details...</Text>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -1953,15 +1985,15 @@ export default function LeadDetailScreen({ route, navigation }: any) {
                   </View>
                   <View style={styles.notesCountBadge}>
                     <Text style={styles.notesCountBadgeText}>
-                      {NotesService.parseNotes(lead.notes).length} Notes
+                      {parsedNotesList.length} Notes
                     </Text>
                   </View>
                 </View>
 
                 {/* Notes List */}
-                {NotesService.parseNotes(lead.notes).length > 0 ? (
+                {parsedNotesList.length > 0 ? (
                   <View style={styles.detailNotesList}>
-                    {NotesService.parseNotes(lead.notes).map((entry) => (
+                    {parsedNotesList.map((entry) => (
                       <View key={entry.id} style={styles.detailNoteItem}>
                         <View style={styles.detailNoteItemHeader}>
                           <View style={styles.detailNoteTimestamp}>

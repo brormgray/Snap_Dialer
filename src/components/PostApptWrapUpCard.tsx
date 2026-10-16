@@ -51,6 +51,14 @@ export function PostApptWrapUpCard({
   // Custom reschedule state
   const [customDaysToAdd, setCustomDaysToAdd] = useState<number>(2);
 
+  React.useEffect(() => {
+    setIsEditingOutcome(false);
+    setRescheduleModalVisible(false);
+    setCalendarSchedulerVisible(false);
+    setNoShowModalVisible(false);
+    setIsSubmitting(false);
+  }, [lead.id]);
+
   // Resolve scheduled date (unconditionally called before any return)
   const scheduledDate = useMemo(() => {
     if (lead.appointment_scheduled_at) {
@@ -84,41 +92,41 @@ export function PostApptWrapUpCard({
   if (hasCompletedOutcome) {
     const outcome = lead.appointment_outcome;
     let label = 'Completed';
-    let icon = <CheckCircle2 size={16} color="#10B981" />;
+    let icon = <CheckCircle2 size={16} color="#047857" />;
     let badgeBg = 'rgba(16, 185, 129, 0.15)';
     let badgeBorder = '#10B981';
-    let textColor = '#10B981';
+    let textColor = '#047857';
 
     if (outcome === 'converted') {
       label = '★ Converted to Client';
-      icon = <Award size={16} color="#10B981" />;
+      icon = <Award size={16} color="#047857" />;
       badgeBg = 'rgba(16, 185, 129, 0.15)';
       badgeBorder = '#10B981';
-      textColor = '#10B981';
+      textColor = '#047857';
     } else if (outcome === 'nurture_drip') {
       label = '💬 Enrolled in Prospect Nurture Drip';
-      icon = <MessageSquare size={16} color="#0284C7" />;
+      icon = <MessageSquare size={16} color="#0369A1" />;
       badgeBg = 'rgba(2, 132, 199, 0.15)';
       badgeBorder = '#0284C7';
-      textColor = '#0284C7';
+      textColor = '#0369A1';
     } else if (outcome === 'rescheduled') {
       label = '📅 Sit-Down Rescheduled';
-      icon = <RotateCcw size={16} color={Colors.heavenlyGold} />;
+      icon = <RotateCcw size={16} color="#B45309" />;
       badgeBg = 'rgba(212, 160, 23, 0.15)';
       badgeBorder = Colors.heavenlyGold;
-      textColor = Colors.heavenlyGold;
+      textColor = '#B45309';
     } else if (outcome === 'no_show') {
       label = '🚫 Educator No-Show (Unavailable)';
-      icon = <UserX size={16} color="#F59E0B" />;
+      icon = <UserX size={16} color="#B45309" />;
       badgeBg = 'rgba(245, 158, 11, 0.15)';
       badgeBorder = '#F59E0B';
-      textColor = '#F59E0B';
+      textColor = '#B45309';
     } else if (outcome === 'declined') {
       label = '🚫 Educator Declined Options';
-      icon = <X size={16} color="#EF4444" />;
+      icon = <X size={16} color="#DC2626" />;
       badgeBg = 'rgba(239, 68, 68, 0.15)';
       badgeBorder = '#EF4444';
-      textColor = '#EF4444';
+      textColor = '#DC2626';
     }
 
     const completedDateFormatted = lead.appointment_completed_at
@@ -413,13 +421,21 @@ export function PostApptWrapUpCard({
 
             <TouchableOpacity
               style={[styles.modalOption, { borderColor: '#F59E0B' }]}
-              onPress={() => {
-                onNoShowOrDeclined('no_show');
+              disabled={isSubmitting}
+              onPress={async () => {
+                if (isSubmitting) return;
                 setNoShowModalVisible(false);
+                setIsSubmitting(true);
+                try {
+                  await onNoShowOrDeclined('no_show');
+                  setIsEditingOutcome(false);
+                } finally {
+                  setIsSubmitting(false);
+                }
               }}
             >
               <View style={styles.modalOptionLeft}>
-                <UserX size={16} color="#F59E0B" />
+                <UserX size={16} color="#B45309" />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={[styles.modalOptionTitle, { color: '#B45309' }]}>
                     Educator was No-Show / Unavailable
@@ -434,13 +450,21 @@ export function PostApptWrapUpCard({
 
             <TouchableOpacity
               style={[styles.modalOption, { borderColor: '#EF4444' }]}
-              onPress={() => {
-                onNoShowOrDeclined('declined');
+              disabled={isSubmitting}
+              onPress={async () => {
+                if (isSubmitting) return;
                 setNoShowModalVisible(false);
+                setIsSubmitting(true);
+                try {
+                  await onNoShowOrDeclined('declined');
+                  setIsEditingOutcome(false);
+                } finally {
+                  setIsSubmitting(false);
+                }
               }}
             >
               <View style={styles.modalOptionLeft}>
-                <X size={16} color="#EF4444" />
+                <X size={16} color="#DC2626" />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={[styles.modalOptionTitle, { color: '#DC2626' }]}>
                     Educator Declined / Not Interested
@@ -550,7 +574,7 @@ const styles = StyleSheet.create({
     borderColor: '#10B981',
   },
   actionBtnClientTitle: {
-    color: '#10B981',
+    color: '#047857',
     fontSize: 14,
     fontWeight: '800',
   },
@@ -564,7 +588,7 @@ const styles = StyleSheet.create({
     borderColor: '#0284C7',
   },
   actionBtnDripTitle: {
-    color: '#0284C7',
+    color: '#0369A1',
     fontSize: 14,
     fontWeight: '800',
   },
@@ -618,7 +642,7 @@ const styles = StyleSheet.create({
   completedCardTitle: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#10B981',
+    color: '#047857',
     letterSpacing: 0.5,
     flexShrink: 1,
   },

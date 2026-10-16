@@ -97,13 +97,22 @@ export class DateTimeAwareService {
    * Resolves the appointment Date from a Lead (using appointment_scheduled_at, follow_up_at, or notes)
    */
   static resolveAppointmentDate(lead: LeadLike, refDate: Date = new Date()): Date | null {
+    const parseDateSafe = (rawStr: string): Date | null => {
+      const m = rawStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) {
+        return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10), 10, 0, 0, 0);
+      }
+      const parsed = new Date(rawStr);
+      return !isNaN(parsed.getTime()) ? parsed : null;
+    };
+
     if (lead.appointment_scheduled_at && lead.appointment_scheduled_at.trim()) {
-      const parsed = new Date(lead.appointment_scheduled_at.trim());
-      if (!isNaN(parsed.getTime())) return parsed;
+      const d = parseDateSafe(lead.appointment_scheduled_at.trim());
+      if (d) return d;
     }
     if (lead.follow_up_at && lead.follow_up_at.trim()) {
-      const parsed = new Date(lead.follow_up_at.trim());
-      if (!isNaN(parsed.getTime())) return parsed;
+      const d = parseDateSafe(lead.follow_up_at.trim());
+      if (d) return d;
     }
     if (lead.notes) {
       const isoMatch = lead.notes.match(/\b(202\d)-(\d{2})-(\d{2})\b/);
@@ -153,8 +162,8 @@ export class DateTimeAwareService {
     if (diffCalendarDays === 0) {
       if (!isPastExact) {
         // Target is later today
-        const targetHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', hour12: false }).format(validTarget), 10);
-        const refHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', hour12: false }).format(validRef), 10);
+        const targetHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', hourCycle: 'h23' }).format(validTarget), 10);
+        const refHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', hourCycle: 'h23' }).format(validRef), 10);
         
         let relativeDesc = 'later today';
         if (targetHour >= 12 && refHour < 12) {
@@ -230,13 +239,13 @@ export class DateTimeAwareService {
 
     // 4. Future: 2 to 6 days
     if (diffCalendarDays >= 2 && diffCalendarDays <= 6) {
-      // Check if target is within the same Monday-Sunday work cycle or next week
+      // Check if target is within the same Sunday-Saturday work cycle or next week
       // Get day of week (0=Sun, 1=Mon, ..., 6=Sat)
       const refDow = new Date(rY, rM - 1, rD).getDay();
       const targetDow = new Date(tY, tM - 1, tD).getDay();
 
-      // If target DOW is greater than ref DOW and ref isn't Sunday, it's later "this week"
-      const isLaterThisWeek = refDow >= 1 && refDow < 5 && targetDow > refDow && diffCalendarDays <= (5 - refDow);
+      // If target DOW is greater than ref DOW within the same Sun-Sat week, it's later "this week"
+      const isLaterThisWeek = refDow >= 0 && refDow < 6 && targetDow > refDow && diffCalendarDays <= (6 - refDow);
 
       if (isLaterThisWeek) {
         return {
@@ -312,7 +321,7 @@ export class DateTimeAwareService {
     planningSuggestion: string; // e.g. "during your planning period this week", "early next week during planning"
   } {
     const dow = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' }).format(refDate);
-    const hour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', hour12: false }).format(refDate), 10);
+    const hour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', hourCycle: 'h23' }).format(refDate), 10);
 
     // Friday after lunch or late Friday
     if (dow === 'Fri') {

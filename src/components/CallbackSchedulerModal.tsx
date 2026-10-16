@@ -8,6 +8,7 @@ import {
   ScrollView,
   TextInput,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import {
   Calendar as CalendarIcon,
@@ -85,7 +86,7 @@ function CallbackSchedulerModalContent({
         isWeekend,
       });
 
-      current = new Date(current.getTime() + 86400000);
+      current = new Date(current.getFullYear(), current.getMonth(), current.getDate() + 1);
     }
     return days;
   }, []);
@@ -98,7 +99,7 @@ function CallbackSchedulerModalContent({
     return new Date(Date.now() + 2 * 3600 * 1000);
   });
   const [activePreset, setActivePreset] = useState<string | null>('2h');
-  const [selectedPeriod, setSelectedPeriod] = useState<BellPeriod | null>(() => matchedPeriod || null);
+  const [selectedPeriod, setSelectedPeriod] = useState<BellPeriod | null>(null);
   const [note, setNote] = useState<string>(initialNote);
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
@@ -149,7 +150,8 @@ function CallbackSchedulerModalContent({
       matrix.push(null);
     }
 
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const nowLocal = new Date();
+    const todayStr = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth() + 1).padStart(2, '0')}-${String(nowLocal.getDate()).padStart(2, '0')}`;
 
     for (let day = 1; day <= totalDaysInMonth; day++) {
       const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -172,6 +174,7 @@ function CallbackSchedulerModalContent({
   // Synchronize when opened
   useEffect(() => {
     if (visible) {
+      setSelectedPeriod(null);
       if (initialDate && !isNaN(new Date(initialDate).getTime())) {
         const d = new Date(initialDate);
         setSelectedDate(d);
@@ -189,7 +192,7 @@ function CallbackSchedulerModalContent({
       setIsSaving(false);
       setShowFullMonthGrid(false);
     }
-  }, [visible, initialDate, initialNote]);
+  }, [visible, lead.id, initialDate, initialNote]);
 
   // Preset Handlers
   const applyPreset = (presetKey: string) => {
@@ -353,7 +356,10 @@ function CallbackSchedulerModalContent({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.modalOverlay}
+      >
         <TouchableOpacity
           style={StyleSheet.absoluteFill}
           activeOpacity={1}
@@ -385,7 +391,7 @@ function CallbackSchedulerModalContent({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={{ maxHeight: 520 }} showsVerticalScrollIndicator={false}>
+          <ScrollView style={{ maxHeight: 520, flexShrink: 1 }} showsVerticalScrollIndicator={false}>
             <Text style={styles.sectionLabel}>QUICK TIMING PRESETS</Text>
             <View style={styles.presetsGrid}>
               <TouchableOpacity
@@ -764,7 +770,7 @@ function CallbackSchedulerModalContent({
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

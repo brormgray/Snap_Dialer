@@ -93,6 +93,9 @@ export function matchPeriodId(planningString?: string | null): string | null {
   if (/\b(period\s*5|5th(\s*period)?|p5|per\s*5|plan(ning)?\s*5|block\s*5)\b/i.test(p) || p === '5' || p === '5th') return 'p5';
   if (/\b(period\s*6|6th(\s*period)?|p6|per\s*6|plan(ning)?\s*6|block\s*6)\b/i.test(p) || p === '6' || p === '6th') return 'p6';
   if (/\b(period\s*7|7th(\s*period)?|p7|per\s*7|plan(ning)?\s*7|block\s*7)\b/i.test(p) || p === '7' || p === '7th') return 'p7';
+  if (/\b(period\s*8|8th(\s*period)?|p8|per\s*8|plan(ning)?\s*8|block\s*8)\b/i.test(p) || p === '8' || p === '8th') return 'p8';
+  if (/\b(period\s*9|9th(\s*period)?|p9|per\s*9|plan(ning)?\s*9|block\s*9)\b/i.test(p) || p === '9' || p === '9th') return 'p9';
+  if (/\b(lunch|lunch\s*[a-c])\b/i.test(p)) return 'lunch';
   if (p.includes('after') || p.includes('dismissal') || /\b(3:[3-5]\d|[4-5]:\d\d|[4-5]\s*pm)\b/i.test(p)) return 'after';
 
   return null;
@@ -135,7 +138,7 @@ export function isTeacherInPlanningNow(
     timeZone: 'America/New_York',
     hour: 'numeric',
     minute: 'numeric',
-    hour12: false,
+    hourCycle: 'h23',
     weekday: 'short',
   });
   const parts = formatter.formatToParts(now);
@@ -178,7 +181,7 @@ export function getCurrentlyActivePeriodId(schoolName?: string | null): string |
     timeZone: 'America/New_York',
     hour: 'numeric',
     minute: 'numeric',
-    hour12: false,
+    hourCycle: 'h23',
     weekday: 'short',
   });
   const parts = formatter.formatToParts(now);

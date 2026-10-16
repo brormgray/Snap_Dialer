@@ -37,9 +37,13 @@ export function TodayCockpitCard({
     return leads.filter((l) => PipelineStateService.isUpcomingAppointmentToday(l, now));
   }, [leads, now]);
 
-  // Strictly upcoming confirmed sit-downs scheduled for the current week (Sunday -> Saturday)
+  // Strictly upcoming confirmed sit-downs scheduled for the current week (Sunday -> Saturday), excluding past ones needing dispo
   const thisWeekSitDowns = useMemo(() => {
-    return leads.filter((l) => PipelineStateService.isAppointmentThisWeek(l, now));
+    return leads.filter(
+      (l) =>
+        PipelineStateService.isAppointmentThisWeek(l, now) &&
+        !PipelineStateService.isDispoNeeded(l, now)
+    );
   }, [leads, now]);
 
   // All upcoming confirmed sit-downs across the pipeline
@@ -516,14 +520,14 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   headerTitle: {
-    color: Colors.heavenlyGold,
+    color: '#FBBF24',
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.8,
     flexShrink: 1,
   },
   todayDateText: {
-    color: Colors.textMuted,
+    color: '#94A3B8',
     fontSize: 10,
     fontWeight: '600',
   },
@@ -564,7 +568,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   triadSub: {
-    color: Colors.textMuted,
+    color: '#94A3B8',
     fontSize: 9,
     marginTop: 1,
   },
@@ -572,7 +576,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: Colors.heavenlyGold,
+    backgroundColor: '#F59E0B',
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -660,7 +664,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dispoAlertTitle: {
-    color: '#D97706',
+    color: '#FBBF24',
     fontSize: 13,
     fontWeight: '800',
     flexShrink: 1,
@@ -680,7 +684,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   dispoAlertSub: {
-    color: Colors.textSecondary,
+    color: '#E2E8F0',
     fontSize: 11,
     marginTop: 2,
   },
@@ -709,7 +713,7 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   collapseToggleText: {
-    color: Colors.heavenlyGold,
+    color: '#FBBF24',
     fontSize: 10,
     fontWeight: '700',
   },
@@ -722,7 +726,7 @@ const styles = StyleSheet.create({
     borderColor: '#F59E0B',
   },
   dispoMiniBadgeText: {
-    color: '#F59E0B',
+    color: '#FBBF24',
     fontSize: 10,
     fontWeight: '800',
   },
@@ -746,7 +750,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   collapsedDot: {
-    color: Colors.textMuted,
+    color: '#64748B',
     fontSize: 11,
   },
   collapsedAlertItem: {
@@ -777,7 +781,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   viewAllCallbacksText: {
-    color: Colors.heavenlyGold,
+    color: '#FBBF24',
     fontSize: 10,
     fontWeight: '700',
   },

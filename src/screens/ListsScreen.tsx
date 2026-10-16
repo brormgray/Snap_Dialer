@@ -79,6 +79,7 @@ export default function ListsScreen({ navigation }: any) {
   const [unansweredScope, setUnansweredScope] = useState<'this_week' | 'all'>('this_week');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [advisorName, setAdvisorName] = useState<string>('Alex');
+  const [agencyName, setAgencyName] = useState<string>('ValuTeachers');
   const [loading, setLoading] = useState<boolean>(true);
 
   // Original Card Image Proof Modal
@@ -165,6 +166,9 @@ export default function ListsScreen({ navigation }: any) {
       if (appSettings?.user_name) {
         setAdvisorName(appSettings.user_name);
       }
+      if (appSettings && appSettings.agency_name !== undefined) {
+        setAgencyName(appSettings.agency_name);
+      }
 
       // Automatically assess & backfill any existing prospects/clients needing cadence schedules
       DripDispatcherService.assessAndBackfillLeads(all).then((res) => {
@@ -185,18 +189,23 @@ export default function ListsScreen({ navigation }: any) {
     }, [])
   );
 
-  // Helper to check if a lead has ever been called at least once
+  // Helper to check if a lead has ever been called by voice at least once
   const hasEverBeenCalled = useCallback(
     (l: Lead) => {
       if (!l) return false;
       if (l.attempts_count && l.attempts_count > 0) return true;
       if (l.last_attempt_at) return true;
-      if (l.last_disposition && l.last_disposition !== 'pending') return true;
+      const disp = String(l.last_disposition || '');
+      if (disp && disp !== 'pending' && disp !== 'sms_sent' && disp !== 'drip_sent' && !disp.startsWith('appt_')) {
+        return true;
+      }
       if (l.id && callLogs && callLogs.length > 0) {
         const leadIdStr = String(l.id).trim();
         if (leadIdStr && leadIdStr !== 'undefined' && leadIdStr !== 'null') {
           return callLogs.some((log) => {
             if (!log || !log.lead_id) return false;
+            const logDisp = String(log.disposition || '');
+            if (logDisp === 'sms_sent' || logDisp === 'drip_sent' || logDisp.startsWith('appt_')) return false;
             const logLeadId = String(log.lead_id).trim();
             return logLeadId && logLeadId !== 'undefined' && logLeadId !== 'null' && logLeadId === leadIdStr;
           });
@@ -361,13 +370,13 @@ export default function ListsScreen({ navigation }: any) {
   };
 
   const handleDirectCall = async (lead: Lead) => {
-    await HapticsService.medium();
     const startTime = Date.now();
     setCallStartTime(startTime);
     setQuickDispoLead(lead);
     setIsCallActive(true);
     setIsQuickDispoVisible(true);
-    await TelephonyService.makeCall(lead.phone);
+    TelephonyService.makeCall(lead.phone).catch(() => {});
+    HapticsService.medium().catch(() => {});
   };
 
   const handleOpenQuickDispo = async (lead: Lead) => {
@@ -485,46 +494,100 @@ export default function ListsScreen({ navigation }: any) {
     return { label: 'Ready to Call', bg: Colors.badgeNeutralBg, color: Colors.brandAccent };
   };
 
+  // Single-pass O(N) KPI stats calculation across scopedLeads
+  const pipelineMetrics = useMemo(() => {
+    const now = new Date();
+    let pendingCount = 0;
+    let upcomingCount = 0;
+    let apptsThisWeekCount = 0;
+    let dispoNeededCount = 0;
+    let callbackThisWeekCount = 0;
+    let callbackTotalCount = 0;
+    let unansweredThisWeekCount = 0;
+    let unansweredTotalCount = 0;
+    let spokeCount = 0;
+    let clientsCount = 0;
+    let callableCount = 0;
 
-  // Stats calculation
-  const totalCount = scopedLeads.length;
+    for (let i = 0; i < scopedLeads.length; i++) {
+      const l = scopedLeads[i];
+      if (!l) continue;
+      const disp = l.last_disposition;
 
-  // 'To Call': Leads pending outreach in current cycle (0 attempts OR recycled)
-  const pendingCount = scopedLeads.filter((l) => !l.last_disposition || l.last_disposition === 'pending').length;
+      if (!disp || disp === 'pending') {
+        pendingCount++;
+      }
+      if (!disp || disp === 'pending' || disp === 'no_answer' || disp === 'voicemail') {
+        callableCount++;
+      }
+      if (PipelineStateService.isActiveAppointment(l)) {
+        upcomingCount++;
+        if (PipelineStateService.isAppointmentThisWeek(l, now)) {
+          apptsThisWeekCount++;
+        }
+      }
+      if (PipelineStateService.isDispoNeeded(l, now)) {
+        dispoNeededCount++;
+      }
+      if (PipelineStateService.isScheduledCallback(l)) {
+        callbackTotalCount++;
+        if (PipelineStateService.isCallbackDueThisWeek(l, now)) {
+          callbackThisWeekCount++;
+        }
+      }
+      if (disp === 'no_answer' || disp === 'voicemail') {
+        unansweredTotalCount++;
+        if (PipelineStateService.isUnansweredThisWeek(l, now)) {
+          unansweredThisWeekCount++;
+        }
+      }
+      if (PipelineStateService.isSpokeThisWeek(l, now)) {
+        spokeCount++;
+      }
+      if (l.is_client) {
+        clientsCount++;
+      }
+    }
 
-  const now = new Date();
-  const upcomingCount = scopedLeads.filter((l) => PipelineStateService.isActiveAppointment(l)).length;
-  const apptsThisWeekCount = scopedLeads.filter((l) => PipelineStateService.isAppointmentThisWeek(l, now)).length;
-  const dispoNeededCount = scopedLeads.filter((l) => PipelineStateService.isDispoNeeded(l, now)).length;
+    return {
+      totalCount: scopedLeads.length,
+      pendingCount,
+      upcomingCount,
+      apptsThisWeekCount,
+      dispoNeededCount,
+      callbackThisWeekCount,
+      callbackTotalCount,
+      unansweredThisWeekCount,
+      unansweredTotalCount,
+      spokeCount,
+      clientsCount,
+      callableCount,
+    };
+  }, [scopedLeads]);
 
-  // 'Appts Set': Displays weekly confirmed sit-downs by default (or all upcoming)
+  const {
+    totalCount,
+    pendingCount,
+    upcomingCount,
+    apptsThisWeekCount,
+    dispoNeededCount,
+    callbackThisWeekCount,
+    callbackTotalCount,
+    unansweredThisWeekCount,
+    unansweredTotalCount,
+    spokeCount,
+    clientsCount,
+    callableCount,
+  } = pipelineMetrics;
+
   const appointmentCount = apptsScope === 'this_week' ? apptsThisWeekCount : upcomingCount;
-
-  // 'Callbacks': Leads scheduled for a callback due this week (or overdue)
-  const callbackThisWeekCount = scopedLeads.filter((l) => PipelineStateService.isCallbackDueThisWeek(l, now)).length;
-  const callbackTotalCount = scopedLeads.filter((l) => PipelineStateService.isScheduledCallback(l)).length;
   const callbackCount = callbackScope === 'this_week' ? callbackThisWeekCount : callbackTotalCount;
-
-  // 'Unanswered': Outreach calls unanswered this week
-  const unansweredThisWeekCount = scopedLeads.filter((l) => PipelineStateService.isUnansweredThisWeek(l, now)).length;
-  const unansweredTotalCount = scopedLeads.filter((l) => ['no_answer', 'voicemail'].includes(l.last_disposition || '')).length;
   const unansweredCount = unansweredScope === 'this_week' ? unansweredThisWeekCount : unansweredTotalCount;
-
-  // 'Spoke / Connected': Leads spoken with this week
-  const spokeCount = scopedLeads.filter((l) => PipelineStateService.isSpokeThisWeek(l, now)).length;
-
-  // 'Clients': Converted clients in this scope over ALL TIME
-  const clientsCount = scopedLeads.filter((l) => Boolean(l.is_client)).length;
-
-  // 'Callable' = all dialable leads (never called + pending + unanswered/voicemail). Used to drive CTA button state.
-  const callableCount = scopedLeads.filter(
-    (l) => !l.last_disposition || ['pending', 'no_answer', 'voicemail'].includes(l.last_disposition)
-  ).length;
 
   // Due SMS Drips & Annual Reviews for today
   const dueDrips = React.useMemo(() => {
-    return DripDispatcherService.getDueDrips(scopedLeads, advisorName);
-  }, [scopedLeads, advisorName]);
+    return DripDispatcherService.getDueDrips(scopedLeads, advisorName, agencyName);
+  }, [scopedLeads, advisorName, agencyName]);
 
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height && height < 550;

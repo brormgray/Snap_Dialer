@@ -9,6 +9,7 @@ import {
   TextInput,
   ActivityIndicator,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import {
   Calendar as CalendarIcon,
@@ -134,6 +135,9 @@ function AppointmentSchedulerModalContent({
     [schoolSchedule, educatorPeriodId]
   );
 
+  const formatLocalDayKey = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
   // 2. Quick school days calculation (next 10 school days, skipping Sat/Sun)
   const availableSchoolDays = useMemo(() => {
     const days: { date: Date; label: string; dateKey: string; isToday: boolean; isTomorrow: boolean }[] = [];
@@ -145,7 +149,7 @@ function AppointmentSchedulerModalContent({
       days.push({
         date: new Date(current),
         label: 'Today',
-        dateKey: current.toISOString().slice(0, 10),
+        dateKey: formatLocalDayKey(current),
         isToday: true,
         isTomorrow: false,
       });
@@ -154,7 +158,7 @@ function AppointmentSchedulerModalContent({
     let count = 0;
     while (days.length < 10 && count < 25) {
       count++;
-      current = new Date(current.getTime() + 86400000);
+      current = new Date(current.getFullYear(), current.getMonth(), current.getDate() + 1);
       const dow = current.getDay();
       if (dow >= 1 && dow <= 5) {
         const isTomorrow = days.length === 1 && days[0].isToday;
@@ -163,7 +167,7 @@ function AppointmentSchedulerModalContent({
         days.push({
           date: new Date(current),
           label: isTomorrow ? 'Tomorrow' : `${weekdayName}, ${monthDay}`,
-          dateKey: current.toISOString().slice(0, 10),
+          dateKey: formatLocalDayKey(current),
           isToday: false,
           isTomorrow,
         });
@@ -206,10 +210,17 @@ function AppointmentSchedulerModalContent({
   const [roomNumber, setRoomNumber] = useState<string>(lead.room_number || '');
   const [notes, setNotes] = useState<string>(initialNotes);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [cachedAgentName, setCachedAgentName] = useState<string>('Alex');
 
   // Initialize defaults on open or lead change
   useEffect(() => {
     if (!visible) return;
+
+    SettingsRepository.getSettings()
+      .then((s) => {
+        if (s?.user_name) setCachedAgentName(s.user_name);
+      })
+      .catch(() => {});
 
     // Resolve Purpose
     const matchedPreset = initialPurpose
@@ -254,7 +265,7 @@ function AppointmentSchedulerModalContent({
     }
 
     if (initD) {
-      const dKey = initD.toISOString().slice(0, 10);
+      const dKey = formatLocalDayKey(initD);
       setSelectedDayKey(dKey);
       setCalendarMonth(new Date(initD.getFullYear(), initD.getMonth(), 1));
 
@@ -316,9 +327,11 @@ function AppointmentSchedulerModalContent({
       setLocationType('classroom');
     }
 
+    setDurationMinutes(25);
+    setIsSaving(false);
     setRoomNumber(lead.room_number || '');
     setShowFullMonthGrid(false);
-  }, [visible, lead, initialDate, initialPurpose, initialNotes]);
+  }, [visible, lead.id, initialDate, initialPurpose, initialNotes]);
 
   // Handle Purpose Selection
   const handleSelectPurpose = (purposeId: string) => {
@@ -344,7 +357,7 @@ function AppointmentSchedulerModalContent({
   // Handle Quick Date Jumps
   const handleQuickJump = (targetDate: Date) => {
     HapticsService.tick();
-    const dKey = targetDate.toISOString().slice(0, 10);
+    const dKey = formatLocalDayKey(targetDate);
     setSelectedDayKey(dKey);
     setCalendarMonth(new Date(targetDate.getFullYear(), targetDate.getMonth(), 1));
   };
@@ -386,7 +399,7 @@ function AppointmentSchedulerModalContent({
       matrix.push(null);
     }
 
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = formatLocalDayKey(new Date());
 
     for (let day = 1; day <= totalDaysInMonth; day++) {
       const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -455,10 +468,7 @@ function AppointmentSchedulerModalContent({
   };
 
   const handleTextConfirmation = async () => {
-    await HapticsService.medium();
     const scheduledISO = computedScheduledDate.toISOString();
-    const settings = await SettingsRepository.getSettings();
-    const agentName = settings?.user_name || 'Alex';
 
     const tempLead: Lead = {
       ...lead,
@@ -470,12 +480,15 @@ function AppointmentSchedulerModalContent({
         : lead.planning_period,
     };
 
-    const smsText = AiSmsService.getSmartFallbackSMS(tempLead, agentName, 'meeting_confirmation', new Date());
-    await TelephonyService.sendSMS(lead.phone, smsText);
+    const smsText = AiSmsService.getSmartFallbackSMS(tempLead, cachedAgentName || 'Alex', 'meeting_confirmation', new Date());
+    // Invoke synchronously within user click handler for iOS Safari gesture compatibility
+    TelephonyService.sendSMS(lead.phone, smsText);
+    HapticsService.medium().catch(() => {});
   };
 
   // Submit Handler
   const handleConfirm = async () => {
+    if (isSaving) return;
     await HapticsService.success();
     setIsSaving(true);
     try {
@@ -504,7 +517,10 @@ function AppointmentSchedulerModalContent({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.modalOverlay}
+      >
         <TouchableOpacity
           style={StyleSheet.absoluteFill}
           activeOpacity={1}
@@ -1088,7 +1104,7 @@ function AppointmentSchedulerModalContent({
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -1152,6 +1168,7 @@ const styles = StyleSheet.create({
   },
   scrollBody: {
     maxHeight: 520,
+    flexShrink: 1,
   },
   scrollContent: {
     padding: 18,
@@ -1192,7 +1209,7 @@ const styles = StyleSheet.create({
   },
   purposeTextInput: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: '700',
     color: Colors.textPrimary,
     paddingVertical: 8,
@@ -1606,6 +1623,7 @@ const styles = StyleSheet.create({
   durationRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
     borderTopWidth: 1,
     borderTopColor: Colors.borderSubtle,

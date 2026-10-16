@@ -8,7 +8,13 @@ export class TelephonyService {
    * Cleans a raw phone string into standard dialable digits
    */
   static sanitizePhoneNumber(phone: string): string {
-    return phone.replace(/[^\d+]/g, '');
+    if (!phone) return '';
+    const withoutExt = String(phone).split(/(?:\bext\.?\s*\d+|\bx\s*\d+|#|;|,|\/)/i)[0] || '';
+    const trimmed = withoutExt.trim();
+    const hasLeadingPlus = trimmed.startsWith('+');
+    const digits = trimmed.replace(/\D/g, '');
+    if (!digits) return '';
+    return hasLeadingPlus ? `+${digits}` : digits;
   }
 
   /**
@@ -143,6 +149,11 @@ export class TelephonyService {
       ? (/^room\b/i.test(lead.room_number.trim()) ? lead.room_number.trim() : `Room ${lead.room_number.trim()}`)
       : 'your classroom';
 
+    const cleanYearsRaw = lead.years_in_frs
+      ? String(lead.years_in_frs).trim().replace(/\s*years?(?:\s+of\s+service)?$/i, '')
+      : '';
+    const yearsText = cleanYearsRaw ? `${cleanYearsRaw} years` : 'your time';
+
     const firstName = lead.name ? lead.name.split(' ')[0] : 'there';
     const lastName = lead.name && lead.name.split(' ').length > 1 ? lead.name.split(' ').slice(1).join(' ') : '';
 
@@ -177,44 +188,48 @@ export class TelephonyService {
     let body = template.body;
     if (!company) {
       body = body
-        .replace(/\s*(?:with|from|at|representing)\s+{{company}}/gi, '')
-        .replace(/\s*(?:with|from|at|representing)\s+{{agency_name}}/gi, '')
-        .replace(/\s*(?:with|from|at|representing)\s+{{agency}}/gi, '')
-        .replace(/,\s*{{company}}/gi, '')
-        .replace(/,\s*{{agency_name}}/gi, '')
-        .replace(/,\s*{{agency}}/gi, '')
-        .replace(/{{company}}/gi, '')
-        .replace(/{{agency_name}}/gi, '')
-        .replace(/{{agency}}/gi, '')
+        .replace(/\s*(?:with|from|at|representing)\s+\{\{?company\}?\}/gi, '')
+        .replace(/\s*(?:with|from|at|representing)\s+\{\{?agency_name\}?\}/gi, '')
+        .replace(/\s*(?:with|from|at|representing)\s+\{\{?agency\}?\}/gi, '')
+        .replace(/,\s*\{\{?company\}?\}/gi, '')
+        .replace(/,\s*\{\{?agency_name\}?\}/gi, '')
+        .replace(/,\s*\{\{?agency\}?\}/gi, '')
+        .replace(/\{\{?company\}?\}/gi, '')
+        .replace(/\{\{?agency_name\}?\}/gi, '')
+        .replace(/\{\{?agency\}?\}/gi, '')
         .replace(/\b(?:with|from|at|representing)\s*([.,!?:;])/gi, '$1')
         .replace(/\b(?:with|from|at|representing)\s*$/gi, '');
     }
 
     return body
-      .replace(/{{name}}/gi, () => firstName)
-      .replace(/{{first_name}}/gi, () => firstName)
-      .replace(/{{last_name}}/gi, () => lastName)
-      .replace(/{{full_name}}/gi, () => lead.name || 'there')
-      .replace(/{{school}}/gi, () => lead.school || 'your school')
-      .replace(/{{planning_period}}/gi, () => planningPeriodText)
-      .replace(/{{room_number}}/gi, () => roomText)
-      .replace(/{{years_in_frs}}/gi, () => (lead.years_in_frs ? `${lead.years_in_frs} years` : 'your time'))
-      .replace(/{{meeting_pref}}/gi, () => primaryMeetingPref)
-      .replace(/{{company}}/gi, () => company)
-      .replace(/{{agency_name}}/gi, () => company)
-      .replace(/{{agency}}/gi, () => company)
-      .replace(/{{note}}/gi, () => lead.notes || '')
-      .replace(/{{notes}}/gi, () => lead.notes || '')
-      .replace(/{{product}}/gi, () => productLabel)
-      .replace(/{{anniversary_date}}/gi, () => formattedAnniversary)
-      .replace(/{{appointment_date}}/gi, () => apptTokens.appointmentDate)
-      .replace(/{{appointment_time}}/gi, () => apptTokens.appointmentTime)
-      .replace(/{{appointment_relative}}/gi, () => apptTokens.appointmentRelative)
-      .replace(/{{appointment_day}}/gi, () => apptTokens.appointmentDay)
-      .replace(/{{appointment_datetime}}/gi, () => apptTokens.appointmentDatetime)
-      .replace(/{{time_window}}/gi, () => apptTokens.appointmentRelative)
-      .replace(/{{relative_time}}/gi, () => apptTokens.appointmentRelative)
-      .replace(/{{my_name}}/gi, () => myName)
+      .replace(/\{\{?name\}?\}/gi, () => firstName)
+      .replace(/\{\{?first_name\}?\}/gi, () => firstName)
+      .replace(/\{\{?last_name\}?\}/gi, () => lastName)
+      .replace(/\{\{?full_name\}?\}/gi, () => lead.name || 'there')
+      .replace(/\{\{?school\}?\}/gi, () => lead.school || 'your school')
+      .replace(/\{\{?planning_period\}?\}/gi, () => planningPeriodText)
+      .replace(/\{\{?room_number\}?\}/gi, () => roomText)
+      .replace(/\{\{?years_in_frs\}?\}/gi, () => yearsText)
+      .replace(/\{\{?meeting_pref\}?\}/gi, () => primaryMeetingPref)
+      .replace(/\{\{?company\}?\}/gi, () => company)
+      .replace(/\{\{?agency_name\}?\}/gi, () => company)
+      .replace(/\{\{?agency\}?\}/gi, () => company)
+      .replace(/\{\{?note\}?\}/gi, () => lead.notes || '')
+      .replace(/\{\{?notes\}?\}/gi, () => lead.notes || '')
+      .replace(/\{\{?product\}?\}/gi, () => productLabel)
+      .replace(/\{\{?anniversary_date\}?\}/gi, () => formattedAnniversary)
+      .replace(/\{\{?appointment_date\}?\}/gi, () => apptTokens.appointmentDate)
+      .replace(/\{\{?appointment_time\}?\}/gi, () => apptTokens.appointmentTime)
+      .replace(/\{\{?appointment_relative\}?\}/gi, () => apptTokens.appointmentRelative)
+      .replace(/\{\{?appointment_day\}?\}/gi, () => apptTokens.appointmentDay)
+      .replace(/\{\{?appointment_datetime\}?\}/gi, () => apptTokens.appointmentDatetime)
+      .replace(/\{\{?time_window\}?\}/gi, () => apptTokens.appointmentRelative)
+      .replace(/\{\{?relative_time\}?\}/gi, () => apptTokens.appointmentRelative)
+      .replace(/\{\{?my_name\}?\}/gi, () => myName)
+      .replace(/\bRoom\s+Room\b/gi, 'Room')
+      .replace(/\bRoom\s+your classroom\b/gi, 'your classroom')
+      .replace(/\byears\s+years\b/gi, 'years')
+      .replace(/\byour\s+your\b/gi, 'your')
       .replace(/[ \t]{2,}/g, ' ')
       .replace(/\s+([.,!?:;])/g, '$1')
       .replace(/^[ \t]+|[ \t]+$/gm, '')

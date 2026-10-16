@@ -38,7 +38,17 @@ export class GeminiModelService {
       if (response.ok) {
         const data = await response.json();
         const available: string[] = (data?.models || [])
-          .filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
+          .filter((m: any) => {
+            const name = String(m.name || '').toLowerCase();
+            return (
+              m.supportedGenerationMethods?.includes('generateContent') &&
+              !name.includes('tts') &&
+              !name.includes('image') &&
+              !name.includes('audio') &&
+              !name.includes('embedding') &&
+              !name.includes('aqa')
+            );
+          })
           .map((m: any) => m.name.replace(/^models\//, ''));
 
         if (available.length > 0) {
@@ -63,8 +73,6 @@ export class GeminiModelService {
       console.warn('Live Gemini model discovery note, using active fallback list:', e);
     }
 
-    this.cachedModels = fallbackList;
-    this.cacheTimestamp = now;
     return fallbackList;
   }
 }

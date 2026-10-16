@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -250,7 +250,18 @@ export default function DialerHudScreen({ route, navigation }: any) {
   useEffect(() => {
     loadQueue();
     const unsubscribe = navigation.addListener('focus', async () => {
-      // Re-hydrate queue in case a lead was edited on LeadDetailScreen
+      try {
+        const [s, allTemplates, allRules] = await Promise.all([
+          SettingsRepository.getSettings(),
+          CadenceRepository.getAllTemplates(),
+          CadenceRepository.getAllRules(),
+        ]);
+        setAppSettings(s);
+        setTemplates(allTemplates);
+        setCadenceRules(allRules);
+      } catch {}
+
+      // Re-hydrate queue in case a lead was edited or deleted on LeadDetailScreen / SettingsScreen
       const q = queueRef.current;
       const idx = currentIndexRef.current;
       if (q.length > 0 && q[idx]) {
@@ -261,6 +272,15 @@ export default function DialerHudScreen({ route, navigation }: any) {
             if (next[idx]) next[idx] = { ...fresh };
             return next;
           });
+        } else {
+          // Lead was deleted; remove from queue or reload if all leads were wiped
+          const allRemaining = await LeadsRepository.getAllLeads();
+          if (allRemaining.length === 0) {
+            setQueue([]);
+            setCurrentIndex(0);
+          } else {
+            setQueue((prev) => prev.filter((item) => item.id !== q[idx].id));
+          }
         }
       }
     });
@@ -432,6 +452,10 @@ export default function DialerHudScreen({ route, navigation }: any) {
   const timeInfo: ProspectTimeInfo | null = currentLead
     ? TimeZoneService.getProspectTimeInfo(activeDialPhone || currentLead.phone)
     : null;
+  const currentLeadNotes = useMemo(
+    () => NotesService.parseNotes(currentLead?.notes),
+    [currentLead?.notes]
+  );
 
   useEffect(() => {
     setSelectedPhoneOverride(null);
@@ -518,10 +542,12 @@ export default function DialerHudScreen({ route, navigation }: any) {
   ).current;
 
   // Trigger outbound call via zero-cost native SIM bridge
-  const handleDial = async () => {
+  const handleDial = async (phoneOverride?: string | any) => {
     if (!currentLead || isOnCall) return;
     cancelAutoAdvanceTimer();
-    await HapticsService.medium();
+    const targetNum = (typeof phoneOverride === 'string' && phoneOverride.trim())
+      ? phoneOverride.trim()
+      : (activeDialPhone || currentLead.phone);
     setSessionDials((prev) => prev + 1);
     setIsOnCall(true);
     setCallDuration(0);
@@ -534,7 +560,8 @@ export default function DialerHudScreen({ route, navigation }: any) {
       }
     }, 1000);
 
-    await TelephonyService.makeCall(activeDialPhone || currentLead.phone);
+    TelephonyService.makeCall(targetNum).catch(() => {});
+    HapticsService.medium().catch(() => {});
   };
 
   // Disposition Handlers
@@ -873,22 +900,32 @@ export default function DialerHudScreen({ route, navigation }: any) {
     setCustomSmsBody(initialDraft);
 
     if (currentLead.text_ok === false || currentLead.text_ok === (0 as any)) {
-      Alert.alert(
-        'SMS Consent Notice',
-        `"${currentLead.name}" has marked Text OK: NO on their card. Do you still wish to open the SMS composer?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Proceed to SMS',
-            style: 'destructive',
-            onPress: () => {
-              setSmsModalVisible(true);
-              handleGenerateAiSms(initialTone);
+      if (Platform.OS === 'web') {
+        const proceed =
+          typeof window !== 'undefined' && window.confirm
+            ? window.confirm(
+                `SMS Consent Notice: "${currentLead.name}" has marked Text OK: NO on their card. Do you still wish to open the SMS composer?`
+              )
+            : true;
+        if (!proceed) return;
+      } else {
+        Alert.alert(
+          'SMS Consent Notice',
+          `"${currentLead.name}" has marked Text OK: NO on their card. Do you still wish to open the SMS composer?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Proceed to SMS',
+              style: 'destructive',
+              onPress: () => {
+                setSmsModalVisible(true);
+                handleGenerateAiSms(initialTone);
+              },
             },
-          },
-        ]
-      );
-      return;
+          ]
+        );
+        return;
+      }
     }
 
     setSmsModalVisible(true);
@@ -1574,8 +1611,8 @@ export default function DialerHudScreen({ route, navigation }: any) {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <FileText size={14} color={Colors.heavenlyGold} />
                 <Text style={styles.notesPreviewTitle}>
-                  {NotesService.parseNotes(currentLead.notes).length > 0
-                    ? `Educator Notes (${NotesService.parseNotes(currentLead.notes).length})`
+                  {currentLeadNotes.length > 0
+                    ? `Educator Notes (${currentLeadNotes.length})`
                     : 'Educator Notes'}
                 </Text>
               </View>
@@ -1584,9 +1621,9 @@ export default function DialerHudScreen({ route, navigation }: any) {
                 <Text style={styles.notesAddChipText}>Add Note</Text>
               </View>
             </View>
-            {NotesService.parseNotes(currentLead.notes).length > 0 ? (
+            {currentLeadNotes.length > 0 ? (
               <Text style={styles.notesPreviewSnippet} numberOfLines={2} ellipsizeMode="tail">
-                "{NotesService.parseNotes(currentLead.notes)[0].text}"
+                "{currentLeadNotes[0].text}"
               </Text>
             ) : (
               <Text style={styles.notesEmptyPrompt}>Tap to record classroom notes, FRS details, or callback preferences...</Text>
@@ -1709,8 +1746,7 @@ export default function DialerHudScreen({ route, navigation }: any) {
                 const alt = tryAlternatePrompt;
                 setTryAlternatePrompt(null);
                 setSelectedPhoneOverride(alt);
-                await HapticsService.medium();
-                await TelephonyService.makeCall(alt);
+                await handleDial(alt);
               }}
             >
               <PhoneCall size={12} color="#FFFFFF" />
@@ -2480,8 +2516,8 @@ export default function DialerHudScreen({ route, navigation }: any) {
               showsVerticalScrollIndicator={true}
               keyboardShouldPersistTaps="handled"
             >
-              {currentLead && NotesService.parseNotes(currentLead.notes).length > 0 ? (
-                NotesService.parseNotes(currentLead.notes).map((entry) => (
+              {currentLead && currentLeadNotes.length > 0 ? (
+                currentLeadNotes.map((entry) => (
                   <View key={entry.id} style={styles.noteItemCard}>
                     <View style={styles.noteItemTopRow}>
                       <View style={styles.noteTimestampBadge}>
@@ -3275,14 +3311,17 @@ const styles = StyleSheet.create<any>({
   },
   sessionSummaryBox: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
     backgroundColor: Colors.surfaceCard,
     borderRadius: 16,
     paddingVertical: 20,
-    paddingHorizontal: 36,
+    paddingHorizontal: 16,
     marginTop: 32,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
+    gap: 8,
   },
   summaryItem: {
     alignItems: 'center',

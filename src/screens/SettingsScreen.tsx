@@ -96,7 +96,13 @@ export default function SettingsScreen({ navigation }: any) {
 
   useEffect(() => {
     loadSettings();
-  }, []);
+    const unsubscribe = navigation?.addListener?.('focus', () => {
+      loadSettings();
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [navigation]);
 
   const loadSettings = async () => {
     const s = await SettingsRepository.getSettings();
@@ -495,6 +501,9 @@ export default function SettingsScreen({ navigation }: any) {
       await db.runAsync('DELETE FROM leads');
       await db.runAsync('DELETE FROM lists');
       await db.runAsync('DELETE FROM call_logs');
+      setLeadCount(0);
+      setLogCount(0);
+      await loadSettings();
       showBanner('✓ All contacts and history wiped.');
       Alert.alert('Data Cleared', 'All test contacts, lists, and logs have been wiped.');
     };
@@ -1071,10 +1080,10 @@ export default function SettingsScreen({ navigation }: any) {
 
             <View style={styles.modalActionsRow}>
               <TouchableOpacity
-                style={styles.overwriteBtn}
+                style={[styles.actionButtonDark, { flex: 1 }]}
                 onPress={() => setCsvModalVisible(false)}
               >
-                <Text style={[styles.btnTextWhite, { color: Colors.statusDangerText }]}>Cancel</Text>
+                <Text style={[styles.btnTextWhite, { color: Colors.textSecondary }]}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity

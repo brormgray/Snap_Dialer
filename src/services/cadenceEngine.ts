@@ -39,6 +39,7 @@ export class CadenceEngine {
     if (rule) {
       const matchesCondition =
         rule.condition_disposition === disposition ||
+        (rule.condition_disposition as any) === 'any' ||
         (rule.condition_disposition === 'any_unconnected' && isUnanswered) ||
         (rule.condition_disposition === 'no_answer' && isUnanswered);
 

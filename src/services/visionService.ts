@@ -58,12 +58,18 @@ export class VisionService {
   ): Promise<ExtractedLeadItem[]> {
     const optimizedUri = await this.optimizeImageForOCR(rawImageUri);
     let base64Image = '';
+    let detectedMimeType = 'image/jpeg';
 
     if (optimizedUri.startsWith('data:')) {
+      const mimeMatch = optimizedUri.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,/);
+      if (mimeMatch) detectedMimeType = mimeMatch[1];
       base64Image = optimizedUri.split(',')[1] || '';
     } else if (Platform.OS === 'web') {
       const response = await fetch(optimizedUri);
       const blob = await response.blob();
+      if (blob.type && blob.type.startsWith('image/')) {
+        detectedMimeType = blob.type;
+      }
       base64Image = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -74,6 +80,8 @@ export class VisionService {
         reader.readAsDataURL(blob);
       });
     } else {
+      if (optimizedUri.toLowerCase().endsWith('.png')) detectedMimeType = 'image/png';
+      else if (optimizedUri.toLowerCase().endsWith('.webp')) detectedMimeType = 'image/webp';
       base64Image = await FileSystem.readAsStringAsync(optimizedUri, {
         encoding: 'base64',
       });
@@ -121,7 +129,7 @@ Never output conversational text. Output pure JSON adhering to the schema.`;
                 { text: 'Extract ValuTeachers FRS card.' },
                 {
                   inlineData: {
-                    mimeType: 'image/jpeg',
+                    mimeType: detectedMimeType,
                     data: base64Image,
                   },
                 },
