@@ -119,13 +119,17 @@ export interface CadenceRule {
 
 export type DripStage = 'sprint' | 'bridge' | 'monthly' | 'client';
 
+export type DripCategory = 'action_appointment' | 'pure_insight' | 'school_community';
+
 export interface SMSTemplate {
   id: string;
   title: string;
-  body: string; // supports {{name}}, {{first_name}}, {{school}}, {{years_in_frs}}, {{meeting_pref}}, {{my_name}}, {{notes}}, {{room_number}}, {{planning_period}}, {{product}}, {{anniversary_date}}
+  body: string; // supports {{name}}, {{first_name}}, {{school}}, {{years_in_frs}}, {{meeting_pref}}, {{my_name}}, {{company}}, {{notes}}, {{room_number}}, {{planning_period}}, {{product}}, {{anniversary_date}}
   stage?: DripStage;
   phase_label?: string;
   suggested_delay_days?: number;
+  drip_category?: DripCategory;
+  is_zero_ask?: boolean;
 }
 
 export interface ExtractedLeadItem {

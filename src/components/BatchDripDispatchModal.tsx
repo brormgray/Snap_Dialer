@@ -31,6 +31,7 @@ import { DripDispatcherService, DueDripItem } from '../services/dripDispatcherSe
 import { AiSmsService } from '../services/aiSmsService';
 import { isTeacherInPlanningNow } from '../data/bellSchedules';
 import { FrsKnowledgeBank, FRS_WISDOM_BANK, FrsTopicKey, FrsWisdomSeed } from '../data/frsKnowledgeBank';
+import { SMSTemplate, DripCategory } from '../types';
 
 interface BatchDripDispatchModalProps {
   visible: boolean;
@@ -51,6 +52,8 @@ export function BatchDripDispatchModal({
   const [customMessage, setCustomMessage] = useState<string>('');
   const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false);
   const [selectedFrsTopic, setSelectedFrsTopic] = useState<FrsTopicKey | undefined>(undefined);
+  const [selectedCategory, setSelectedCategory] = useState<DripCategory>('action_appointment');
+  const [activeTemplate, setActiveTemplate] = useState<SMSTemplate | null>(null);
 
   const wasVisibleRef = React.useRef<boolean>(false);
   const advanceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -62,7 +65,14 @@ export function BatchDripDispatchModal({
         setLocalQueue([...dueDrips]);
         setCurrentIndex(0);
         setSelectedFrsTopic(undefined);
-        setCustomMessage(dueDrips[0]?.formattedMessage || '');
+        const first = dueDrips[0];
+        const initialCat: DripCategory =
+          first?.dripCategory ||
+          first?.template?.drip_category ||
+          (first?.isZeroAsk ? 'pure_insight' : 'action_appointment');
+        setSelectedCategory(initialCat);
+        setActiveTemplate(first?.template || null);
+        setCustomMessage(first?.formattedMessage || '');
       } else {
         setLocalQueue([]);
       }
@@ -101,9 +111,29 @@ export function BatchDripDispatchModal({
     if (currentIndex + 1 < localQueue.length) {
       const nextIdx = currentIndex + 1;
       setCurrentIndex(nextIdx);
-      setCustomMessage(localQueue[nextIdx]?.formattedMessage || '');
+      const nextItem = localQueue[nextIdx];
+      const nextCat: DripCategory =
+        nextItem?.dripCategory ||
+        nextItem?.template?.drip_category ||
+        (nextItem?.isZeroAsk ? 'pure_insight' : 'action_appointment');
+      setSelectedCategory(nextCat);
+      setActiveTemplate(nextItem?.template || null);
+      setCustomMessage(nextItem?.formattedMessage || '');
     } else {
       handleClose();
+    }
+  };
+
+  const handleSelectCategory = async (cat: DripCategory) => {
+    if (!currentItem) return;
+    if (selectedCategory === cat) return;
+    await HapticsService.tick().catch(() => {});
+    setSelectedCategory(cat);
+
+    const alt = currentItem.categoryAlternatives?.[cat];
+    if (alt) {
+      setActiveTemplate(alt.template);
+      setCustomMessage(alt.formattedMessage);
     }
   };
 
@@ -112,8 +142,11 @@ export function BatchDripDispatchModal({
     setIsGeneratingAi(true);
     await HapticsService.medium();
     try {
+      const isZeroAskActive = selectedCategory === 'pure_insight' || selectedCategory === 'school_community';
       const effectiveTone = toneFocus || (
-        currentItem.stage === 'sprint'
+        isZeroAskActive
+          ? (selectedCategory === 'pure_insight' ? 'zero_ask_insight' : 'zero_ask_community')
+          : currentItem.stage === 'sprint'
           ? 'drip_sprint'
           : currentItem.stage === 'bridge'
           ? 'drip_bridge'
@@ -156,9 +189,10 @@ export function BatchDripDispatchModal({
 
     try {
       // 2. Record log with the exact bodyToSend and advance drip step
+      const templateToRecord = activeTemplate || currentItem.template;
       await DripDispatcherService.recordDripDispatched(
         currentItem.lead,
-        currentItem.template,
+        templateToRecord,
         bodyToSend
       );
 
@@ -332,10 +366,98 @@ export function BatchDripDispatchModal({
               })() : null}
             </View>
 
+            {/* 3-Way Category Swapper: Direct Ask vs Zero-Ask Insight vs Zero-Ask Community */}
+            {(() => {
+              const isEducator = currentItem.lead.is_frs !== false;
+              return (
+                <View style={styles.categorySwapperContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.categoryTab,
+                      selectedCategory === 'action_appointment' && styles.categoryTabActiveAsk,
+                    ]}
+                    onPress={() => handleSelectCategory('action_appointment')}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryTabText,
+                        selectedCategory === 'action_appointment' && styles.categoryTabTextActive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      🎯 Direct Ask
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.categoryTab,
+                      selectedCategory === 'pure_insight' && styles.categoryTabActiveInsight,
+                    ]}
+                    onPress={() => handleSelectCategory('pure_insight')}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryTabText,
+                        selectedCategory === 'pure_insight' && styles.categoryTabTextActive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      💡 {isEducator ? 'FRS Insight' : 'Insight'} (Zero-Ask)
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.categoryTab,
+                      selectedCategory === 'school_community' && styles.categoryTabActiveCommunity,
+                    ]}
+                    onPress={() => handleSelectCategory('school_community')}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryTabText,
+                        selectedCategory === 'school_community' && styles.categoryTabTextActive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      🏫 {isEducator ? 'School Goodwill' : 'Goodwill'} (Zero-Ask)
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })()}
+
+            {/* Category Awareness Banner */}
+            <View
+              style={[
+                styles.categoryBanner,
+                (selectedCategory === 'pure_insight' || selectedCategory === 'school_community')
+                  ? styles.categoryBannerZeroAsk
+                  : styles.categoryBannerAsk,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.categoryBannerText,
+                  (selectedCategory === 'pure_insight' || selectedCategory === 'school_community')
+                    ? { color: '#38BDF8' }
+                    : { color: '#FBBF24' },
+                ]}
+              >
+                {(selectedCategory === 'pure_insight' || selectedCategory === 'school_community')
+                  ? '💡 ZERO-ASK TOUCHPOINT • Pure Value & Rapport (No Meeting Pressure)'
+                  : '🎯 APPOINTMENT TOUCHPOINT • Direct Sit-Down / Planning Period Review Ask'}
+              </Text>
+            </View>
+
             {/* Template Header & AI Re-Draft Controls */}
             <View style={styles.templateStageRow}>
               <Text style={styles.templateStageTitle} numberOfLines={1}>
-                TOUCHPOINT: <Text style={{ color: Colors.heavenlyGold }}>{currentItem.template.title}</Text>
+                TOUCHPOINT: <Text style={{ color: Colors.heavenlyGold }}>{(activeTemplate || currentItem.template).title}</Text>
               </Text>
               <TouchableOpacity
                 style={styles.aiGenerateBtn}
@@ -356,6 +478,32 @@ export function BatchDripDispatchModal({
 
             {/* Stage-Calibrated Focus Chips */}
             <View style={styles.focusChipRow}>
+              <TouchableOpacity
+                style={[
+                  styles.focusChip,
+                  selectedCategory === 'pure_insight' && { borderColor: '#38BDF8', backgroundColor: 'rgba(56, 189, 248, 0.15)' },
+                ]}
+                onPress={() => handleGenerateAiSms('zero_ask_insight')}
+                disabled={isGeneratingAi}
+              >
+                <Text style={[styles.focusChipText, selectedCategory === 'pure_insight' && { color: '#38BDF8', fontWeight: '800' }]}>
+                  💡 Zero-Ask Insight
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.focusChip,
+                  selectedCategory === 'school_community' && { borderColor: '#10B981', backgroundColor: 'rgba(16, 185, 129, 0.15)' },
+                ]}
+                onPress={() => handleGenerateAiSms('zero_ask_community')}
+                disabled={isGeneratingAi}
+              >
+                <Text style={[styles.focusChipText, selectedCategory === 'school_community' && { color: '#10B981', fontWeight: '800' }]}>
+                  🏫 School Goodwill
+                </Text>
+              </TouchableOpacity>
+
               {(currentItem.lead.custom_questions || currentItem.lead.notes) && (
                 <TouchableOpacity
                   style={[styles.focusChip, { borderColor: Colors.heavenlyGold }]}
@@ -522,12 +670,12 @@ export function BatchDripDispatchModal({
               <Text style={styles.charCountText}>
                 {customMessage.length} characters • Tap text above to customize before sending
               </Text>
-              {customMessage !== currentItem.formattedMessage && (
+              {customMessage !== (currentItem.categoryAlternatives?.[selectedCategory]?.formattedMessage || currentItem.formattedMessage) && (
                 <TouchableOpacity
                   style={styles.resetBtn}
                   onPress={() => {
                     HapticsService.tick();
-                    setCustomMessage(currentItem.formattedMessage);
+                    setCustomMessage(currentItem.categoryAlternatives?.[selectedCategory]?.formattedMessage || currentItem.formattedMessage);
                   }}
                 >
                   <RotateCcw size={11} color={Colors.brandAccent} />
@@ -754,6 +902,72 @@ const styles = StyleSheet.create({
     color: '#FBBF24',
     fontSize: 11,
     fontWeight: '700',
+  },
+  categorySwapperContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#0F172A',
+    borderRadius: 12,
+    padding: 4,
+    gap: 6,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  categoryTab: {
+    flex: 1,
+    paddingVertical: 7,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  categoryTabActiveAsk: {
+    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  categoryTabActiveInsight: {
+    backgroundColor: 'rgba(56, 189, 248, 0.2)',
+    borderWidth: 1,
+    borderColor: '#38BDF8',
+  },
+  categoryTabActiveCommunity: {
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    borderWidth: 1,
+    borderColor: '#10B981',
+  },
+  categoryTabText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  categoryTabTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '900',
+  },
+  categoryBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginBottom: 10,
+    borderWidth: 1,
+  },
+  categoryBannerZeroAsk: {
+    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+  },
+  categoryBannerAsk: {
+    backgroundColor: 'rgba(212, 160, 23, 0.1)',
+    borderColor: 'rgba(212, 160, 23, 0.3)',
+  },
+  categoryBannerText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
   templateStageRow: {
     flexDirection: 'row',

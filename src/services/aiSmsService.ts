@@ -20,6 +20,10 @@ export type SmsToneFocus =
   | 'bridge_pause'
   | 'drip_monthly'
   | 'monthly_insight'
+  | 'zero_ask_insight'
+  | 'zero_ask_community'
+  | 'pure_insight'
+  | 'school_community'
   | 'drip_client'
   | 'client_check'
   | 'annual_review'
@@ -154,6 +158,22 @@ DRIP MONTHLY AUTHORITY DIRECTIVES (LONG-TERM VALUE):
 - Goal: Build compounding trust and authority.
 - High-value educational insight (market downside protection 0% floor, pre-tax savings, or retirement milestones).
 - Subtle P.S. pivot: Conclude with a warm, low-key P.S. offering to recalculate their numbers or catch up.
+`;
+      } else if (toneFocus === 'zero_ask_insight' || toneFocus === 'pure_insight') {
+        dripDirectives = `
+ZERO-ASK STATUTORY / FINANCIAL INSIGHT DIRECTIVES (MANDATORY):
+- Purpose: Build pure educator rapport, credibility, and trust through high-value insights with ZERO sales friction.
+- CRITICAL CONSTRAINT: Under NO circumstances should you request a meeting, sit-down, phone call, planning period appointment, room visit, or ask them to reply.
+- Conclude with a warm, low-pressure closing such as: "No reply needed—just wanted to make sure you had this in your files!", "Just sharing a quick insight as you plan your school year. Have a wonderful week at ${lead.school || 'your school'}!", or "Keep this in your records for your retirement planning!"
+- Tone: Insightful, respectful, insider clarity, 100% pressure-free.
+`;
+      } else if (toneFocus === 'zero_ask_community' || toneFocus === 'school_community') {
+        dripDirectives = `
+ZERO-ASK SCHOOL & COMMUNITY GOODWILL DIRECTIVES (MANDATORY):
+- Purpose: Warm educator appreciation, campus encouragement, and personal rapport.
+- CRITICAL CONSTRAINT: Under NO circumstances should you ask for an appointment, meeting, sit-down, or ask them to reply.
+- Conclude with sincere teacher encouragement, gratitude for their service to students, or wishing them a restful weekend.
+- Tone: Heartfelt, supportive, community ally.
 `;
       } else if (toneFocus === 'drip_client' || toneFocus === 'client_check' || toneFocus === 'annual_review') {
         dripDirectives = `
@@ -417,6 +437,30 @@ ${frsConstraint}
         return `Hi ${firstName}, ${agentName}${withCompany}. Quick reminder: under FRS Pension, 25 years at 1.6% replaces only 40% of your income. PS: Let me know if you want to recalculate your take-home pay during ${lead.planning_period || 'planning'}!`;
       }
       return `Hi ${firstName}, ${agentName}${withCompany}. Quick retirement fact: relying solely on Social Security replaces only about 40% of pre-retirement earnings. PS: Let me know if you want to recalculate your optimal target in a 5-min check-in!`;
+    }
+    if (toneFocus === 'zero_ask_insight' || toneFocus === 'pure_insight') {
+      if (isFrs) {
+        if (frsTopicKey === 'second_election') {
+          return `Hi ${firstName}, ${agentName} here. Many educators don't realize Florida gives teachers a one-time "Second Election" to switch between the Pension and Investment plans if your career horizon changes. Just sharing a quick insight as you plan your school year. Have a wonderful week at ${school}!`;
+        }
+        if (frsTopicKey === 'pretax_takehome') {
+          return `Hi ${firstName}, quick retirement math thought: because voluntary 403(b) contributions are deducted pre-tax, putting away $100/mo typically only reduces your take-home pay by about $75 depending on your bracket. Just a quick nugget for your financial peace of mind! - ${agentName}`;
+        }
+        if (frsTopicKey === 'downside_floor') {
+          return `Hi ${firstName}, with market volatility in the headlines, a quick reminder: educator retirement annuities feature a guaranteed 0% downside floor with growth tied to market gains. No reply needed—just wanted you to have peace of mind! - ${agentName}${withCompany}`;
+        }
+        if (frsTopicKey === 'sick_leave_rollover') {
+          return `Hi ${firstName}, quick FRS tip: rolling accumulated terminal sick leave into an approved tax-sheltered vehicle upon retirement prevents thousands in lost taxes compared to a cash payout. No reply needed—just wanted you to have this in your records! - ${agentName}`;
+        }
+        return `Hi ${firstName}, quick heads up for your FRS records: Florida SB 7024 expanded DROP participation to 8 full years for teachers and removed the old 12-month sign-up deadline. No reply needed—just wanted to make sure you had the updated state policy in your files! - ${agentName}${withCompany}`;
+      }
+      return `Hi ${firstName}, ${agentName}${withCompany}. Quick financial insight: Social Security is designed to replace only about 40% of pre-retirement earnings, making personal tax-sheltered reserves essential. No reply needed—just wanted to share this for your records! Have a wonderful week ahead.`;
+    }
+    if (toneFocus === 'zero_ask_community' || toneFocus === 'school_community') {
+      if (isFrs) {
+        return `Hi ${firstName}, knowing how demanding this time of the school year gets for teachers at ${school}, just wanted to send a quick note of encouragement. Thank you for everything you do for our students and school community every day! - ${agentName}${withCompany}`;
+      }
+      return `Hi ${firstName}, knowing how busy modern schedules get, just wanted to send a quick note wishing you a wonderful and productive week! Thank you for the opportunity to assist with your financial goals. - ${agentName}${withCompany}`;
     }
     if (toneFocus === 'drip_client' || toneFocus === 'client_check') {
       return isFrs

@@ -1,15 +1,24 @@
-import { Lead, SMSTemplate, DripTrack, DripStage } from '../types';
+import { Lead, SMSTemplate, DripTrack, DripStage, DripCategory } from '../types';
 import {
   NURTURE_DRIP_TEMPLATES,
   NON_FRS_NURTURE_DRIP_TEMPLATES,
   CLIENT_REVIEW_DRIP_TEMPLATES,
   NON_FRS_CLIENT_REVIEW_DRIP_TEMPLATES,
+  getAlternativeTemplate,
+  getDripTemplateById,
 } from '../data/dripTemplates';
 import { LeadsRepository } from '../db/leadsRepository';
 import { CallLogsRepository } from '../db/callLogsRepository';
 import { TelephonyService } from './telephonyService';
 import { DateTimeAwareService } from './dateTimeAwareService';
 import { FrsKnowledgeBank, FrsWisdomSeed } from '../data/frsKnowledgeBank';
+
+export interface CategoryAlternative {
+  category: DripCategory;
+  template: SMSTemplate;
+  formattedMessage: string;
+  isZeroAsk: boolean;
+}
 
 export interface DueDripItem {
   lead: Lead;
@@ -21,6 +30,9 @@ export interface DueDripItem {
   stageLabel?: string;
   suggestedNextDate?: string | null;
   recommendedWisdomSeed?: FrsWisdomSeed;
+  dripCategory?: DripCategory;
+  isZeroAsk?: boolean;
+  categoryAlternatives?: Record<DripCategory, CategoryAlternative>;
 }
 
 export class DripDispatcherService {
@@ -250,6 +262,33 @@ export class DripDispatcherService {
               ? FrsKnowledgeBank.recommendWisdomSeed(syntheticLead)
               : undefined;
 
+          const defaultCategory: DripCategory =
+            template.drip_category || (template.is_zero_ask ? 'pure_insight' : 'action_appointment');
+
+          // Build pre-interpolated alternatives for all 3 categories (action_appointment, pure_insight, school_community)
+          const isEducator = syntheticLead.is_frs !== false;
+          const categories: DripCategory[] = ['action_appointment', 'pure_insight', 'school_community'];
+          const categoryAlternatives: Record<DripCategory, CategoryAlternative> = {} as any;
+
+          for (const cat of categories) {
+            const altTpl = cat === defaultCategory
+              ? template
+              : getAlternativeTemplate(cat, currentStep, isEducator);
+            const altFormatted = TelephonyService.interpolateTemplate(
+              altTpl,
+              syntheticLead,
+              advisorName,
+              new Date(),
+              agencyName
+            );
+            categoryAlternatives[cat] = {
+              category: cat,
+              template: altTpl,
+              formattedMessage: altFormatted,
+              isZeroAsk: altTpl.is_zero_ask ?? (cat !== 'action_appointment'),
+            };
+          }
+
           dueItems.push({
             lead: syntheticLead,
             template,
@@ -260,6 +299,9 @@ export class DripDispatcherService {
             stageLabel: template.phase_label || stageInfo.label,
             suggestedNextDate,
             recommendedWisdomSeed,
+            dripCategory: defaultCategory,
+            isZeroAsk: template.is_zero_ask ?? false,
+            categoryAlternatives,
           });
         }
       }

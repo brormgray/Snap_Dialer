@@ -2721,6 +2721,22 @@ export default function LeadDetailScreen({ route, navigation }: any) {
               >
                 <Text style={styles.focusChipText}>🏫 Planning</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.focusChip, { borderColor: '#38BDF8' }]}
+                onPress={() => handleGenerateAiSms('zero_ask_insight')}
+              >
+                <Text style={[styles.focusChipText, { color: '#38BDF8' }]}>
+                  💡 {lead?.is_frs !== false ? 'FRS Insight' : 'Insight'} (Zero-Ask)
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.focusChip, { borderColor: '#10B981' }]}
+                onPress={() => handleGenerateAiSms('zero_ask_community')}
+              >
+                <Text style={[styles.focusChipText, { color: '#10B981' }]}>
+                  🏫 {lead?.is_frs !== false ? 'School Goodwill' : 'Goodwill'} (Zero-Ask)
+                </Text>
+              </TouchableOpacity>
             </View>
 
             <TextInput
