@@ -1,0 +1,52 @@
+name: Supabase Inactivity Keep-Alive
+
+on:
+  schedule:
+    # Runs at 12:00 UTC every 3 days to keep Supabase PostgreSQL active and prevent 7-day inactivity pause
+    - cron: '0 12 */3 * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  keepalive:
+    name: Ping Supabase REST Endpoint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Database
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::warning::SUPABASE_URL or SUPABASE_ANON_KEY secret is not set in GitHub repository secrets."
+            echo "Please navigate to: Repository -> Settings -> Secrets and variables -> Actions and add SUPABASE_URL and SUPABASE_ANON_KEY."
+            exit 1
+          fi
+
+          CLEAN_URL=$(echo "$SUPABASE_URL" | sed 's:/*$::')
+          ENDPOINT="${CLEAN_URL}/rest/v1/snap_lists?select=id&limit=1"
+          
+          echo "Pinging Supabase at: $ENDPOINT"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$ENDPOINT" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+
+          echo "Response HTTP Status: $HTTP_STATUS"
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then
+            echo "✓ Success: Active database traffic registered on Supabase. Inactivity pause timer reset."
+          elif [ "$HTTP_STATUS" -eq 404 ] || [ "$HTTP_STATUS" -eq 400 ]; then
+            # If snap_lists is not created yet, ping root REST endpoint
+            ROOT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET "${CLEAN_URL}/rest/v1/" \
+              -H "apikey: $SUPABASE_ANON_KEY" \
+              -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+            echo "Fallback root REST HTTP Status: $ROOT_STATUS"
+            if [ "$ROOT_STATUS" -ge 200 ] && [ "$ROOT_STATUS" -lt 400 ]; then
+              echo "✓ Success: Active API request registered on Supabase root endpoint. Inactivity pause timer reset."
+            else
+              echo "::error::Failed to ping Supabase root endpoint. HTTP status: $ROOT_STATUS"
+              exit 1
+            fi
+          else
+            echo "::error::Supabase returned unexpected HTTP status: $HTTP_STATUS"
+            exit 1
+          fi

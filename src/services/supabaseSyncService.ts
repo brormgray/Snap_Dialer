@@ -366,8 +366,15 @@ export class SupabaseSyncService {
         }
       }
 
+      const nowIso = new Date().toISOString();
       if (typeof window !== 'undefined' && window.localStorage) {
-        localStorage.setItem('snap_last_sync_time', new Date().toISOString());
+        localStorage.setItem('snap_last_sync_time', nowIso);
+        localStorage.setItem('snap_last_ping_time', nowIso);
+        try {
+          if (window.dispatchEvent) {
+            window.dispatchEvent(new CustomEvent('snap-sync-status-changed'));
+          }
+        } catch {}
       }
 
       return { success: true, syncedLeads: leads.length, syncedLists: lists.length, syncedLogs: logs.length };
@@ -699,6 +706,12 @@ export class SupabaseSyncService {
       const now = new Date().toISOString();
       if (typeof window !== 'undefined' && window.localStorage) {
         localStorage.setItem('snap_last_sync_time', now);
+        localStorage.setItem('snap_last_ping_time', now);
+        try {
+          if (window.dispatchEvent) {
+            window.dispatchEvent(new CustomEvent('snap-sync-status-changed'));
+          }
+        } catch {}
       }
 
       return {
@@ -737,5 +750,153 @@ export class SupabaseSyncService {
       return localStorage.getItem('snap_last_sync_time');
     }
     return null;
+  }
+
+  static isConfigured(): boolean {
+    return getSupabaseClient() !== null;
+  }
+
+  static isAutoSyncEnabled(): boolean {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const val = localStorage.getItem('snap_auto_sync_enabled');
+      if (val === null) return true; // Default enabled
+      return val === 'true';
+    }
+    return true;
+  }
+
+  static setAutoSyncEnabled(enabled: boolean): void {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.setItem('snap_auto_sync_enabled', enabled ? 'true' : 'false');
+      try {
+        if (window.dispatchEvent) {
+          window.dispatchEvent(new CustomEvent('snap-sync-status-changed'));
+        }
+      } catch {}
+    }
+  }
+
+  static getAutoSyncIntervalHours(): number {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const val = localStorage.getItem('snap_auto_sync_interval_hours');
+      if (val !== null) {
+        const parsed = parseInt(val, 10);
+        if (!isNaN(parsed) && parsed >= 0) return parsed;
+      }
+    }
+    return 48; // Default: 48 hours (every 2 days)
+  }
+
+  static setAutoSyncIntervalHours(hours: number): void {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.setItem('snap_auto_sync_interval_hours', String(hours));
+      try {
+        if (window.dispatchEvent) {
+          window.dispatchEvent(new CustomEvent('snap-sync-status-changed'));
+        }
+      } catch {}
+    }
+  }
+
+  static getLastPingTime(): string | null {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return localStorage.getItem('snap_last_ping_time');
+    }
+    return null;
+  }
+
+  static async pingDatabase(): Promise<{ success: boolean; latencyMs?: number; message?: string }> {
+    const client = getSupabaseClient();
+    if (!client) {
+      return { success: false, message: 'Supabase credentials are not configured.' };
+    }
+    const startTime = Date.now();
+    try {
+      const { error } = await client.from(`${TABLE_PREFIX}leads`).select('id').limit(1);
+      const latencyMs = Date.now() - startTime;
+      if (error && !error.message?.includes('relation "snap_leads" does not exist') && error.code !== '42P01') {
+        return { success: false, latencyMs, message: error.message };
+      }
+      const now = new Date().toISOString();
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem('snap_last_ping_time', now);
+        try {
+          if (window.dispatchEvent) {
+            window.dispatchEvent(new CustomEvent('snap-sync-status-changed'));
+          }
+        } catch {}
+      }
+      return {
+        success: true,
+        latencyMs,
+        message: `Active database ping confirmed (${latencyMs}ms). Inactivity timer reset.`,
+      };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Ping request failed.' };
+    }
+  }
+
+  static isSyncDue(): boolean {
+    if (!this.isConfigured() || !this.isAutoSyncEnabled()) {
+      return false;
+    }
+    const lastSync = this.getLastSyncTime();
+    if (!lastSync) {
+      return true; // Never synced before
+    }
+    const intervalHours = this.getAutoSyncIntervalHours();
+    if (intervalHours === 0) {
+      return true; // Sync on every launch
+    }
+    const lastSyncDate = new Date(lastSync).getTime();
+    if (isNaN(lastSyncDate)) {
+      return true;
+    }
+    const elapsedMs = Date.now() - lastSyncDate;
+    const requiredIntervalMs = intervalHours * 60 * 60 * 1000;
+    return elapsedMs >= requiredIntervalMs;
+  }
+
+  static async checkAndRunPeriodicSync(force: boolean = false): Promise<{
+    executed: boolean;
+    reason: string;
+    result?: any;
+  }> {
+    if (!this.isConfigured()) {
+      return { executed: false, reason: 'Supabase not configured' };
+    }
+    if (!this.isAutoSyncEnabled() && !force) {
+      return { executed: false, reason: 'Auto-sync disabled by user' };
+    }
+    if (this.isSyncing) {
+      return { executed: false, reason: 'Sync already in progress' };
+    }
+
+    const due = force || this.isSyncDue();
+    if (due) {
+      try {
+        const result = await this.syncTwoWayDelta();
+        const now = new Date().toISOString();
+        if (typeof window !== 'undefined' && window.localStorage) {
+          localStorage.setItem('snap_last_ping_time', now);
+          try {
+            if (window.dispatchEvent) {
+              window.dispatchEvent(new CustomEvent('snap-sync-status-changed'));
+            }
+          } catch {}
+        }
+        return { executed: true, reason: 'Periodic two-way delta sync completed', result };
+      } catch (err: any) {
+        return { executed: false, reason: `Periodic sync error: ${err?.message || err}` };
+      }
+    } else {
+      // If sync is not yet due, keep database active if no ping in >24 hours
+      const lastPing = this.getLastPingTime();
+      const lastPingMs = lastPing ? new Date(lastPing).getTime() : 0;
+      if (Date.now() - lastPingMs > 24 * 60 * 60 * 1000) {
+        this.pingDatabase().catch(() => {});
+      }
+      return { executed: false, reason: 'Sync interval not reached yet' };
+    }
   }
 }

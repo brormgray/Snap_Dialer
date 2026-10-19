@@ -36,6 +36,8 @@ import {
   Lock,
   Sparkles,
   Briefcase,
+  Zap,
+  Clock,
 } from 'lucide-react-native';
 import { SettingsRepository } from '../db/settingsRepository';
 import { LeadsRepository } from '../db/leadsRepository';
@@ -73,6 +75,12 @@ export default function SettingsScreen({ navigation }: any) {
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [sqlCopied, setSqlCopied] = useState<boolean>(false);
 
+  // Automated Sync & Keep-Alive State
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState<boolean>(() => SupabaseSyncService.isAutoSyncEnabled());
+  const [autoSyncIntervalHours, setAutoSyncIntervalHours] = useState<number>(() => SupabaseSyncService.getAutoSyncIntervalHours());
+  const [lastPingTime, setLastPingTime] = useState<string | null>(() => SupabaseSyncService.getLastPingTime());
+  const [isPinging, setIsPinging] = useState<boolean>(false);
+
   // Field Privacy & PIN Lock State
   const [pinEnabled, setPinEnabled] = useState<boolean>(() => SecurityService.isPinEnabled());
   const [showPinSetupModal, setShowPinSetupModal] = useState<boolean>(false);
@@ -99,8 +107,23 @@ export default function SettingsScreen({ navigation }: any) {
     const unsubscribe = navigation?.addListener?.('focus', () => {
       loadSettings();
     });
+
+    const handleSyncStatusEvent = () => {
+      setLastSyncTime(SupabaseSyncService.getLastSyncTime());
+      setLastPingTime(SupabaseSyncService.getLastPingTime());
+      setAutoSyncEnabled(SupabaseSyncService.isAutoSyncEnabled());
+      setAutoSyncIntervalHours(SupabaseSyncService.getAutoSyncIntervalHours());
+    };
+
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener('snap-sync-status-changed', handleSyncStatusEvent);
+    }
+
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
+      if (typeof window !== 'undefined' && window.removeEventListener) {
+        window.removeEventListener('snap-sync-status-changed', handleSyncStatusEvent);
+      }
     };
   }, [navigation]);
 
@@ -112,13 +135,17 @@ export default function SettingsScreen({ navigation }: any) {
     setAutoAdvanceEnabled(s.auto_advance_enabled);
     setAutoAdvanceSeconds(String(s.auto_advance_seconds || 3));
 
-    // Load Supabase credentials from local storage
+    // Load Supabase credentials & auto-sync config
+    setAutoSyncEnabled(SupabaseSyncService.isAutoSyncEnabled());
+    setAutoSyncIntervalHours(SupabaseSyncService.getAutoSyncIntervalHours());
+    setLastSyncTime(SupabaseSyncService.getLastSyncTime());
+    setLastPingTime(SupabaseSyncService.getLastPingTime());
+
     if (typeof window !== 'undefined' && window.localStorage) {
       const savedUrl = localStorage.getItem('snap_supabase_url') || '';
       const savedKey = localStorage.getItem('snap_supabase_anon_key') || '';
       setSupabaseUrl(savedUrl);
       setSupabaseAnonKey(savedKey);
-      setLastSyncTime(SupabaseSyncService.getLastSyncTime());
       if (savedUrl && savedKey) {
         setConnectionStatus({ connected: true, message: '✓ Supabase Cloud credentials active.' });
       }
@@ -467,6 +494,53 @@ export default function SettingsScreen({ navigation }: any) {
     }
   };
 
+  const handleToggleAutoSync = (val: boolean) => {
+    SupabaseSyncService.setAutoSyncEnabled(val);
+    setAutoSyncEnabled(val);
+    showBanner(val ? '✓ Automated cloud backup enabled.' : '✓ Automated cloud backup paused.');
+  };
+
+  const handleChangeInterval = (hours: number) => {
+    SupabaseSyncService.setAutoSyncIntervalHours(hours);
+    setAutoSyncIntervalHours(hours);
+    const label = hours === 0 ? 'every launch' : `every ${hours === 24 ? '1 day' : hours / 24 + ' days'}`;
+    showBanner(`✓ Automated backup frequency set to ${label}.`);
+  };
+
+  const handlePingSupabase = async () => {
+    if (!supabaseUrl.trim() || !supabaseAnonKey.trim()) {
+      Alert.alert('Configure Supabase', 'Please enter and save your Supabase credentials first.');
+      return;
+    }
+    setIsPinging(true);
+    await HapticsService.medium();
+    const res = await SupabaseSyncService.pingDatabase();
+    setIsPinging(false);
+    setLastPingTime(SupabaseSyncService.getLastPingTime());
+    if (res.success) {
+      await HapticsService.success();
+      showBanner(`✓ Keep-Alive Ping successful (${res.latencyMs}ms).`);
+      Alert.alert(
+        'Keep-Alive Ping Successful',
+        `Supabase responded in ${res.latencyMs}ms.\n\nActive database traffic has been registered and your 7-day inactivity pause clock has been reset.`
+      );
+    } else {
+      Alert.alert('Ping Failed', res.message || 'Could not reach Supabase.');
+    }
+  };
+
+  const handleCopyGithubSecret = async (name: string, value: string) => {
+    await HapticsService.tick();
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(value);
+        showBanner(`✓ Copied ${name} to clipboard.`);
+      } catch {
+        Alert.alert('Notice', `Please copy ${name} manually.`);
+      }
+    }
+  };
+
   const handleTogglePin = (value: boolean) => {
     if (value) {
       setTempPin('');
@@ -763,11 +837,94 @@ export default function SettingsScreen({ navigation }: any) {
             </View>
           )}
 
-          {lastSyncTime && (
-            <Text style={styles.lastSyncText}>
-              ☁️ Last Cloud Sync: {new Date(lastSyncTime).toLocaleTimeString()} ({new Date(lastSyncTime).toLocaleDateString()})
+          {/* Automated Cloud Backup Settings Box */}
+          <View style={styles.autoSyncContainer}>
+            <View style={styles.autoSyncHeaderRow}>
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Cloud size={18} color={Colors.brandPrimary} />
+                <Text style={styles.autoSyncTitle}>Automated Cloud Backup</Text>
+              </View>
+              <Switch
+                value={autoSyncEnabled}
+                onValueChange={handleToggleAutoSync}
+                trackColor={{ false: '#334155', true: Colors.brandPrimary }}
+                thumbColor={autoSyncEnabled ? '#FFFFFF' : '#94A3B8'}
+              />
+            </View>
+            <Text style={styles.autoSyncSubtitle}>
+              Automatically runs background Two-Way Delta Sync (LWW) to safeguard local educator leads and keeps your Supabase cloud database active.
             </Text>
-          )}
+
+            {autoSyncEnabled && (
+              <View style={{ marginTop: 12 }}>
+                <Text style={styles.intervalHeaderLabel}>SYNC FREQUENCY</Text>
+                <View style={styles.intervalButtonGroup}>
+                  {[
+                    { label: 'Every Launch', hours: 0 },
+                    { label: 'Daily (24h)', hours: 24 },
+                    { label: 'Every 2 Days', hours: 48 },
+                    { label: 'Every 3 Days', hours: 72 },
+                  ].map((item) => (
+                    <TouchableOpacity
+                      key={item.hours}
+                      style={[
+                        styles.intervalChip,
+                        autoSyncIntervalHours === item.hours && styles.intervalChipActive,
+                      ]}
+                      onPress={() => handleChangeInterval(item.hours)}
+                    >
+                      <Text
+                        style={[
+                          styles.intervalChipText,
+                          autoSyncIntervalHours === item.hours && styles.intervalChipTextActive,
+                        ]}
+                      >
+                        {item.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Health & Sync Diagnostics */}
+            <View style={styles.syncDiagnosticsBox}>
+              <View style={styles.diagRow}>
+                <Clock size={13} color={Colors.brandAccent} />
+                <Text style={styles.diagText}>
+                  <Text style={{ fontWeight: '700', color: Colors.textPrimary }}>Last Cloud Sync: </Text>
+                  {lastSyncTime
+                    ? `${new Date(lastSyncTime).toLocaleDateString()} at ${new Date(lastSyncTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                    : 'Never synced yet'}
+                </Text>
+              </View>
+              <View style={[styles.diagRow, { marginTop: 4 }]}>
+                <Zap size={13} color="#F59E0B" />
+                <Text style={styles.diagText}>
+                  <Text style={{ fontWeight: '700', color: Colors.textPrimary }}>Keep-Alive Status: </Text>
+                  {lastPingTime
+                    ? `Active (${new Date(lastPingTime).toLocaleDateString()} ${new Date(lastPingTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
+                    : 'Awaiting first contact'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Manual Keep-Alive Ping Button */}
+            <TouchableOpacity
+              style={[styles.pingButton, isPinging && { opacity: 0.7 }]}
+              onPress={handlePingSupabase}
+              disabled={isPinging}
+            >
+              {isPinging ? (
+                <ActivityIndicator size="small" color="#F59E0B" />
+              ) : (
+                <Zap size={15} color="#F59E0B" />
+              )}
+              <Text style={styles.pingButtonText}>
+                {isPinging ? 'Pinging Supabase...' : '⚡ Test Keep-Alive Ping (Reset 7-Day Pause Timer)'}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           {/* Action Buttons */}
           <View style={[styles.buttonGroup, { marginTop: 14 }]}>
@@ -835,6 +992,52 @@ export default function SettingsScreen({ navigation }: any) {
                 {sqlCopied ? '✓ SQL Setup Copied!' : '📋 Copy Supabase SQL Setup Script'}
               </Text>
             </TouchableOpacity>
+          </View>
+
+          {/* Zero-Touch GitHub Actions Keep-Alive Workflow Card */}
+          <View style={styles.githubKeepaliveBox}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <ShieldCheck size={16} color="#38BDF8" />
+              <Text style={styles.githubKeepaliveTitle}>Zero-Touch Cloud Keep-Alive (GitHub Actions)</Text>
+            </View>
+            <Text style={styles.githubKeepaliveDesc}>
+              A scheduled GitHub Actions workflow (<Text style={{ fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', color: Colors.heavenlyGold }}>.github/workflows/supabase-keepalive.yml</Text>) pings Supabase every 3 days so your project never pauses, even if SnapDialer is closed for weeks.
+            </Text>
+            <Text style={[styles.githubKeepaliveDesc, { marginTop: 8, fontWeight: '700', color: Colors.textPrimary }]}>
+              Add these 2 Repository Secrets in GitHub (Settings &gt; Secrets and variables &gt; Actions):
+            </Text>
+
+            <View style={styles.secretCopyRow}>
+              <View style={{ flex: 1, marginRight: 6 }}>
+                <Text style={styles.secretLabel}>Secret: SUPABASE_URL</Text>
+                <Text style={styles.secretValue} numberOfLines={1}>
+                  {supabaseUrl || 'https://yourprojectid.supabase.co'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.secretCopyBtn}
+                onPress={() => handleCopyGithubSecret('SUPABASE_URL', supabaseUrl)}
+              >
+                <Copy size={12} color={Colors.brandPrimary} />
+                <Text style={styles.secretCopyBtnText}>Copy URL</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.secretCopyRow, { marginTop: 6 }]}>
+              <View style={{ flex: 1, marginRight: 6 }}>
+                <Text style={styles.secretLabel}>Secret: SUPABASE_ANON_KEY</Text>
+                <Text style={styles.secretValue} numberOfLines={1}>
+                  {supabaseAnonKey ? `${supabaseAnonKey.slice(0, 16)}...` : 'eyJhbGciOi...'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.secretCopyBtn}
+                onPress={() => handleCopyGithubSecret('SUPABASE_ANON_KEY', supabaseAnonKey)}
+              >
+                <Copy size={12} color={Colors.brandPrimary} />
+                <Text style={styles.secretCopyBtnText}>Copy Key</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -1599,5 +1802,153 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 10,
     gap: 8,
+  },
+  autoSyncContainer: {
+    backgroundColor: Colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 14,
+  },
+  autoSyncHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  autoSyncTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  autoSyncSubtitle: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    lineHeight: 16,
+    marginTop: 6,
+  },
+  intervalHeaderLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.textSecondary,
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  intervalButtonGroup: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  intervalChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.borderStrong,
+    backgroundColor: Colors.surfaceCard,
+  },
+  intervalChipActive: {
+    backgroundColor: Colors.brandPrimary,
+    borderColor: Colors.brandPrimary,
+  },
+  intervalChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  intervalChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  syncDiagnosticsBox: {
+    backgroundColor: Colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 12,
+  },
+  diagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  diagText: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+  },
+  pingButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    borderRadius: 8,
+    paddingVertical: 10,
+    marginTop: 10,
+    gap: 8,
+  },
+  pingButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#F59E0B',
+  },
+  githubKeepaliveBox: {
+    backgroundColor: 'rgba(56, 189, 248, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.25)',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 14,
+  },
+  githubKeepaliveTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#38BDF8',
+  },
+  githubKeepaliveDesc: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    lineHeight: 16,
+  },
+  secretCopyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginTop: 8,
+    gap: 8,
+  },
+  secretLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.brandAccent,
+  },
+  secretValue: {
+    fontSize: 11,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    color: Colors.textPrimary,
+  },
+  secretCopyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: Colors.borderStrong,
+    borderRadius: 6,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+  },
+  secretCopyBtnText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.brandPrimary,
   },
 });

@@ -41,6 +41,24 @@ export default function App() {
   useEffect(() => {
     getDatabase().catch((e) => console.warn('Database initialization note:', e));
 
+    // Automated periodic two-way sync & keep-alive on startup (non-blocking)
+    const autoSyncStartupTimer = setTimeout(() => {
+      import('./src/services/supabaseSyncService').then(({ SupabaseSyncService }) => {
+        SupabaseSyncService.checkAndRunPeriodicSync(false).catch((err) => {
+          console.log('Automated startup sync note:', err);
+        });
+      });
+    }, 3500);
+
+    // Periodic in-app heartbeat: checks if sync/ping is due every 4 hours while app is open
+    const autoSyncHeartbeatInterval = setInterval(() => {
+      import('./src/services/supabaseSyncService').then(({ SupabaseSyncService }) => {
+        SupabaseSyncService.checkAndRunPeriodicSync(false).catch((err) => {
+          console.log('Automated heartbeat sync note:', err);
+        });
+      });
+    }, 4 * 60 * 60 * 1000);
+
     const checkLockInterval = setInterval(() => {
       if (SecurityService.isSessionLocked()) {
         setIsLocked(true);
@@ -61,6 +79,9 @@ export default function App() {
         if (SecurityService.isSessionLocked()) {
           setIsLocked(true);
         }
+        import('./src/services/supabaseSyncService').then(({ SupabaseSyncService }) => {
+          SupabaseSyncService.checkAndRunPeriodicSync(false).catch(() => {});
+        });
       }
     };
     const appStateSub = AppState.addEventListener('change', handleAppStateChange);
@@ -76,6 +97,9 @@ export default function App() {
           if (SecurityService.isSessionLocked()) {
             setIsLocked(true);
           }
+          import('./src/services/supabaseSyncService').then(({ SupabaseSyncService }) => {
+            SupabaseSyncService.checkAndRunPeriodicSync(false).catch(() => {});
+          });
         }
       }
     };
@@ -151,6 +175,8 @@ export default function App() {
     }
 
     return () => {
+      clearTimeout(autoSyncStartupTimer);
+      clearInterval(autoSyncHeartbeatInterval);
       clearInterval(checkLockInterval);
       appStateSub.remove();
       if (typeof document !== 'undefined') {
