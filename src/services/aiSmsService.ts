@@ -263,42 +263,73 @@ WRITING OBJECTIVES & GUIDELINES:
    }).
    - If proposing a new sit-down: Invite them for a relaxed 15-20 minute review ${suggestedOutreach.timeframePhrase}.
 ${frsConstraint}
-5. NEVER Cut Off / Complete Thought: The message MUST be complete, grammatically sound, and end cleanly.
-6. Length: Concise mobile length (around 2 to 3 sentences).
-7. Format: Output ONLY the plain SMS text. Do NOT include quotation marks, markdown bolding, or intro/outro explanations.
+5. COMPLETE THOUGHT / NEVER TRUNCATE: The text MUST be 100% complete, grammatically sound, and end cleanly with terminal punctuation (. or ! or ?). NEVER stop mid-sentence or mid-thought.
+6. LENGTH & CONCISENESS: Keep strictly between 2 to 3 sentences (40 to 75 words). Keep it mobile-friendly and easy to read.
+7. DIRECT OUTPUT ONLY: Output ONLY the raw SMS body text starting directly with the greeting (e.g. "Hi [Name]..."). Do NOT output thoughts, analysis, meta-commentary, quotation marks, markdown formatting, or preamble.
 `;
 
       const candidateModels = await GeminiModelService.getActiveModels(key);
 
       for (const model of candidateModels) {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
         try {
           const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
-          const response = await fetch(endpoint, {
+          // Thinking models (Gemini 2.5 Flash, 2.0 Flash Thinking) require thinkingBudget: 0
+          // to prevent internal reasoning tokens from consuming the output budget and causing truncation.
+          const isThinkingModel = model.includes('2.5') || model.includes('thinking');
+          const generationConfig: any = {
+            temperature: 0.35,
+            maxOutputTokens: 1200,
+          };
+          if (isThinkingModel) {
+            generationConfig.thinkingConfig = {
+              thinkingBudget: 0,
+            };
+          }
+
+          let response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             signal: controller.signal,
             body: JSON.stringify({
               contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: {
-                temperature: 0.35,
-                maxOutputTokens: 600,
-              },
+              generationConfig,
             }),
           });
 
+          // Graceful retry without thinkingConfig if older model endpoint returns HTTP 400
+          if (!response.ok && response.status === 400 && generationConfig.thinkingConfig) {
+            delete generationConfig.thinkingConfig;
+            response = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              signal: controller.signal,
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig,
+              }),
+            });
+          }
+
           if (response.ok) {
             const data = await response.json();
-            const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-            if (text && text.length > 20) {
+            const candidate = data?.candidates?.[0];
+            const finishReason = candidate?.finishReason;
+            const parts: any[] = candidate?.content?.parts || [];
+
+            // Extract all non-thought text parts (ignoring model scratchpad)
+            const textParts = parts
+              .filter((p: any) => !p.thought && typeof p.text === 'string')
+              .map((p: any) => p.text);
+
+            const rawText = (textParts.length > 0 ? textParts.join('') : (parts[0]?.text || '')).trim();
+            const validated = this.cleanAndValidateSmsText(rawText, finishReason);
+
+            if (validated) {
               clearTimeout(timeoutId);
-              return text
-                .replace(/^["']|["']$/g, '')
-                .replace(/[ \t]{2,}/g, ' ')
-                .replace(/\s+([.,!?:;])/g, '$1')
-                .trim();
+              return validated;
             }
           }
         } catch {
@@ -312,6 +343,49 @@ ${frsConstraint}
     }
 
     return this.getSmartFallbackSMS(lead, agentName, toneFocus, refDate, agencyName, frsTopicKey);
+  }
+
+  /**
+   * Sanitizes, strips preamble/meta-commentary, and validates sentence integrity.
+   * If text was truncated mid-sentence by token exhaustion, salvages the last complete
+   * sentence if viable (>= 35 chars) or returns null to force clean model transition/fallback.
+   */
+  static cleanAndValidateSmsText(rawText: string, finishReason?: string): string | null {
+    if (!rawText || typeof rawText !== 'string') return null;
+
+    let text = rawText.trim();
+    text = text
+      .replace(/^(?:Here(?:\x27s|'s| is)?\s+(?:a|the|your)?\s*(?:personalized|tailored)?\s*(?:SMS|message|draft|text)+(?:\s+(?:draft|message|text|response))?:?\s*)/i, '')
+      .trim()
+      .replace(/^["']|["']$/g, '')
+      .trim()
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\s+([.,!?:;])/g, '$1')
+      .trim();
+
+    if (text.length < 20) return null;
+
+    const endsCleanly = /[.!?]['"]?\s*$/.test(text);
+
+    if (!endsCleanly || finishReason === 'MAX_TOKENS') {
+      if (endsCleanly && finishReason === 'MAX_TOKENS') {
+        return text;
+      }
+
+      // Find the last complete sentence boundary
+      const matches = [...text.matchAll(/[.!?](?:['"]|\s+|$)/g)];
+      if (matches.length > 0) {
+        const lastMatch = matches[matches.length - 1];
+        const cutIndex = lastMatch.index! + 1;
+        const salvaged = text.substring(0, cutIndex).trim();
+        if (salvaged.length >= 35) {
+          return salvaged;
+        }
+      }
+      return null;
+    }
+
+    return text;
   }
 
   /**

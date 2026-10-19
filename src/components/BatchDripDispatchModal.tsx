@@ -138,11 +138,21 @@ export function BatchDripDispatchModal({
   };
 
   const handleGenerateAiSms = async (toneFocus?: any, topicOverride?: FrsTopicKey) => {
-    if (!currentItem) return;
+    if (!currentItem || isGeneratingAi) return;
     setIsGeneratingAi(true);
     await HapticsService.medium();
     try {
-      const isZeroAskActive = selectedCategory === 'pure_insight' || selectedCategory === 'school_community';
+      if (toneFocus === 'zero_ask_insight' && selectedCategory !== 'pure_insight') {
+        setSelectedCategory('pure_insight');
+      } else if (toneFocus === 'zero_ask_community' && selectedCategory !== 'school_community') {
+        setSelectedCategory('school_community');
+      } else if (toneFocus && (toneFocus.startsWith('sprint') || toneFocus.startsWith('bridge') || toneFocus === 'planning_period')) {
+        if (selectedCategory !== 'action_appointment') {
+          setSelectedCategory('action_appointment');
+        }
+      }
+
+      const isZeroAskActive = selectedCategory === 'pure_insight' || selectedCategory === 'school_community' || toneFocus === 'zero_ask_insight' || toneFocus === 'zero_ask_community';
       const effectiveTone = toneFocus || (
         isZeroAskActive
           ? (selectedCategory === 'pure_insight' ? 'zero_ask_insight' : 'zero_ask_community')
@@ -377,6 +387,7 @@ export function BatchDripDispatchModal({
                       selectedCategory === 'action_appointment' && styles.categoryTabActiveAsk,
                     ]}
                     onPress={() => handleSelectCategory('action_appointment')}
+                    disabled={isGeneratingAi}
                     activeOpacity={0.7}
                   >
                     <Text
@@ -396,6 +407,7 @@ export function BatchDripDispatchModal({
                       selectedCategory === 'pure_insight' && styles.categoryTabActiveInsight,
                     ]}
                     onPress={() => handleSelectCategory('pure_insight')}
+                    disabled={isGeneratingAi}
                     activeOpacity={0.7}
                   >
                     <Text
@@ -415,6 +427,7 @@ export function BatchDripDispatchModal({
                       selectedCategory === 'school_community' && styles.categoryTabActiveCommunity,
                     ]}
                     onPress={() => handleSelectCategory('school_community')}
+                    disabled={isGeneratingAi}
                     activeOpacity={0.7}
                   >
                     <Text
@@ -659,7 +672,8 @@ export function BatchDripDispatchModal({
                 value={customMessage}
                 onChangeText={setCustomMessage}
                 multiline
-                placeholder="Drafting message..."
+                scrollEnabled={false}
+                placeholder={isGeneratingAi ? "Drafting personalized AI SMS..." : "Drafting message..."}
                 placeholderTextColor={Colors.textMuted}
                 textAlignVertical="top"
               />

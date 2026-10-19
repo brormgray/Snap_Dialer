@@ -2443,11 +2443,12 @@ export default function DialerHudScreen({ route, navigation }: any) {
             </View>
 
             <TextInput
-              style={[styles.modalInput, { height: 130, marginTop: 8 }]}
+              style={[styles.modalInput, { minHeight: 120, marginTop: 8 }]}
               value={customSmsBody}
               onChangeText={setCustomSmsBody}
               multiline
-              placeholder="Drafting persuasive SMS..."
+              scrollEnabled={false}
+              placeholder={isGeneratingAi ? "Drafting persuasive AI SMS..." : "Drafting persuasive SMS..."}
               placeholderTextColor={Colors.textMuted}
             />
 
