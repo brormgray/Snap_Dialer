@@ -242,5 +242,22 @@ Whenever the codebase is modified:
 - **Full Lifecycle Flow for Client Appointments**:
   - Any appointment scheduled via the dialer HUD or dossier with an existing client now immediately appears in Today's Advisor Playbook for the scheduled day.
   - Once the appointment window elapses, it routes cleanly into the "⚠️ Sit-Downs Need Dispo" alert queue for review and wrap-up logging.
-
-
+### 8.11 Supabase Cloud Disaster Recovery & Complete Client Portfolio Sync (`supabaseSyncService.ts`, `leadsRepository.ts`, `indexedDbStorage.ts`, `database.ts`, `SettingsScreen.tsx`, `tests/supabase_client_recovery.test.mjs`)
+- **Disaster Recovery Root-Cause Resolution**:
+  - Investigated hardware loss incident where a fresh iPhone restore from Supabase recovered 70+ prospects but 0 converted clients and $0 annual premium.
+  - **Root Cause Identified**: In `src/services/supabaseSyncService.ts`, `mapLeadToSnapSchema()` historically stripped all client-specific fields (`is_client`, `annualized_premium`, `transfer_assets_volume`, `products`, `appointment_outcome`, `frs_pension_tier`, etc.) before uploading to Supabase to prevent PostgreSQL schema mismatch errors. Consequently, the cloud database never stored client status or production totals.
+- **Full Cloud Schema Expansion (`SUPABASE_SQL_SETUP`)**:
+  - Updated `SUPABASE_SQL_SETUP` in `src/services/supabaseSyncService.ts` to include safe, non-destructive `ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS ...` commands for all 18 missing client, production, drip campaign, and FRS profile fields.
+  - Implemented dynamic capability probing (`supportsFullSchema()`, `resetSchemaCache()`) to automatically detect remote schema capabilities without failing with HTTP 400 errors on legacy Supabase databases.
+- **Automated Historical Client Reconstruction & Self-Healing**:
+  - Built an automated client reconstruction pipeline leveraging intact historical data: while `snap_leads` lacked client columns, `snap_call_logs` successfully preserved `appt_converted` dispositions, and lead `notes` preserved `[Sit-Down Wrap-Up]` tags with AP figures (e.g. `AP: $12,500`).
+  - Added `LeadsRepository.recoverClientsFromHistory()` to automatically parse call logs and notes on startup/cloud pull and restore missing client portfolio data.
+  - Added self-healing rules in `IndexedDbStorage.normalizeState()`, `LeadsRepository.hydrateLead()`, and `WebDatabase.init()` (step 4) to ensure converted status and AP amounts are permanently restored locally.
+  - Added a 1-tap manual action in `SettingsScreen.tsx`: `'🚑 Rescue Converted Clients from History'` with real-time feedback on recovered clients and AP totals.
+  - Added actionable migration warnings in Settings when testing connection against a Supabase instance running the legacy schema.
+- **Verification & Deployment**:
+  - Created dedicated test suite `tests/supabase_client_recovery.test.mjs` verifying schema mapping, dynamic schema detection, and historical reconstruction (5/5 tests passing).
+  - Type-check: 0 errors (`npx tsc --noEmit`).
+  - All test suites passing: 284/284 tests across 58 test suites (`node --test tests/*.test.mjs`).
+  - Synced version to `v1.8.9` (`version-sync.js patch`).
+  - Built production bundle (`npx expo export -p web`) and deployed live to `valuteachers-dialer.surge.sh`.

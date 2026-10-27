@@ -58,6 +58,35 @@ CREATE TABLE IF NOT EXISTS snap_leads (
   last_attempt_at TIMESTAMPTZ,
   follow_up_at TIMESTAMPTZ,
   appointment_notes TEXT,
+  -- Client & Production Fields
+  is_client BOOLEAN DEFAULT FALSE,
+  client_since TIMESTAMPTZ,
+  products JSONB DEFAULT '[]'::jsonb,
+  annualized_premium NUMERIC DEFAULT 0,
+  transfer_assets_volume NUMERIC DEFAULT 0,
+  policy_effective_date TEXT,
+  annual_review_due_date TEXT,
+  -- Sit-Down Lifecycle Fields
+  appointment_scheduled_at TIMESTAMPTZ,
+  appointment_outcome TEXT,
+  appointment_completed_at TIMESTAMPTZ,
+  -- Drip Cadence Fields
+  drip_track TEXT DEFAULT 'none',
+  drip_step INTEGER DEFAULT 0,
+  last_drip_sent_at TIMESTAMPTZ,
+  next_drip_scheduled_at TIMESTAMPTZ,
+  -- Extended Profile Fields
+  is_frs BOOLEAN DEFAULT TRUE,
+  age TEXT,
+  text_ok BOOLEAN DEFAULT TRUE,
+  frs_interests JSONB DEFAULT '[]'::jsonb,
+  frs_knowledge TEXT,
+  custom_questions TEXT,
+  meeting_preferences JSONB DEFAULT '[]'::jsonb,
+  annual_salary TEXT,
+  present_403b_contribution TEXT,
+  company TEXT,
+  alternate_phones JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -115,17 +144,44 @@ CREATE POLICY "Anon Full Access snap_cadence_rules" ON snap_cadence_rules FOR AL
 DROP POLICY IF EXISTS "Anon Full Access snap_sms_templates" ON snap_sms_templates;
 CREATE POLICY "Anon Full Access snap_sms_templates" ON snap_sms_templates FOR ALL USING (true) WITH CHECK (true);
 
--- Ensure newly added columns exist on existing databases
+-- 7. Ensure newly added columns exist on existing databases (Non-destructive safe migrations)
 ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS appointment_notes TEXT;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS is_client BOOLEAN DEFAULT FALSE;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS client_since TIMESTAMPTZ;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS products JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS annualized_premium NUMERIC DEFAULT 0;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS transfer_assets_volume NUMERIC DEFAULT 0;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS policy_effective_date TEXT;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS annual_review_due_date TEXT;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS appointment_scheduled_at TIMESTAMPTZ;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS appointment_outcome TEXT;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS appointment_completed_at TIMESTAMPTZ;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS drip_track TEXT DEFAULT 'none';
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS drip_step INTEGER DEFAULT 0;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS last_drip_sent_at TIMESTAMPTZ;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS next_drip_scheduled_at TIMESTAMPTZ;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS is_frs BOOLEAN DEFAULT TRUE;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS age TEXT;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS text_ok BOOLEAN DEFAULT TRUE;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS frs_interests JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS frs_knowledge TEXT;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS custom_questions TEXT;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS meeting_preferences JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS annual_salary TEXT;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS present_403b_contribution TEXT;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS company TEXT;
+ALTER TABLE snap_leads ADD COLUMN IF NOT EXISTS alternate_phones JSONB DEFAULT '[]'::jsonb;
 `;
 
 /**
- * Maps a full local lead object to ONLY the columns that exist in snap_leads.
- * Local-only columns like text_ok, frs_interests, company, meeting_preferences
- * are intentionally excluded to prevent Supabase 400 "column not found" errors.
+ * Maps a full local lead object to the Supabase snap_leads schema.
+ * When includeFullSchema is true (default), serializes all client portfolio,
+ * annualized premium, drip, and FRS profile fields.
+ * If the connected Supabase instance has not run the updated migration yet,
+ * falls back to the baseline schema to prevent 400 "column not found" errors.
  */
-function mapLeadToSnapSchema(lead: any): object {
-  return {
+export function mapLeadToSnapSchema(lead: any, includeFullSchema: boolean = true): object {
+  const basePayload = {
     id: lead.id,
     list_id: lead.list_id || null,
     name: lead.name || '',
@@ -149,6 +205,84 @@ function mapLeadToSnapSchema(lead: any): object {
     appointment_notes: lead.appointment_notes || null,
     created_at: lead.created_at || new Date().toISOString(),
     updated_at: lead.updated_at || new Date().toISOString(),
+  };
+
+  if (!includeFullSchema) {
+    return basePayload;
+  }
+
+  const isClient = lead.is_client === 1 || lead.is_client === true || lead.is_client === 'true';
+  const isFrs = lead.is_frs === undefined || lead.is_frs === null || lead.is_frs === 1 || lead.is_frs === true || lead.is_frs === 'true';
+  const textOk = lead.text_ok === undefined || lead.text_ok === null ? true : (lead.text_ok === 1 || lead.text_ok === true || lead.text_ok === 'true');
+
+  let products: string[] = [];
+  if (Array.isArray(lead.products)) {
+    products = lead.products.filter(Boolean);
+  } else if (typeof lead.products === 'string' && lead.products.trim().startsWith('[')) {
+    try { products = JSON.parse(lead.products).filter(Boolean); } catch { products = []; }
+  } else if (typeof lead.products === 'string' && lead.products.trim().length > 0) {
+    products = lead.products.split(',').map((p: string) => p.trim()).filter(Boolean);
+  }
+
+  let interests: string[] = [];
+  if (Array.isArray(lead.frs_interests)) {
+    interests = lead.frs_interests;
+  } else if (typeof lead.frs_interests === 'string' && lead.frs_interests.trim().startsWith('[')) {
+    try { interests = JSON.parse(lead.frs_interests); } catch { interests = []; }
+  }
+
+  let preferences: string[] = [];
+  if (Array.isArray(lead.meeting_preferences)) {
+    preferences = lead.meeting_preferences;
+  } else if (typeof lead.meeting_preferences === 'string' && lead.meeting_preferences.trim().startsWith('[')) {
+    try { preferences = JSON.parse(lead.meeting_preferences); } catch { preferences = []; }
+  }
+
+  let alternatePhones: string[] = [];
+  if (Array.isArray(lead.alternate_phones)) {
+    alternatePhones = lead.alternate_phones.filter(Boolean);
+  } else if (typeof lead.alternate_phones === 'string' && lead.alternate_phones.trim().startsWith('[')) {
+    try { alternatePhones = JSON.parse(lead.alternate_phones).filter(Boolean); } catch { alternatePhones = []; }
+  }
+
+  const ap = lead.annualized_premium !== undefined && lead.annualized_premium !== null && !isNaN(Number(lead.annualized_premium))
+    ? Number(lead.annualized_premium)
+    : 0;
+
+  const transferVol = lead.transfer_assets_volume !== undefined && lead.transfer_assets_volume !== null && !isNaN(Number(lead.transfer_assets_volume))
+    ? Number(lead.transfer_assets_volume)
+    : 0;
+
+  return {
+    ...basePayload,
+    is_client: isClient,
+    client_since: lead.client_since || null,
+    products,
+    annualized_premium: ap,
+    transfer_assets_volume: transferVol,
+    policy_effective_date: lead.policy_effective_date || null,
+    annual_review_due_date: lead.annual_review_due_date || null,
+
+    appointment_scheduled_at: lead.appointment_scheduled_at || null,
+    appointment_outcome: lead.appointment_outcome || null,
+    appointment_completed_at: lead.appointment_completed_at || null,
+
+    drip_track: lead.drip_track || 'none',
+    drip_step: lead.drip_step !== undefined && !isNaN(Number(lead.drip_step)) ? Number(lead.drip_step) : 0,
+    last_drip_sent_at: lead.last_drip_sent_at || null,
+    next_drip_scheduled_at: lead.next_drip_scheduled_at || null,
+
+    is_frs: isFrs,
+    age: lead.age || null,
+    text_ok: textOk,
+    frs_interests: interests,
+    frs_knowledge: lead.frs_knowledge || null,
+    custom_questions: lead.custom_questions || null,
+    meeting_preferences: preferences,
+    annual_salary: lead.annual_salary || null,
+    present_403b_contribution: lead.present_403b_contribution || null,
+    company: lead.company || null,
+    alternate_phones: alternatePhones,
   };
 }
 
@@ -281,11 +415,37 @@ async function saveToNativeSqlite(db: IDatabase, lists: any[], leads: any[], log
 export class SupabaseSyncService {
   private static isSyncing: boolean = false;
   private static debounceTimer: any = null;
+  private static hasFullSchemaCache: boolean | null = null;
+
+  /**
+   * Probes whether the remote Supabase database has been migrated
+   * with the expanded client portfolio columns (is_client, annualized_premium, etc.)
+   */
+  static async supportsFullSchema(): Promise<boolean> {
+    if (this.hasFullSchemaCache !== null) return this.hasFullSchemaCache;
+    const client = getSupabaseClient();
+    if (!client) return false;
+    try {
+      const { error } = await client.from(`${TABLE_PREFIX}leads`).select('is_client').limit(1);
+      if (error) {
+        this.hasFullSchemaCache = false;
+        return false;
+      }
+      this.hasFullSchemaCache = true;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  static resetSchemaCache(): void {
+    this.hasFullSchemaCache = null;
+  }
 
   static async testConnection(
     url: string,
     anonKey: string
-  ): Promise<{ success: boolean; message: string }> {
+  ): Promise<{ success: boolean; message: string; fullSchemaSupported?: boolean }> {
     try {
       const client = getSupabaseClient(url, anonKey);
       if (!client) {
@@ -306,7 +466,23 @@ export class SupabaseSyncService {
         return { success: false, message: `Supabase error: ${error.message}` };
       }
       setSupabaseCredentials(url, anonKey);
-      return { success: true, message: 'Connected successfully to Supabase! All snap_ tables verified.' };
+      this.resetSchemaCache();
+
+      const fullSchemaSupported = await this.supportsFullSchema();
+      if (!fullSchemaSupported) {
+        return {
+          success: true,
+          fullSchemaSupported: false,
+          message:
+            'Connected to Supabase! ⚠️ Notice: Your cloud database is missing the Client Portfolio & AP columns. Run the updated SQL setup script below so client and annual premium data are safely backed up.',
+        };
+      }
+
+      return {
+        success: true,
+        fullSchemaSupported: true,
+        message: 'Connected successfully to Supabase! All snap_ tables & client portfolio columns verified.',
+      };
     } catch (err: any) {
       return { success: false, message: `Connection failed: ${err?.message || 'Network error'}` };
     }
@@ -315,7 +491,7 @@ export class SupabaseSyncService {
   /**
    * Push local device database to Supabase cloud.
    * Reads from the live in-memory WebDatabase (not IndexedDB snapshot) for latest data.
-   * Maps rows to exact snap_ column schemas to prevent 400 errors.
+   * Dynamically checks if full schema is supported so un-migrated databases don't throw 400 errors.
    */
   static async pushLocalToCloud(): Promise<SyncResult> {
     const client = getSupabaseClient();
@@ -337,7 +513,8 @@ export class SupabaseSyncService {
         db.getAllAsync<any>('SELECT * FROM call_logs'),
       ]);
 
-      const leads = rawLeads.map(mapLeadToSnapSchema);
+      const fullSchemaSupported = await this.supportsFullSchema();
+      const leads = rawLeads.map((l) => mapLeadToSnapSchema(l, fullSchemaSupported));
       const lists = rawLists.map(mapListToSnapSchema);
       const logs = rawLogs.map(mapLogToSnapSchema);
 
@@ -388,8 +565,8 @@ export class SupabaseSyncService {
 
   /**
    * Pull all data from Supabase and restore to local device database.
-   * After writing to IndexedDB, calls resetDatabase() so the next getDatabase()
-   * call re-initializes from the freshly-restored state.
+   * Performs automatic client recovery from historical call logs and notes
+   * to ensure no converted clients or premiums are lost during disaster recovery.
    */
   static async pullCloudToLocal(): Promise<RestoreResult> {
     const client = getSupabaseClient();
@@ -399,7 +576,7 @@ export class SupabaseSyncService {
     try {
       const [
         { data: lists, error: listErr },
-        { data: leads, error: leadErr },
+        { data: rawLeads, error: leadErr },
         { data: logs, error: logErr },
         { data: rules },
         { data: templates },
@@ -414,6 +591,58 @@ export class SupabaseSyncService {
       if (listErr) throw new Error(`Lists restore failed: ${listErr.message}`);
       if (leadErr) throw new Error(`Leads restore failed: ${leadErr.message}`);
       if (logErr) throw new Error(`Call logs restore failed: ${logErr.message}`);
+
+      const leads = (rawLeads || []).map((l: any) => ({ ...l }));
+
+      // Self-heal and recover converted clients from call logs and notes
+      const logsByLead = new Map<string, any[]>();
+      for (const log of (logs || [])) {
+        if (!log || !log.lead_id) continue;
+        const lid = String(log.lead_id).trim();
+        const bucket = logsByLead.get(lid);
+        if (bucket) bucket.push(log);
+        else logsByLead.set(lid, [log]);
+      }
+
+      for (const lead of leads) {
+        if (!lead || !lead.id) continue;
+        const lid = String(lead.id).trim();
+        const leadLogs = logsByLead.get(lid) || [];
+
+        const convertedLog = leadLogs.find(
+          (l) => l.disposition === 'appt_converted' ||
+                 (typeof l.note === 'string' && (l.note.includes('Converted to client') || l.note.includes('appt_converted')))
+        );
+
+        const hasConvertedNote = typeof lead.notes === 'string' && (
+          lead.notes.includes('[Sit-Down Wrap-Up] Converted to client') ||
+          lead.notes.includes('Converted to client after sit-down')
+        );
+
+        const isExplicitClient = lead.is_client === 1 || lead.is_client === true || lead.is_client === 'true';
+
+        if ((convertedLog || hasConvertedNote || lead.appointment_outcome === 'converted') && !isExplicitClient) {
+          lead.is_client = true;
+          lead.appointment_outcome = 'converted';
+          const clientSince = convertedLog?.timestamp || lead.client_since || lead.appointment_completed_at || lead.updated_at || lead.created_at || new Date().toISOString();
+          lead.client_since = clientSince;
+          lead.appointment_completed_at = clientSince;
+          if (!lead.drip_track || lead.drip_track === 'none') {
+            lead.drip_track = 'client_annual_review';
+          }
+          if (lead.last_disposition === 'appointment_set') {
+            lead.last_disposition = 'connected';
+          }
+
+          if ((!lead.annualized_premium || Number(lead.annualized_premium) === 0) && typeof lead.notes === 'string') {
+            const matchAP = lead.notes.match(/\$([0-9,]+(?:\.[0-9]{2})?)\s*(?:AP|annualized\s*premium|annually|\/year|\/yr)/i);
+            if (matchAP) {
+              const num = parseFloat(matchAP[1].replace(/,/g, ''));
+              if (!isNaN(num)) lead.annualized_premium = num;
+            }
+          }
+        }
+      }
 
       const db = await getDatabase();
       const existingSettings = await db.getAllAsync<any>('SELECT * FROM settings');
@@ -519,6 +748,8 @@ export class SupabaseSyncService {
       let localCreated = 0;
       let cloudCreated = 0;
 
+      const fullSchemaSupported = await this.supportsFullSchema();
+
       // 1. RECONCILE LEADS
       const localLeadsMap = new Map<string, any>(localLeads.map((l: any) => [String(l.id).trim(), l]));
       // Also index local leads by normalized 10-digit phone to prevent duplicate rows across devices
@@ -571,11 +802,11 @@ export class SupabaseSyncService {
               present_403b_contribution: lLead.present_403b_contribution || cLead.present_403b_contribution || null,
               company: lLead.company || cLead.company || null,
               priority_tier: lLead.priority_tier !== undefined ? lLead.priority_tier : (cLead.priority_tier || 1),
-              is_client: lLead.is_client !== undefined ? lLead.is_client : (cLead.is_client || false),
-              client_since: lLead.client_since || cLead.client_since || null,
-              products: lLead.products || cLead.products || [],
-              annualized_premium: lLead.annualized_premium !== undefined ? lLead.annualized_premium : (cLead.annualized_premium || 0),
-              transfer_assets_volume: lLead.transfer_assets_volume !== undefined ? lLead.transfer_assets_volume : (cLead.transfer_assets_volume || 0),
+              is_client: cLead.is_client !== undefined ? (cLead.is_client === 1 || cLead.is_client === true || cLead.is_client === 'true') : (lLead.is_client || false),
+              client_since: cLead.client_since || lLead.client_since || null,
+              products: (Array.isArray(cLead.products) && cLead.products.length > 0) ? cLead.products : (lLead.products || []),
+              annualized_premium: cLead.annualized_premium !== undefined && cLead.annualized_premium !== null ? Number(cLead.annualized_premium) : (lLead.annualized_premium || 0),
+              transfer_assets_volume: cLead.transfer_assets_volume !== undefined && cLead.transfer_assets_volume !== null ? Number(cLead.transfer_assets_volume) : (lLead.transfer_assets_volume || 0),
               policy_effective_date: lLead.policy_effective_date || cLead.policy_effective_date || null,
               annual_review_due_date: lLead.annual_review_due_date || cLead.annual_review_due_date || null,
               drip_track: lLead.drip_track || cLead.drip_track || 'none',
@@ -591,7 +822,7 @@ export class SupabaseSyncService {
             localUpdated++;
             localLeadsMutated = true;
           } else if (lTime > cTime) {
-            leadsToPush.push(mapLeadToSnapSchema(lLead));
+            leadsToPush.push(mapLeadToSnapSchema(lLead, fullSchemaSupported));
             cloudUpdated++;
           }
         }
@@ -599,7 +830,7 @@ export class SupabaseSyncService {
 
       for (const [id, lLead] of localLeadsMap.entries()) {
         if (!cloudLeadsMap.has(id) && !matchedLocalLeadIds.has(id)) {
-          leadsToPush.push(mapLeadToSnapSchema(lLead));
+          leadsToPush.push(mapLeadToSnapSchema(lLead, fullSchemaSupported));
           cloudCreated++;
         }
       }

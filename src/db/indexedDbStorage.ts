@@ -188,7 +188,12 @@ export class IndexedDbStorage {
         try { alternatePhones = JSON.parse(l.alternate_phones).filter(Boolean); } catch { alternatePhones = []; }
       }
 
-      const isClient = l.is_client === 1 || l.is_client === true || l.is_client === 'true';
+      const hasConvertedWrapUpNote = typeof l.notes === 'string' && (
+        l.notes.includes('[Sit-Down Wrap-Up] Converted to client') ||
+        l.notes.includes('Converted to client after sit-down')
+      );
+      const isExplicitClient = l.is_client === 1 || l.is_client === true || l.is_client === 'true';
+      const isClient = isExplicitClient || hasConvertedWrapUpNote || l.appointment_outcome === 'converted';
       const isFrs = l.is_frs === undefined || l.is_frs === null || l.is_frs === 1 || l.is_frs === true || l.is_frs === 'true';
       const textOk = l.text_ok === undefined || l.text_ok === null ? true : (l.text_ok === 1 || l.text_ok === true || l.text_ok === 'true');
       let apptOutcome = l.appointment_outcome || null;
@@ -201,6 +206,7 @@ export class IndexedDbStorage {
       if (isClient && !hasActiveAppointment) {
         if (!apptOutcome) apptOutcome = 'converted';
         if (!apptCompletedAt && l.client_since) apptCompletedAt = l.client_since;
+        if (!apptCompletedAt) apptCompletedAt = l.updated_at || l.created_at || new Date().toISOString();
         if (lastDispo === 'appointment_set') lastDispo = 'connected';
       } else if (
         !isClient && (
@@ -251,12 +257,22 @@ export class IndexedDbStorage {
 
         // Client Conversion Defaults
         is_client: isClient,
-        client_since: l.client_since || null,
+        client_since: l.client_since || (isClient ? (apptCompletedAt || l.updated_at || l.created_at || null) : null),
         products,
-        annualized_premium:
-          l.annualized_premium !== undefined && l.annualized_premium !== null && !isNaN(Number(l.annualized_premium))
-            ? Number(l.annualized_premium)
-            : null,
+        annualized_premium: (() => {
+          const parsed =
+            l.annualized_premium !== undefined && l.annualized_premium !== null && !isNaN(Number(l.annualized_premium))
+              ? Number(l.annualized_premium)
+              : null;
+          if (isClient && (!parsed || parsed === 0) && typeof l.notes === 'string') {
+            const matchAP = l.notes.match(/\$([0-9,]+(?:\.[0-9]{2})?)\s*(?:AP|annualized\s*premium|annually|\/year|\/yr)/i);
+            if (matchAP) {
+              const num = parseFloat(matchAP[1].replace(/,/g, ''));
+              if (!isNaN(num) && num > 0) return num;
+            }
+          }
+          return parsed;
+        })(),
         transfer_assets_volume:
           l.transfer_assets_volume !== undefined && l.transfer_assets_volume !== null && !isNaN(Number(l.transfer_assets_volume))
             ? Number(l.transfer_assets_volume)

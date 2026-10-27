@@ -1129,6 +1129,84 @@ export class LeadsRepository {
   }
 
   /**
+   * Scans call logs and educator dossier notes to recover converted client status
+   * following cloud restores or catastrophic hardware transitions.
+   */
+  static async recoverClientsFromHistory(): Promise<{ recoveredCount: number; leadNames: string[] }> {
+    const db = await getDatabase();
+    const [leads, logs] = await Promise.all([
+      db.getAllAsync<any>('SELECT * FROM leads'),
+      db.getAllAsync<any>('SELECT * FROM call_logs'),
+    ]);
+
+    const logsByLeadId = new Map<string, any[]>();
+    for (const log of logs) {
+      if (!log || !log.lead_id) continue;
+      const lid = String(log.lead_id).trim();
+      const bucket = logsByLeadId.get(lid);
+      if (bucket) bucket.push(log);
+      else logsByLeadId.set(lid, [log]);
+    }
+
+    let recoveredCount = 0;
+    const leadNames: string[] = [];
+    const now = new Date().toISOString();
+
+    for (const raw of leads) {
+      const isCurrentlyClient = raw.is_client === 1 || raw.is_client === true || raw.is_client === 'true';
+      if (isCurrentlyClient) continue;
+
+      const lid = String(raw.id).trim();
+      const leadLogs = logsByLeadId.get(lid) || [];
+
+      const convertedLog = leadLogs.find(
+        (l) => l.disposition === 'appt_converted' ||
+               (typeof l.note === 'string' && (l.note.includes('Converted to client') || l.note.includes('appt_converted')))
+      );
+
+      const hasConvertedNote = typeof raw.notes === 'string' && (
+        raw.notes.includes('[Sit-Down Wrap-Up] Converted to client') ||
+        raw.notes.includes('Converted to client after sit-down')
+      );
+
+      const hasConvertedOutcome = raw.appointment_outcome === 'converted';
+
+      if (convertedLog || hasConvertedNote || hasConvertedOutcome) {
+        const clientSince = convertedLog?.timestamp || raw.client_since || raw.appointment_completed_at || raw.updated_at || raw.created_at || now;
+
+        // Try to extract AP if written into notes, e.g. "$3,600 AP" or "$500/mo"
+        let recoveredAP = raw.annualized_premium || 0;
+        if (!recoveredAP && typeof raw.notes === 'string') {
+          const matchAP = raw.notes.match(/\$([0-9,]+(?:\.[0-9]{2})?)\s*(?:AP|annualized\s*premium|annually|\/year|\/yr)/i);
+          if (matchAP) {
+            const num = parseFloat(matchAP[1].replace(/,/g, ''));
+            if (!isNaN(num)) recoveredAP = num;
+          }
+        }
+
+        await db.runAsync(
+          `UPDATE leads SET
+             is_client = 1,
+             client_since = COALESCE(client_since, ?),
+             appointment_outcome = 'converted',
+             appointment_completed_at = COALESCE(appointment_completed_at, ?),
+             annualized_premium = CASE WHEN annualized_premium IS NULL OR annualized_premium = 0 THEN ? ELSE annualized_premium END,
+             drip_track = CASE WHEN drip_track IS NULL OR drip_track = 'none' THEN 'client_annual_review' ELSE drip_track END,
+             last_disposition = CASE WHEN last_disposition = 'appointment_set' THEN 'connected' ELSE last_disposition END,
+             updated_at = ?
+           WHERE id = ?`,
+          [clientSince, clientSince, recoveredAP, now, raw.id]
+        );
+
+        recoveredCount++;
+        leadNames.push(raw.name || 'Educator');
+      }
+    }
+
+    return { recoveredCount, leadNames };
+  }
+
+  /**
    * Retrieves clients whose annual review is due within the specified lookahead window (default: 30 days)
    */
   static async getClientsDueForAnnualReview(daysAhead: number = 30): Promise<Lead[]> {
@@ -1541,13 +1619,18 @@ export class LeadsRepository {
       }
     }
 
-    const isClient = raw.is_client === 1 || raw.is_client === true || raw.is_client === 'true';
+    const hasConvertedWrapUpNote = typeof raw.notes === 'string' && (
+      raw.notes.includes('[Sit-Down Wrap-Up] Converted to client') ||
+      raw.notes.includes('Converted to client after sit-down')
+    );
+    const isExplicitClient = raw.is_client === 1 || raw.is_client === true || raw.is_client === 'true';
+    const isClient = isExplicitClient || hasConvertedWrapUpNote || raw.appointment_outcome === 'converted';
     const isFrs = raw.is_frs === undefined || raw.is_frs === null || raw.is_frs === 1 || raw.is_frs === true || raw.is_frs === 'true';
     const dripTrack = raw.drip_track || 'none';
     let apptOutcome = raw.appointment_outcome || null;
     let apptCompletedAt = raw.appointment_completed_at || null;
     let lastDisp = raw.last_disposition || 'pending';
-    let needsHealing = false;
+    let needsHealing = !isExplicitClient && isClient;
 
     // Auto-healing rule 1: If client is true but appointment_outcome is null or disposition is still appointment_set
     if (isClient) {
@@ -1640,12 +1723,21 @@ export class LeadsRepository {
       // Client Conversion Hydration
       is_client: isClient,
       is_frs: isFrs,
-      client_since: raw.client_since || null,
+      client_since: raw.client_since || (isClient ? (apptCompletedAt || raw.updated_at || raw.created_at || null) : null),
       products,
-      annualized_premium:
-        raw.annualized_premium !== undefined && raw.annualized_premium !== null && !isNaN(Number(raw.annualized_premium))
+      annualized_premium: (() => {
+        const parsed = raw.annualized_premium !== undefined && raw.annualized_premium !== null && !isNaN(Number(raw.annualized_premium))
           ? Number(raw.annualized_premium)
-          : null,
+          : null;
+        if (isClient && (!parsed || parsed === 0) && typeof raw.notes === 'string') {
+          const matchAP = raw.notes.match(/\$([0-9,]+(?:\.[0-9]{2})?)\s*(?:AP|annualized\s*premium|annually|\/year|\/yr)/i);
+          if (matchAP) {
+            const num = parseFloat(matchAP[1].replace(/,/g, ''));
+            if (!isNaN(num) && num > 0) return num;
+          }
+        }
+        return parsed;
+      })(),
       transfer_assets_volume:
         raw.transfer_assets_volume !== undefined && raw.transfer_assets_volume !== null && !isNaN(Number(raw.transfer_assets_volume))
           ? Number(raw.transfer_assets_volume)

@@ -38,6 +38,7 @@ import {
   Briefcase,
   Zap,
   Clock,
+  Award,
 } from 'lucide-react-native';
 import { SettingsRepository } from '../db/settingsRepository';
 import { LeadsRepository } from '../db/leadsRepository';
@@ -72,6 +73,7 @@ export default function SettingsScreen({ navigation }: any) {
   const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
   const [isPullingCloud, setIsPullingCloud] = useState<boolean>(false);
   const [isDeltaSyncing, setIsDeltaSyncing] = useState<boolean>(false);
+  const [isRescuingClients, setIsRescuingClients] = useState<boolean>(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [sqlCopied, setSqlCopied] = useState<boolean>(false);
 
@@ -413,9 +415,41 @@ export default function SettingsScreen({ navigation }: any) {
     if (res.success) {
       await HapticsService.success();
       showBanner('✓ Connected to Supabase Cloud.');
-      Alert.alert('Connection Successful', 'SnapDialer is now connected to your private Supabase cloud backend.');
+      if (res.fullSchemaSupported === false) {
+        Alert.alert(
+          'Connected (Schema Update Recommended)',
+          'SnapDialer connected to Supabase!\n\n⚠️ However, your database is missing Client Portfolio & AP columns. Tap "Copy Supabase SQL Setup Script" below, paste it into the Supabase SQL Editor, and tap RUN so clients and annualized premiums are safely backed up.'
+        );
+      } else {
+        Alert.alert('Connection Successful', 'SnapDialer is now connected to your private Supabase cloud backend with full Client Portfolio & AP backup support.');
+      }
     } else {
       Alert.alert('Connection Notice', res.message);
+    }
+  };
+
+  const handleRescueClients = async () => {
+    setIsRescuingClients(true);
+    await HapticsService.medium();
+    try {
+      const res = await LeadsRepository.recoverClientsFromHistory();
+      setIsRescuingClients(false);
+      if (res.recoveredCount > 0) {
+        await HapticsService.success();
+        showBanner(`✓ Recovered ${res.recoveredCount} converted clients!`);
+        Alert.alert(
+          'Client Rescue Complete',
+          `Successfully recovered ${res.recoveredCount} clients from your historical sit-down records:\n\n${res.leadNames.slice(0, 5).join(', ')}${res.leadNames.length > 5 ? ' and more...' : ''}\n\nThey are now active in your Clients pipeline tab! You can review each dossier to confirm policy annualized premiums ($ AP).`
+        );
+      } else {
+        Alert.alert(
+          'Scan Complete',
+          'No additional un-promoted clients were found in your call history or notes. All converted educators are already active in your client roster.'
+        );
+      }
+    } catch (e: any) {
+      setIsRescuingClients(false);
+      Alert.alert('Rescue Error', e?.message || 'Could not scan call history.');
     }
   };
 
@@ -980,6 +1014,26 @@ export default function SettingsScreen({ navigation }: any) {
               )}
               <Text style={styles.actionButtonText}>
                 {isDeltaSyncing ? 'Synchronizing Two-Way...' : '🔄 Two-Way Smart Delta Sync (LWW)'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Rescue Converted Clients from Call History Button */}
+            <TouchableOpacity
+              style={[
+                styles.actionButtonDark,
+                { borderColor: '#F59E0B', borderWidth: 1, marginTop: 8 },
+                isRescuingClients && { opacity: 0.7 },
+              ]}
+              onPress={handleRescueClients}
+              disabled={isRescuingClients}
+            >
+              {isRescuingClients ? (
+                <ActivityIndicator size="small" color="#F59E0B" />
+              ) : (
+                <Award size={16} color="#F59E0B" />
+              )}
+              <Text style={[styles.actionButtonText, { color: '#FCD34D' }]}>
+                {isRescuingClients ? 'Scanning Call Records...' : '🚑 Rescue Converted Clients from History'}
               </Text>
             </TouchableOpacity>
 

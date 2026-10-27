@@ -142,6 +142,50 @@ export class DexieDatabaseAdapter implements IDatabase {
               healed = true;
             }
           }
+
+          // Reconstruct converted clients from historical call logs and notes
+          const convertedLog = allLeadLogs.find(
+            (l) =>
+              l.disposition === 'appt_converted' ||
+              (typeof l.note === 'string' && (l.note.includes('Converted to client') || l.note.includes('appt_converted')))
+          );
+
+          const hasConvertedNote = typeof lead.notes === 'string' && (
+            lead.notes.includes('[Sit-Down Wrap-Up] Converted to client') ||
+            lead.notes.includes('Converted to client after sit-down')
+          );
+
+          const isExplicitClient = lead.is_client === 1 || lead.is_client === true || lead.is_client === 'true';
+
+          if ((convertedLog || hasConvertedNote || lead.appointment_outcome === 'converted') && !isExplicitClient) {
+            lead.is_client = true;
+            lead.appointment_outcome = 'converted';
+            const clientSince =
+              convertedLog?.timestamp ||
+              (convertedLog as any)?.created_at ||
+              lead.client_since ||
+              lead.appointment_completed_at ||
+              lead.updated_at ||
+              lead.created_at ||
+              new Date().toISOString();
+            lead.client_since = clientSince;
+            lead.appointment_completed_at = clientSince;
+            if (!lead.drip_track || lead.drip_track === 'none') {
+              lead.drip_track = 'client_annual_review';
+              lead.drip_step = 0;
+            }
+            if (lead.last_disposition === 'appointment_set') {
+              lead.last_disposition = 'connected';
+            }
+            if ((!lead.annualized_premium || Number(lead.annualized_premium) === 0) && typeof lead.notes === 'string') {
+              const matchAP = lead.notes.match(/\$([0-9,]+(?:\.[0-9]{2})?)\s*(?:AP|annualized\s*premium|annually|\/year|\/yr)/i);
+              if (matchAP) {
+                const num = parseFloat(matchAP[1].replace(/,/g, ''));
+                if (!isNaN(num) && num > 0) lead.annualized_premium = num;
+              }
+            }
+            healed = true;
+          }
         }
         if (healed) {
           await this.saveToStorage();
